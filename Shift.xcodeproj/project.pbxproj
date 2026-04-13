@@ -6,14 +6,67 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3F824B412F8CE832000009CB /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 3F824B402F8CE832000009CB /* Supabase */; };
+		3F824B442F8CE89E000009CB /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 3F824B432F8CE89E000009CB /* GRDB */; };
+		3F824DDF2F8CEE74000009CB /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3F824DDE2F8CEE74000009CB /* WidgetKit.framework */; };
+		3F824DE12F8CEE74000009CB /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3F824DE02F8CEE74000009CB /* SwiftUI.framework */; };
+		3F824DEE2F8CEE75000009CB /* ShiftTimerWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3F824DDC2F8CEE74000009CB /* ShiftTimerWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3F824DEC2F8CEE75000009CB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3F4C3C042F8CE0FC00A9EB58 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3F824DDB2F8CEE74000009CB;
+			remoteInfo = ShiftTimerWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		3F824DF32F8CEE75000009CB /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3F824DEE2F8CEE75000009CB /* ShiftTimerWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		3F4C3C0C2F8CE0FC00A9EB58 /* Shift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shift.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F824DDC2F8CEE74000009CB /* ShiftTimerWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShiftTimerWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F824DDE2F8CEE74000009CB /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		3F824DE02F8CEE74000009CB /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3F824DEF2F8CEE75000009CB /* Exceptions for "ShiftTimerWidget" folder in "ShiftTimerWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3F824DDB2F8CEE74000009CB /* ShiftTimerWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3F4C3C0E2F8CE0FC00A9EB58 /* Shift */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shift;
+			sourceTree = "<group>";
+		};
+		3F824DE22F8CEE74000009CB /* ShiftTimerWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3F824DEF2F8CEE75000009CB /* Exceptions for "ShiftTimerWidget" folder in "ShiftTimerWidgetExtension" target */,
+			);
+			path = ShiftTimerWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +76,17 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F824B412F8CE832000009CB /* Supabase in Frameworks */,
+				3F824B442F8CE89E000009CB /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F824DD92F8CEE74000009CB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F824DE12F8CEE74000009CB /* SwiftUI.framework in Frameworks */,
+				3F824DDF2F8CEE74000009CB /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,6 +97,8 @@
 			isa = PBXGroup;
 			children = (
 				3F4C3C0E2F8CE0FC00A9EB58 /* Shift */,
+				3F824DE22F8CEE74000009CB /* ShiftTimerWidget */,
+				3F824DDD2F8CEE74000009CB /* Frameworks */,
 				3F4C3C0D2F8CE0FC00A9EB58 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,8 +107,18 @@
 			isa = PBXGroup;
 			children = (
 				3F4C3C0C2F8CE0FC00A9EB58 /* Shift.app */,
+				3F824DDC2F8CEE74000009CB /* ShiftTimerWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		3F824DDD2F8CEE74000009CB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3F824DDE2F8CEE74000009CB /* WidgetKit.framework */,
+				3F824DE02F8CEE74000009CB /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -55,20 +131,46 @@
 				3F4C3C082F8CE0FC00A9EB58 /* Sources */,
 				3F4C3C092F8CE0FC00A9EB58 /* Frameworks */,
 				3F4C3C0A2F8CE0FC00A9EB58 /* Resources */,
+				3F824DF32F8CEE75000009CB /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				3F824DED2F8CEE75000009CB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3F4C3C0E2F8CE0FC00A9EB58 /* Shift */,
 			);
 			name = Shift;
 			packageProductDependencies = (
+				3F824B402F8CE832000009CB /* Supabase */,
+				3F824B432F8CE89E000009CB /* GRDB */,
 			);
 			productName = Shift;
 			productReference = 3F4C3C0C2F8CE0FC00A9EB58 /* Shift.app */;
 			productType = "com.apple.product-type.application";
+		};
+		3F824DDB2F8CEE74000009CB /* ShiftTimerWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3F824DF02F8CEE75000009CB /* Build configuration list for PBXNativeTarget "ShiftTimerWidgetExtension" */;
+			buildPhases = (
+				3F824DD82F8CEE74000009CB /* Sources */,
+				3F824DD92F8CEE74000009CB /* Frameworks */,
+				3F824DDA2F8CEE74000009CB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3F824DE22F8CEE74000009CB /* ShiftTimerWidget */,
+			);
+			name = ShiftTimerWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = ShiftTimerWidgetExtension;
+			productReference = 3F824DDC2F8CEE74000009CB /* ShiftTimerWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +185,9 @@
 					3F4C3C0B2F8CE0FC00A9EB58 = {
 						CreatedOnToolsVersion = 26.4;
 					};
+					3F824DDB2F8CEE74000009CB = {
+						CreatedOnToolsVersion = 26.4;
+					};
 				};
 			};
 			buildConfigurationList = 3F4C3C072F8CE0FC00A9EB58 /* Build configuration list for PBXProject "Shift" */;
@@ -94,18 +199,30 @@
 			);
 			mainGroup = 3F4C3C032F8CE0FC00A9EB58;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3F824B3F2F8CE832000009CB /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				3F824B422F8CE89E000009CB /* XCRemoteSwiftPackageReference "GRDB" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3F4C3C0D2F8CE0FC00A9EB58 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				3F4C3C0B2F8CE0FC00A9EB58 /* Shift */,
+				3F824DDB2F8CEE74000009CB /* ShiftTimerWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		3F4C3C0A2F8CE0FC00A9EB58 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F824DDA2F8CEE74000009CB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +239,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3F824DD82F8CEE74000009CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3F824DED2F8CEE75000009CB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3F824DDB2F8CEE74000009CB /* ShiftTimerWidgetExtension */;
+			targetProxy = 3F824DEC2F8CEE75000009CB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3F4C3C152F8CE0FD00A9EB58 /* Debug */ = {
@@ -251,26 +383,30 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Shift/Shift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.Shift;
+				MARKETING_VERSION = 2.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -283,26 +419,94 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Shift/Shift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.Shift;
+				MARKETING_VERSION = 2.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3F824DF12F8CEE75000009CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 7NW33277C8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShiftTimerWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShiftTimerWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.ShiftTimerWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3F824DF22F8CEE75000009CB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 7NW33277C8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShiftTimerWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShiftTimerWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.ShiftTimerWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -331,7 +535,48 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		3F824DF02F8CEE75000009CB /* Build configuration list for PBXNativeTarget "ShiftTimerWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F824DF12F8CEE75000009CB /* Debug */,
+				3F824DF22F8CEE75000009CB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3F824B3F2F8CE832000009CB /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+		3F824B422F8CE89E000009CB /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3F824B402F8CE832000009CB /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F824B3F2F8CE832000009CB /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		3F824B432F8CE89E000009CB /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F824B422F8CE89E000009CB /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3F4C3C042F8CE0FC00A9EB58 /* Project object */;
 }
