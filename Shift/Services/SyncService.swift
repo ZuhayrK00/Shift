@@ -140,10 +140,18 @@ struct SyncService {
         guard let jsonValue = try? JSONDecoder().decode(AnyJSON.self, from: jsonData) else {
             throw SyncError.encodingFailed
         }
-        try await supabase
-            .from(table)
-            .insert(jsonValue)
-            .execute()
+        // Use upsert for profiles since the row may already exist (created by trigger)
+        if table == "profiles" {
+            try await supabase
+                .from(table)
+                .upsert(jsonValue)
+                .execute()
+        } else {
+            try await supabase
+                .from(table)
+                .insert(jsonValue)
+                .execute()
+        }
     }
 
     private static func executeUpdate(table: String, id: String, payload: [String: Any]) async throws {
@@ -151,11 +159,25 @@ struct SyncService {
         guard let jsonValue = try? JSONDecoder().decode(AnyJSON.self, from: jsonData) else {
             throw SyncError.encodingFailed
         }
-        try await supabase
-            .from(table)
-            .update(jsonValue)
-            .eq("id", value: id)
-            .execute()
+        // Use upsert for profiles to handle the case where the row doesn't exist yet
+        if table == "profiles" {
+            var fullPayload = payload
+            fullPayload["id"] = id
+            let upsertData = try JSONSerialization.data(withJSONObject: fullPayload)
+            guard let upsertValue = try? JSONDecoder().decode(AnyJSON.self, from: upsertData) else {
+                throw SyncError.encodingFailed
+            }
+            try await supabase
+                .from(table)
+                .upsert(upsertValue)
+                .execute()
+        } else {
+            try await supabase
+                .from(table)
+                .update(jsonValue)
+                .eq("id", value: id)
+                .execute()
+        }
     }
 
     private static func executeDelete(table: String, id: String) async throws {

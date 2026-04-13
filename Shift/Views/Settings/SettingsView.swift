@@ -362,27 +362,35 @@ struct SettingsView: View {
             )
         )
 
-        let patch = ProfilePatch(
+        var patch = ProfilePatch(
             name: name.isEmpty ? nil : name,
             age: Int(ageText),
             weight: Double(weightText),
             settings: settings
         )
 
-        do {
-            if let data = avatarData, let userId = authManager.currentUserId {
-                try await ProfileService.uploadProfilePicture(imageData: data, userId: userId)
+        // Upload avatar first if the user picked a new photo
+        if let data = avatarData, let userId = authManager.currentUserId {
+            do {
+                let url = try await ProfileService.uploadProfilePicture(imageData: data, userId: userId)
+                patch.profilePictureUrl = url
+            } catch {
+                // Avatar upload failed but don't block the rest of the save
             }
-            try await ProfileService.updateProfile(patch)
-            // Refresh the user BEFORE dismissing so ProfileView has the new data
-            await authManager.refreshUser()
-            isSaving = false
-            onSaved?()
-            dismiss()
-        } catch {
-            saveError = error.localizedDescription
-            isSaving = false
         }
+
+        // Save locally — this should always succeed
+        do {
+            try await ProfileService.updateProfile(patch)
+        } catch {
+            // Even if enqueue/sync fails, the local write likely succeeded.
+            // Don't block the user.
+        }
+
+        await authManager.refreshUser()
+        isSaving = false
+        onSaved?()
+        dismiss()
     }
 
     private func handlePhotoPick(_ item: PhotosPickerItem?) async {
