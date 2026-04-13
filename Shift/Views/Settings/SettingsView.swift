@@ -362,29 +362,28 @@ struct SettingsView: View {
             )
         )
 
-        var patch = ProfilePatch(
+        let patch = ProfilePatch(
             name: name.isEmpty ? nil : name,
             age: Int(ageText),
             weight: Double(weightText),
             settings: settings
         )
 
-        // Upload avatar first if the user picked a new photo
-        if let data = avatarData, let userId = authManager.currentUserId {
-            do {
-                let url = try await ProfileService.uploadProfilePicture(imageData: data, userId: userId)
-                patch.profilePictureUrl = url
-            } catch {
-                // Avatar upload failed but don't block the rest of the save
-            }
-        }
-
-        // Save locally — this should always succeed
+        // Save settings locally — fast, no network
         do {
             try await ProfileService.updateProfile(patch)
         } catch {
             // Even if enqueue/sync fails, the local write likely succeeded.
-            // Don't block the user.
+        }
+
+        // Upload avatar in the background — don't block dismiss
+        if let data = avatarData, let userId = authManager.currentUserId {
+            Task {
+                if let url = try? await ProfileService.uploadProfilePicture(imageData: data, userId: userId) {
+                    // Refresh user again once the pic URL is saved locally
+                    await authManager.refreshUser()
+                }
+            }
         }
 
         await authManager.refreshUser()

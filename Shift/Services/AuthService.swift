@@ -110,9 +110,24 @@ class AuthManager {
 
     // MARK: - Refresh
 
+    /// Re-reads the local profile and rebuilds the User without touching isLoading.
+    /// This avoids flashing the loading screen and destroying the tab view.
     func refreshUser() async {
         guard let session else { return }
-        await loadUser(session)
+        let userId = session.user.id.uuidString
+        let profile = try? await ProfileRepository.findById(userId)
+        let settings = profile?.settings ?? .default
+
+        self.user = User(
+            id: userId,
+            email: session.user.email,
+            name: profile?.name,
+            age: profile?.age,
+            weight: profile?.weight,
+            profilePictureUrl: profile?.profilePictureUrl,
+            createdAt: session.user.createdAt,
+            settings: settings
+        )
     }
 
     // MARK: - Helpers
