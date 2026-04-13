@@ -142,21 +142,3 @@ private struct GIFImageView: UIViewRepresentable {
         return UIImage.animatedImage(with: frames, duration: totalDuration)
     }
 }
-
-// MARK: - GIF data cache
-
-/// Caches raw GIF data so the animated decoder can re-use it instantly
-/// without a second network fetch.
-final class GIFDataCache: @unchecked Sendable {
-    static let shared = GIFDataCache()
-    private let cache = NSCache<NSString, NSData>()
-    private init() { cache.countLimit = 200 }
-
-    func data(for url: URL) -> Data? {
-        cache.object(forKey: url.absoluteString as NSString) as Data?
-    }
-
-    func store(_ data: Data, for url: URL) {
-        cache.setObject(data as NSData, forKey: url.absoluteString as NSString)
-    }
-}

@@ -55,7 +55,6 @@ struct ExerciseLogView: View {
             } else {
                 VStack(spacing: 0) {
                     tabBar
-                    Divider().background(colors.border)
                     tabContent
                 }
             }
@@ -80,6 +79,7 @@ struct ExerciseLogView: View {
                         .padding(.vertical, 8)
                         .background(activeTab == tab ? colors.surface : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
             }

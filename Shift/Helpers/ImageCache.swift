@@ -1,38 +1,40 @@
 import SwiftUI
 
-/// In-memory image cache backed by NSCache. Shared singleton so exercise
-/// thumbnails load instantly after the first fetch within an app session.
+// MARK: - ImageCache
+
+/// Persistent in-memory image cache. Uses a plain dictionary (not NSCache)
+/// so entries are never evicted by the OS. The exercise image set is bounded
+/// (~300 small thumbnails) so memory impact is negligible.
 final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
 
-    private let cache = NSCache<NSString, UIImage>()
-    /// Track in-flight downloads so we don't fire duplicate requests.
+    private var images: [String: UIImage] = [:]
     private var pending: [String: [(@Sendable (UIImage?) -> Void)]] = [:]
     private let lock = NSLock()
 
-    private init() {
-        cache.countLimit = 500
-    }
+    private init() {}
 
     func image(for url: URL) -> UIImage? {
-        cache.object(forKey: url.absoluteString as NSString)
+        lock.lock()
+        let img = images[url.absoluteString]
+        lock.unlock()
+        return img
     }
 
     func store(_ image: UIImage, for url: URL) {
-        cache.setObject(image, forKey: url.absoluteString as NSString)
+        lock.lock()
+        images[url.absoluteString] = image
+        lock.unlock()
     }
 
     /// Prefetch a batch of URLs in the background (fire-and-forget).
     func prefetch(_ urls: [URL]) {
         for url in urls {
-            let key = url.absoluteString as NSString
-            if cache.object(forKey: key) != nil { continue }
-
             lock.lock()
-            let alreadyPending = pending[url.absoluteString] != nil
+            let cached = images[url.absoluteString] != nil
+            let inflight = pending[url.absoluteString] != nil
             lock.unlock()
-            if alreadyPending { continue }
-
+            if cached || inflight { continue }
             fetch(url) { _ in }
         }
     }
@@ -41,12 +43,12 @@ final class ImageCache: @unchecked Sendable {
     func fetch(_ url: URL, completion: @escaping @Sendable (UIImage?) -> Void) {
         let key = url.absoluteString
 
-        if let cached = cache.object(forKey: key as NSString) {
+        lock.lock()
+        if let cached = images[key] {
+            lock.unlock()
             completion(cached)
             return
         }
-
-        lock.lock()
         if var waiters = pending[key] {
             waiters.append(completion)
             pending[key] = waiters
@@ -56,22 +58,47 @@ final class ImageCache: @unchecked Sendable {
         pending[key] = [completion]
         lock.unlock()
 
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let self else { return }
+        URLSession.shared.dataTask(with: url) { [self] data, _, _ in
             let img = data.flatMap { UIImage(data: $0) }
-            if let img { self.cache.setObject(img, forKey: key as NSString) }
+
+            lock.lock()
+            if let img { images[key] = img }
+            let waiters = pending.removeValue(forKey: key) ?? []
+            lock.unlock()
 
             // Also cache raw data so the GIF decoder doesn't need a second fetch
             if let data { GIFDataCache.shared.store(data, for: url) }
-
-            self.lock.lock()
-            let waiters = self.pending.removeValue(forKey: key) ?? []
-            self.lock.unlock()
 
             DispatchQueue.main.async {
                 for w in waiters { w(img) }
             }
         }.resume()
+    }
+}
+
+// MARK: - GIFDataCache
+
+/// Persistent in-memory cache for raw GIF data so the animated decoder can
+/// re-use it instantly without a second network fetch.
+final class GIFDataCache: @unchecked Sendable {
+    static let shared = GIFDataCache()
+
+    private var storage: [String: Data] = [:]
+    private let lock = NSLock()
+
+    private init() {}
+
+    func data(for url: URL) -> Data? {
+        lock.lock()
+        let d = storage[url.absoluteString]
+        lock.unlock()
+        return d
+    }
+
+    func store(_ data: Data, for url: URL) {
+        lock.lock()
+        storage[url.absoluteString] = data
+        lock.unlock()
     }
 }
 
@@ -88,7 +115,6 @@ struct CachedAsyncImage<Content: View>: View {
     init(url: URL?, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
         self.url = url
         self.content = content
-        // Check cache synchronously so returning to this view doesn't flash the placeholder
         if let url, let cached = ImageCache.shared.image(for: url) {
             _phase = State(initialValue: .success(Image(uiImage: cached)))
         } else {
@@ -99,7 +125,6 @@ struct CachedAsyncImage<Content: View>: View {
     var body: some View {
         content(phase)
             .task(id: url) {
-                // Skip if already loaded (from init or previous task run)
                 if case .success = phase { return }
                 guard let url else {
                     phase = .empty
