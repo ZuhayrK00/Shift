@@ -8,6 +8,8 @@ struct ProfileView: View {
     @State private var isLoadingPBs = false
     @State private var showAllPBs = false
     @State private var showSettings = false
+    @State private var showToast = false
+    @State private var toastMessage = ""
 
     private var user: User? { authManager.user }
 
@@ -49,12 +51,35 @@ struct ProfileView: View {
             }
         }
         .navigationDestination(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(onSaved: {
+                toastMessage = "Settings saved"
+                showToast = true
+            })
         }
         .navigationDestination(isPresented: $showAllPBs) {
             PersonalBestsView()
         }
         .task { await loadPersonalBests() }
+        .overlay(alignment: .bottom) {
+            if showToast {
+                Text(toastMessage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(colors.success)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                    .padding(.bottom, 20)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            withAnimation { showToast = false }
+                        }
+                    }
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: showToast)
     }
 
     // MARK: - Header row

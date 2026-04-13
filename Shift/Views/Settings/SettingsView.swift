@@ -6,6 +6,8 @@ struct SettingsView: View {
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss) private var dismiss
 
+    var onSaved: (() -> Void)?
+
     // About you
     @State private var name = ""
     @State private var ageText = ""
@@ -43,22 +45,11 @@ struct SettingsView: View {
             colors.bg.ignoresSafeArea()
 
             Form {
-                // Avatar
                 avatarSection
-
-                // About you
                 aboutSection
-
-                // Preferences
                 preferencesSection
-
-                // Rest timer
                 restTimerSection
-
-                // Sync
                 syncSection
-
-                // Sign out
                 signOutSection
             }
             .scrollContentBackground(.hidden)
@@ -89,7 +80,12 @@ struct SettingsView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
-        .onAppear { populateFields() }
+        .onAppear {
+            populateFields()
+            if let syncDate = SyncService.getLastSyncedAt() {
+                lastSyncedText = formatDate(syncDate)
+            }
+        }
         .onChange(of: photoItem) { _, newItem in
             Task { await handlePhotoPick(newItem) }
         }
@@ -104,19 +100,21 @@ struct SettingsView: View {
                 HStack {
                     Spacer()
                     VStack(spacing: 8) {
-                        AvatarView(
-                            url: avatarData == nil ? authManager.user?.profilePictureUrl : nil,
-                            initials: authManager.user?.initials ?? "?",
-                            size: 80
-                        )
-                        .overlay(alignment: .bottomTrailing) {
+                        ZStack {
                             if let data = avatarData, let uiImg = UIImage(data: data) {
                                 Image(uiImage: uiImg)
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 80, height: 80)
                                     .clipShape(Circle())
+                            } else {
+                                AvatarView(
+                                    url: authManager.user?.profilePictureUrl,
+                                    initials: authManager.user?.initials ?? "?",
+                                    size: 80
+                                )
                             }
+
                             Circle()
                                 .fill(colors.accent)
                                 .frame(width: 26, height: 26)
@@ -125,7 +123,7 @@ struct SettingsView: View {
                                         .font(.system(size: 12))
                                         .foregroundStyle(.white)
                                 )
-                                .offset(x: 4, y: 4)
+                                .offset(x: 28, y: 28)
                         }
 
                         Text("Change photo")
@@ -282,7 +280,7 @@ struct SettingsView: View {
             Button {
                 Task {
                     try? await SyncService.pullReferenceData()
-                    lastSyncedText = formatNow()
+                    lastSyncedText = formatDate(Date())
                 }
             } label: {
                 Label("Pull reference data", systemImage: "arrow.down.circle")
@@ -292,7 +290,7 @@ struct SettingsView: View {
             Button {
                 Task {
                     SyncService.flushInBackground()
-                    lastSyncedText = formatNow()
+                    lastSyncedText = formatDate(Date())
                 }
             } label: {
                 Label("Push pending changes", systemImage: "arrow.up.circle")
@@ -333,7 +331,10 @@ struct SettingsView: View {
         guard let user = authManager.user else { return }
         name = user.name ?? ""
         ageText = user.age.map { "\($0)" } ?? ""
-        weightText = user.weight.map { "\($0)" } ?? ""
+        weightText = user.weight.map {
+            $0.truncatingRemainder(dividingBy: 1) == 0
+                ? String(format: "%.0f", $0) : "\($0)"
+        } ?? ""
         let s = user.settings
         weightUnit = s.weightUnit
         defaultIncrement = s.defaultWeightIncrement
@@ -345,7 +346,7 @@ struct SettingsView: View {
     }
 
     private func save() async {
-        guard let userId = authManager.currentUserId else { return }
+        guard authManager.currentUserId != nil else { return }
         isSaving = true
         saveError = nil
 
@@ -369,16 +370,19 @@ struct SettingsView: View {
         )
 
         do {
-            if let data = avatarData {
+            if let data = avatarData, let userId = authManager.currentUserId {
                 try await ProfileService.uploadProfilePicture(imageData: data, userId: userId)
             }
             try await ProfileService.updateProfile(patch)
+            // Refresh the user BEFORE dismissing so ProfileView has the new data
             await authManager.refreshUser()
+            isSaving = false
+            onSaved?()
             dismiss()
         } catch {
             saveError = error.localizedDescription
+            isSaving = false
         }
-        isSaving = false
     }
 
     private func handlePhotoPick(_ item: PhotosPickerItem?) async {
@@ -393,8 +397,8 @@ struct SettingsView: View {
         return s == 0 ? "\(m)m" : "\(m)m \(s)s"
     }
 
-    private func formatNow() -> String {
+    private func formatDate(_ date: Date) -> String {
         let f = DateFormatter(); f.dateFormat = "h:mm a"
-        return f.string(from: Date())
+        return f.string(from: date)
     }
 }
