@@ -362,28 +362,30 @@ struct SettingsView: View {
             )
         )
 
-        let patch = ProfilePatch(
+        var patch = ProfilePatch(
             name: name.isEmpty ? nil : name,
             age: Int(ageText),
             weight: Double(weightText),
             settings: settings
         )
 
-        // Save settings locally — fast, no network
+        // Upload avatar if the user picked a new photo
+        if let data = avatarData, let userId = authManager.currentUserId {
+            do {
+                let url = try await ProfileService.uploadProfilePicture(imageData: data, userId: userId)
+                patch.profilePictureUrl = url
+            } catch {
+                saveError = "Photo upload failed: \(error.localizedDescription)"
+                isSaving = false
+                return
+            }
+        }
+
+        // Save profile locally
         do {
             try await ProfileService.updateProfile(patch)
         } catch {
-            // Even if enqueue/sync fails, the local write likely succeeded.
-        }
-
-        // Upload avatar in the background — don't block dismiss
-        if let data = avatarData, let userId = authManager.currentUserId {
-            Task {
-                if let url = try? await ProfileService.uploadProfilePicture(imageData: data, userId: userId) {
-                    // Refresh user again once the pic URL is saved locally
-                    await authManager.refreshUser()
-                }
-            }
+            // Local write likely succeeded even if enqueue fails
         }
 
         await authManager.refreshUser()
@@ -394,7 +396,12 @@ struct SettingsView: View {
 
     private func handlePhotoPick(_ item: PhotosPickerItem?) async {
         guard let item else { return }
-        avatarData = try? await item.loadTransferable(type: Data.self)
+        guard let rawData = try? await item.loadTransferable(type: Data.self),
+              let uiImage = UIImage(data: rawData),
+              let jpegData = uiImage.jpegData(compressionQuality: 0.8) else {
+            return
+        }
+        avatarData = jpegData
     }
 
     private func formatDuration(_ seconds: Int) -> String {
