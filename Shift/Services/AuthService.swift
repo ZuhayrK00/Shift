@@ -47,13 +47,25 @@ class AuthManager {
 
         let userId = session.user.id.uuidString
 
-        // Try local cache first
+        // Try local cache first, fall back to remote with a timeout
         let profile: Profile?
         if let cached = try? await ProfileRepository.findById(userId) {
             profile = cached
         } else {
-            // Fall back to remote fetch and cache locally
-            profile = try? await ProfileService.fetchAndCacheProfile(userId)
+            // Remote fetch — wrap in a task with timeout so it never blocks the UI forever
+            profile = await withTaskGroup(of: Profile?.self) { group in
+                group.addTask {
+                    try? await ProfileService.fetchAndCacheProfile(userId)
+                }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(5))
+                    return nil
+                }
+                // Whichever finishes first wins
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
         }
 
         let settings = profile?.settings ?? .default

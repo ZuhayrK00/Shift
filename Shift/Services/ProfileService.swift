@@ -23,12 +23,11 @@ struct ProfileService {
     static func updateProfile(_ patch: ProfilePatch) async throws -> Profile {
         let userId = try authManager.requireUserId()
 
-        // Load existing profile or create a sensible default
+        // Load existing profile from local cache or create a default.
+        // Never fetch from remote here — this is the save path and must not hang on network.
         var profile: Profile
         if let cached = try await ProfileRepository.findById(userId) {
             profile = cached
-        } else if let remote = try? await fetchAndCacheProfile(userId) {
-            profile = remote
         } else {
             profile = Profile(
                 id: userId,
