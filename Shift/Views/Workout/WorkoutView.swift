@@ -22,6 +22,7 @@ struct WorkoutView: View {
     @Environment(AuthManager.self) private var authManager
 
     private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
+    private var timer: RestTimerManager { .shared }
 
     @State private var session: WorkoutSession?
     @State private var blocks: [ExerciseBlock]  = []
@@ -88,24 +89,40 @@ struct WorkoutView: View {
     private var scrollContent: some View {
         ScrollView {
             LazyVStack(spacing: 14) {
-                // Completed banner
+                // Completed summary or in-progress stats
                 if isCompleted {
-                    completedBanner
-                }
+                    completedSummary
+                } else {
+                    // Rest timer (visible when active)
+                    if timer.isActive {
+                        CompactRestTimerView()
+                    }
 
-                // Stats row
-                statsRow
+                    // Stats row
+                    statsRow
+                }
 
                 // Exercise blocks — group consecutive same-groupId blocks
                 ForEach(groupedBlocks, id: \.id) { group in
                     if group.blocks.count == 1, let block = group.blocks.first {
-                        exerciseCardView(block: block)
+                        if isCompleted {
+                            ExerciseCard(
+                                exercise: block.exercise,
+                                sets: block.sets,
+                                planExercise: planExerciseMap[block.exercise.id],
+                                weightUnit: weightUnit,
+                                readOnly: true
+                            )
+                        } else {
+                            exerciseCardView(block: block)
+                        }
                     } else {
                         SupersetContainerView(
                             blocks: group.blocks,
                             sessionId: sessionId,
                             planExerciseMap: planExerciseMap,
                             weightUnit: weightUnit,
+                            readOnly: isCompleted,
                             onRemove: { exId in
                                 Task { await removeExercise(exerciseId: exId) }
                             },
@@ -116,11 +133,9 @@ struct WorkoutView: View {
                     }
                 }
 
-                // Add exercise button
-                addExerciseButton
-
-                // Discard button
+                // Add exercise + discard only when in progress
                 if !isCompleted {
+                    addExerciseButton
                     discardButton
                 }
 
@@ -131,34 +146,123 @@ struct WorkoutView: View {
         }
     }
 
-    // MARK: - Completed banner
+    // MARK: - Completed summary
 
-    private var completedBanner: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(colors.success)
-                .frame(width: 10, height: 10)
-            Text("Completed")
-                .font(.system(size: 14, weight: .semibold))
+    private var completedSummary: some View {
+        VStack(spacing: 16) {
+            // Checkmark icon
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 36))
                 .foregroundStyle(colors.success)
-            Spacer()
-            Button("Edit workout") {
+                .padding(.top, 4)
+
+            // Duration
+            if let start = session?.startedAt, let end = session?.endedAt {
+                let duration = end.timeIntervalSince(start)
+                let mins = Int(duration) / 60
+                Text(formatDuration(mins))
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(colors.text)
+            }
+
+            // Stats
+            HStack(spacing: 24) {
+                completedStat(
+                    value: "\(exerciseCount)",
+                    label: exerciseCount == 1 ? "Exercise" : "Exercises",
+                    icon: "dumbbell.fill"
+                )
+                completedStat(
+                    value: "\(completedSetCount)",
+                    label: completedSetCount == 1 ? "Set" : "Sets",
+                    icon: "checkmark.circle"
+                )
+                completedStat(
+                    value: totalVolume,
+                    label: weightUnit,
+                    icon: "scalemass"
+                )
+            }
+
+            // Time range
+            if let start = session?.startedAt, let end = session?.endedAt {
+                Text("\(timeString(start)) – \(timeString(end))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(colors.muted)
+            }
+
+            // Edit button
+            Button {
                 Task {
                     try? await WorkoutService.resumeSession(sessionId)
                     await loadData()
                 }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Edit workout")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(colors.accent)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(colors.accent.opacity(0.1))
+                .clipShape(Capsule())
             }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(colors.accent)
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(colors.success.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(colors.success.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(colors.border, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private func completedStat(value: String, label: String, icon: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(colors.muted)
+            Text(value)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(colors.text)
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(colors.muted)
+        }
+    }
+
+    private var totalVolume: String {
+        let total = blocks.flatMap { $0.sets }
+            .filter { $0.isCompleted }
+            .reduce(0.0) { $0 + (($1.weight ?? 0) * Double($1.reps)) }
+        if total >= 1000 {
+            return String(format: "%.1fk", total / 1000)
+        }
+        return "\(Int(total))"
+    }
+
+    private func timeString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: date)
+    }
+
+    private func formatDuration(_ minutes: Int) -> String {
+        if minutes < 60 {
+            return "\(minutes) min"
+        }
+        let hrs = minutes / 60
+        let mins = minutes % 60
+        if mins == 0 {
+            return "\(hrs) hr"
+        }
+        return "\(hrs) hr \(mins) min"
     }
 
     // MARK: - Stats row

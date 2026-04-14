@@ -8,6 +8,7 @@ struct ExerciseCard: View {
     let sets: [SessionSet]
     var planExercise: PlanExercise?
     var weightUnit: String = "kg"
+    var readOnly: Bool = false
     var onRemove: () -> Void = {}
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
 
@@ -53,14 +54,16 @@ struct ExerciseCard: View {
 
                 Spacer()
 
-                // Remove button
-                Button(action: onRemove) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 14))
-                        .foregroundStyle(colors.muted)
-                        .padding(8)
+                // Remove button (hidden in read-only mode)
+                if !readOnly {
+                    Button(action: onRemove) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                            .foregroundStyle(colors.muted)
+                            .padding(8)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
@@ -95,8 +98,12 @@ struct ExerciseCard: View {
     @ViewBuilder
     private func setRow(_ set: SessionSet) -> some View {
         HStack(spacing: 10) {
-            SetTypeMenuButton(set: set) { newType in
-                onChangeSetType(set, newType)
+            if readOnly {
+                SetBadge(set: set, compact: true)
+            } else {
+                SetTypeMenuButton(set: set) { newType in
+                    onChangeSetType(set, newType)
+                }
             }
 
             // Weight + reps

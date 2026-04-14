@@ -36,36 +36,6 @@ enum NotificationDecisionEngine {
             ))
         }
 
-        // Move ring
-        if activity.moveGoal > 0, activity.moveCalories >= activity.moveGoal {
-            actions.append(.cancel(prefix: "shift.rings-move-0"))
-            actions.append(.fireImmediately(
-                id: "shift.rings-move-completed-\(todayKey)",
-                title: "Move ring closed!",
-                body: "You've hit your calorie goal for today. Nice work!"
-            ))
-        }
-
-        // Exercise ring
-        if activity.exerciseGoal > 0, activity.exerciseMinutes >= activity.exerciseGoal {
-            actions.append(.cancel(prefix: "shift.rings-exercise-0"))
-            actions.append(.fireImmediately(
-                id: "shift.rings-exercise-completed-\(todayKey)",
-                title: "Exercise ring closed!",
-                body: "You've hit your exercise minutes. Strong effort!"
-            ))
-        }
-
-        // Stand ring
-        if activity.standGoal > 0, activity.standHours >= activity.standGoal {
-            actions.append(.cancel(prefix: "shift.rings-stand-0"))
-            actions.append(.fireImmediately(
-                id: "shift.rings-stand-completed-\(todayKey)",
-                title: "Stand ring closed!",
-                body: "You've stayed active throughout the day. Well done!"
-            ))
-        }
-
         return actions
     }
 
@@ -83,17 +53,6 @@ enum NotificationDecisionEngine {
     ) -> [StepNotificationType] {
         guard notificationsEnabled, stepGoal > 0 else { return [] }
         return [.eveningReminder, .morningCongrats]
-    }
-
-    // MARK: - Ring Reminder Decisions
-
-    /// Returns which rings should get reminders (all that have goals > 0).
-    static func ringsNeedingReminders(activity: ActivityData) -> [String] {
-        var rings: [String] = []
-        if activity.moveGoal > 0 { rings.append("Move") }
-        if activity.exerciseGoal > 0 { rings.append("Exercise") }
-        if activity.standGoal > 0 { rings.append("Stand") }
-        return rings
     }
 
     // MARK: - Frequency Stage

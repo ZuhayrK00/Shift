@@ -11,6 +11,7 @@ struct SupersetContainerView: View {
     let sessionId: String
     var planExerciseMap: [String: PlanExercise] = [:]
     var weightUnit: String = "kg"
+    var readOnly: Bool = false
     var onRemove: (String) -> Void  = { _ in }
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
 
@@ -42,20 +43,32 @@ struct SupersetContainerView: View {
 
             VStack(spacing: 10) {
                 ForEach(blocks) { block in
-                    NavigationLink(value: ExerciseLogRoute(
-                        sessionId: sessionId,
-                        exerciseId: block.exercise.id
-                    )) {
+                    if readOnly {
                         ExerciseCard(
                             exercise: block.exercise,
                             sets: block.sets,
                             planExercise: planExerciseMap[block.exercise.id],
                             weightUnit: weightUnit,
-                            onRemove: { onRemove(block.exercise.id) },
-                            onChangeSetType: { set, type in onChangeSetType(set, type) }
+                            readOnly: true,
+                            onRemove: {},
+                            onChangeSetType: { _, _ in }
                         )
+                    } else {
+                        NavigationLink(value: ExerciseLogRoute(
+                            sessionId: sessionId,
+                            exerciseId: block.exercise.id
+                        )) {
+                            ExerciseCard(
+                                exercise: block.exercise,
+                                sets: block.sets,
+                                planExercise: planExerciseMap[block.exercise.id],
+                                weightUnit: weightUnit,
+                                onRemove: { onRemove(block.exercise.id) },
+                                onChangeSetType: { set, type in onChangeSetType(set, type) }
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.leading, 10)

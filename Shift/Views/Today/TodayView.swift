@@ -461,6 +461,8 @@ private struct InProgressSessionCard: View {
     @Environment(\.shiftColors) private var colors
     let summary: SessionSummary
 
+    private var timer: RestTimerManager { .shared }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -486,6 +488,12 @@ private struct InProgressSessionCard: View {
                 .font(.system(size: 12))
                 .foregroundStyle(colors.muted)
                 .padding(.top, 2)
+
+            // Rest timer (visible when timer is running)
+            if timer.isActive {
+                CompactRestTimerView()
+                    .padding(.top, 12)
+            }
 
             // Exercise list
             if !summary.exercises.isEmpty {
