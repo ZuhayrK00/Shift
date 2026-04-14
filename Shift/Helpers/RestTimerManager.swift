@@ -33,6 +33,7 @@ final class RestTimerManager {
         remaining = seconds
         isActive = true
         LiveActivityManager.start(durationSeconds: seconds)
+        NotificationManager.scheduleRestTimerNotification(seconds: seconds)
 
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -50,6 +51,7 @@ final class RestTimerManager {
         timer = nil
         if isActive {
             LiveActivityManager.stop()
+            NotificationManager.cancelRestTimerNotification()
         }
         isActive = false
         remaining = 0

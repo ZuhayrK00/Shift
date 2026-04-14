@@ -183,6 +183,32 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addExerciseGoals") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS exercise_goals (
+                    id                     TEXT PRIMARY KEY NOT NULL,
+                    user_id                TEXT NOT NULL,
+                    exercise_id            TEXT NOT NULL,
+                    target_weight_increase REAL NOT NULL,
+                    baseline_weight        REAL NOT NULL,
+                    deadline               TEXT NOT NULL,
+                    is_completed           INTEGER NOT NULL DEFAULT 0,
+                    completed_at           TEXT,
+                    created_at             TEXT NOT NULL
+                )
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_exercise_goals_exercise
+                    ON exercise_goals (exercise_id)
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_exercise_goals_user
+                    ON exercise_goals (user_id)
+            """)
+        }
+
         return migrator
     }
 }

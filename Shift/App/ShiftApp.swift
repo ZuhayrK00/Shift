@@ -12,6 +12,8 @@ struct ShiftApp: App {
 
     init() {
         setAuthManager(authManager)
+        NotificationManager.requestPermissionIfNeeded()
+        Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
     private var preferredScheme: ColorScheme? {

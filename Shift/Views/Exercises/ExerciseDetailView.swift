@@ -4,74 +4,68 @@ struct ExerciseDetailView: View {
     @Environment(\.shiftColors) private var colors
     let exercise: Exercise
 
+    var initialTab: Tab = .about
+    @State private var activeTab: Tab = .about
+
+    enum Tab: String, CaseIterable {
+        case about    = "About"
+        case history  = "History"
+        case progress = "Progress"
+        case goals    = "Goals"
+    }
+
     var body: some View {
         ZStack {
             colors.bg.ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Hero image
-                    heroImage
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(4 / 3, contentMode: .fit)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 0))
+            VStack(spacing: 0) {
+                // Tab bar (always visible at top)
+                tabBar
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
 
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Title
-                        Text(exercise.name)
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(colors.text)
-
-                        // Metadata chips
-                        metadataChips
-
-                        // Description
-                        if let description = exercise.description, !description.isEmpty {
-                            infoCard(title: "About") {
-                                Text(description)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(colors.muted)
-                                    .lineSpacing(4)
-                            }
-                        }
-
-                        // Instructions
-                        if let steps = exercise.instructionsSteps, !steps.isEmpty {
-                            infoCard(title: "Instructions") {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                                        HStack(alignment: .top, spacing: 12) {
-                                            Text("\(index + 1)")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundStyle(colors.accent)
-                                                .frame(width: 22, height: 22)
-                                                .background(colors.accent.opacity(0.15))
-                                                .clipShape(Circle())
-                                            Text(step)
-                                                .font(.system(size: 14))
-                                                .foregroundStyle(colors.text)
-                                                .lineSpacing(4)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }
-                                    }
-                                }
-                            }
-                        } else if let instructions = exercise.instructions, !instructions.isEmpty {
-                            infoCard(title: "Instructions") {
-                                Text(instructions)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(colors.text)
-                                    .lineSpacing(4)
-                            }
-                        }
-                    }
-                    .padding(20)
+                // Tab content
+                switch activeTab {
+                case .about:
+                    aboutContent
+                case .history:
+                    ExerciseHistoryView(exerciseId: exercise.id)
+                case .progress:
+                    ExerciseProgressView(exerciseId: exercise.id)
+                case .goals:
+                    ExerciseGoalsView(exercise: exercise)
                 }
             }
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { activeTab = initialTab }
+    }
+
+    // MARK: - Tab bar
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases, id: \.self) { tab in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { activeTab = tab }
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(activeTab == tab ? colors.text : colors.muted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(activeTab == tab ? colors.surface : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(colors.surface2)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Hero image
@@ -81,6 +75,65 @@ struct ExerciseDetailView: View {
             imageUrl: exercise.imageUrl,
             exerciseName: exercise.name
         )
+    }
+
+    // MARK: - About tab content
+
+    private var aboutContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Hero image
+                heroImage
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(4 / 3, contentMode: .fit)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                // Metadata chips
+                metadataChips
+
+                // Description
+                if let description = exercise.description, !description.isEmpty {
+                    infoCard(title: "About") {
+                        Text(description)
+                            .font(.system(size: 14))
+                            .foregroundStyle(colors.muted)
+                            .lineSpacing(4)
+                    }
+                }
+
+                // Instructions
+                if let steps = exercise.instructionsSteps, !steps.isEmpty {
+                    infoCard(title: "Instructions") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                                HStack(alignment: .top, spacing: 12) {
+                                    Text("\(index + 1)")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(colors.accent)
+                                        .frame(width: 22, height: 22)
+                                        .background(colors.accent.opacity(0.15))
+                                        .clipShape(Circle())
+                                    Text(step)
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(colors.text)
+                                        .lineSpacing(4)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                } else if let instructions = exercise.instructions, !instructions.isEmpty {
+                    infoCard(title: "Instructions") {
+                        Text(instructions)
+                            .font(.system(size: 14))
+                            .foregroundStyle(colors.text)
+                            .lineSpacing(4)
+                    }
+                }
+            }
+            .padding(20)
+        }
     }
 
     // MARK: - Metadata chips

@@ -70,6 +70,36 @@ struct SessionRepository {
         }
     }
 
+    /// Returns completed sessions since a given date for a user.
+    static func findCompletedSince(_ date: Date, userId: String) async throws -> [WorkoutSession] {
+        let dateString = ISO8601DateFormatter.shared.string(from: date)
+        return try await AppDatabase.shared.dbPool.read { db in
+            try WorkoutSession
+                .filter(Column("ended_at") != nil
+                        && Column("user_id") == userId
+                        && Column("started_at") >= dateString)
+                .order(Column("started_at").asc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Returns the average hour (0-23) at which the user starts their workouts,
+    /// based on completed sessions. Returns nil if no history exists.
+    static func findAverageWorkoutHour(userId: String) async throws -> Int? {
+        try await AppDatabase.shared.dbPool.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT AVG(CAST(strftime('%H', started_at) AS INTEGER)) as avg_hour
+                    FROM workout_sessions
+                    WHERE ended_at IS NOT NULL AND user_id = ?
+                    """,
+                arguments: [userId]
+            )
+            return row?["avg_hour"] as Int?
+        }
+    }
+
     // MARK: - Writes
 
     static func insert(_ session: WorkoutSession) async throws {

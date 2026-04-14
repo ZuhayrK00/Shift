@@ -12,6 +12,18 @@ struct RestTimerSettings: Codable, Hashable {
     }
 }
 
+// MARK: - NotificationSettings
+
+struct NotificationSettings: Codable, Hashable {
+    var exerciseGoalReminders: Bool = true
+    var frequencyReminders: Bool = true
+
+    enum CodingKeys: String, CodingKey {
+        case exerciseGoalReminders = "exercise_goal_reminders"
+        case frequencyReminders = "frequency_reminders"
+    }
+}
+
 // MARK: - UserSettings
 
 struct UserSettings: Codable, Hashable {
@@ -21,6 +33,8 @@ struct UserSettings: Codable, Hashable {
     var weekStartsOn: String = "monday"
     var theme: String = "dark"
     var restTimer: RestTimerSettings = .init()
+    var weeklyFrequencyGoal: Int? = nil
+    var notifications: NotificationSettings = .init()
 
     static let `default` = UserSettings()
 
@@ -31,5 +45,7 @@ struct UserSettings: Codable, Hashable {
         case distanceUnit = "distance_unit"
         case weekStartsOn = "week_starts_on"
         case restTimer = "rest_timer"
+        case weeklyFrequencyGoal = "weekly_frequency_goal"
+        case notifications
     }
 }

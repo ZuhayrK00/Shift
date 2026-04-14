@@ -56,6 +56,18 @@ struct WorkoutService {
             "id": sessionId,
             "ended_at": ISO8601DateFormatter.shared.string(from: endedAt)
         ])
+
+        // Check exercise goals for completion and reschedule notifications
+        Task {
+            let exerciseIds = (try? await SessionSetRepository.findExerciseIds(sessionId: sessionId)) ?? []
+            for exerciseId in exerciseIds {
+                let goals = (try? await ExerciseGoalRepository.findByExercise(exerciseId)) ?? []
+                for goal in goals where !goal.isCompleted {
+                    _ = try? await GoalService.checkGoalCompletion(goal.id)
+                }
+            }
+            await GoalNotificationService.scheduleAllNotifications()
+        }
     }
 
     static func resumeSession(_ sessionId: String) async throws {
