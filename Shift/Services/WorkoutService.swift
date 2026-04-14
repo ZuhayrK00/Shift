@@ -38,6 +38,7 @@ struct WorkoutService {
             "ended_at": NSNull(),
             "notes": NSNull()
         ])
+        NotificationManager.scheduleIdleWorkoutNotification(sessionId: id)
         return session
     }
 
@@ -50,6 +51,7 @@ struct WorkoutService {
     }
 
     static func finishSession(_ sessionId: String) async throws {
+        NotificationManager.cancelIdleWorkoutNotification()
         let endedAt = Date()
         try await SessionRepository.setEndedAt(sessionId, endedAt)
         try await enqueue(table: "workout_sessions", op: "update", payload: [
@@ -87,9 +89,11 @@ struct WorkoutService {
             "id": sessionId,
             "ended_at": NSNull() as Any
         ])
+        NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
     }
 
     static func deleteSession(_ sessionId: String) async throws {
+        NotificationManager.cancelIdleWorkoutNotification()
         // Delete all sets and enqueue deletes for each
         let setIds = try await SessionSetRepository.findSetIds(sessionId: sessionId)
         for setId in setIds {
@@ -174,6 +178,7 @@ struct WorkoutService {
                 try await enqueue(table: "session_sets", op: "delete", payload: ["id": extra.id])
             }
 
+            NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
             return completedSet
         }
 
@@ -195,6 +200,7 @@ struct WorkoutService {
         try await SessionSetRepository.insert(newSet)
         try await enqueue(table: "session_sets", op: "insert", payload: setPayload(newSet))
 
+        NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
         return newSet
     }
 
@@ -242,6 +248,11 @@ struct WorkoutService {
         if let setType = patch.setType { remote["set_type"] = setType.rawValue }
 
         try await enqueue(table: "session_sets", op: "update", payload: remote)
+
+        // Reset idle workout timer
+        if let ownership = try? await SessionSetRepository.findOwnership(setId) {
+            NotificationManager.scheduleIdleWorkoutNotification(sessionId: ownership.sessionId)
+        }
     }
 
     static func deleteSet(_ setId: String) async throws {

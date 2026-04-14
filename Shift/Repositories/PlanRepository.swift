@@ -6,6 +6,9 @@ import Foundation
 struct WorkoutPlanWithCount: Identifiable {
     var plan: WorkoutPlan
     var exerciseCount: Int
+    var muscleGroups: [String]       // unique muscle group names
+    var exerciseImageUrls: [String]  // first few exercise image URLs
+    var estimatedMinutes: Int        // estimated workout duration
     var id: String { plan.id }
 }
 
@@ -25,7 +28,8 @@ struct PlanRepository {
 
     static func findPlansWithCount(userId: String) async throws -> [WorkoutPlanWithCount] {
         try await AppDatabase.shared.dbPool.read { db in
-            let sql = """
+            // First get plans with counts
+            let planSql = """
                 SELECT wp.*, COUNT(pe.id) AS exercise_count
                 FROM workout_plans wp
                 LEFT JOIN plan_exercises pe ON pe.plan_id = wp.id
@@ -33,11 +37,50 @@ struct PlanRepository {
                 GROUP BY wp.id
                 ORDER BY wp.created_at ASC
                 """
-            let rows = try Row.fetchAll(db, sql: sql, arguments: [userId])
-            return try rows.map { row in
+            let planRows = try Row.fetchAll(db, sql: planSql, arguments: [userId])
+
+            // For each plan, get muscle groups and image URLs
+            let detailSql = """
+                SELECT DISTINCT mg.name AS muscle_group, e.image_url
+                FROM plan_exercises pe
+                JOIN exercises e ON e.id = pe.exercise_id
+                JOIN muscle_groups mg ON mg.id = e.primary_muscle_id
+                WHERE pe.plan_id = ?
+                ORDER BY pe.position ASC
+                """
+
+            return try planRows.map { row in
                 let plan = try WorkoutPlan(row: row)
                 let exerciseCount: Int = row["exercise_count"] ?? 0
-                return WorkoutPlanWithCount(plan: plan, exerciseCount: exerciseCount)
+
+                let detailRows = try Row.fetchAll(db, sql: detailSql, arguments: [plan.id])
+
+                var seenGroups = Set<String>()
+                var muscleGroups: [String] = []
+                var imageUrls: [String] = []
+
+                for detailRow in detailRows {
+                    if let group: String = detailRow["muscle_group"], seenGroups.insert(group).inserted {
+                        muscleGroups.append(group)
+                    }
+                    if let url: String = detailRow["image_url"], imageUrls.count < 4 {
+                        imageUrls.append(url)
+                    }
+                }
+
+                // Fetch plan exercises for duration estimate
+                let planExercises = try PlanExercise
+                    .filter(Column("plan_id") == plan.id)
+                    .fetchAll(db)
+                let estimatedMinutes = WorkoutDurationEstimator.estimate(exercises: planExercises)
+
+                return WorkoutPlanWithCount(
+                    plan: plan,
+                    exerciseCount: exerciseCount,
+                    muscleGroups: muscleGroups,
+                    exerciseImageUrls: imageUrls,
+                    estimatedMinutes: estimatedMinutes
+                )
             }
         }
     }

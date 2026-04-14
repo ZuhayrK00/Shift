@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 // MARK: - GoalNotificationService
 
@@ -56,6 +57,79 @@ enum GoalNotificationService {
                 budget: maxNotifications - scheduledCount
             )
         }
+    }
+
+    /// Checks current HealthKit data and fires immediate congrats / cancels stale reminders.
+    /// Call on every app foreground event.
+    static func checkAndNotifyGoalCompletion() async {
+        let settings = authManager.user?.settings ?? .default
+        guard HealthKitService.isAvailable else { return }
+
+        // Fetch today's activity
+        guard let activity = await HealthKitService.fetchTodayActivity() else { return }
+
+        // Check step goal
+        if let stepGoal = settings.dailyStepGoal, stepGoal > 0, activity.steps >= stepGoal {
+            // Cancel today's evening reminder — already hit
+            NotificationManager.cancelNotifications(withPrefix: "shift.steps-remind-0")
+            // Fire immediate congrats if not already sent today
+            fireOnceToday(
+                id: "shift.steps-completed",
+                title: "Steps crushed!",
+                body: "You hit your \(formatNumber(stepGoal))-step goal. Keep it up!"
+            )
+        }
+
+        // Check Move ring
+        if activity.moveGoal > 0, activity.moveCalories >= activity.moveGoal {
+            NotificationManager.cancelNotifications(withPrefix: "shift.rings-move-0")
+            fireOnceToday(
+                id: "shift.rings-move-completed",
+                title: "Move ring closed!",
+                body: "You've hit your calorie goal for today. Nice work!"
+            )
+        }
+
+        // Check Exercise ring
+        if activity.exerciseGoal > 0, activity.exerciseMinutes >= activity.exerciseGoal {
+            NotificationManager.cancelNotifications(withPrefix: "shift.rings-exercise-0")
+            fireOnceToday(
+                id: "shift.rings-exercise-completed",
+                title: "Exercise ring closed!",
+                body: "You've hit your exercise minutes. Strong effort!"
+            )
+        }
+
+        // Check Stand ring
+        if activity.standGoal > 0, activity.standHours >= activity.standGoal {
+            NotificationManager.cancelNotifications(withPrefix: "shift.rings-stand-0")
+            fireOnceToday(
+                id: "shift.rings-stand-completed",
+                title: "Stand ring closed!",
+                body: "You've stayed active throughout the day. Well done!"
+            )
+        }
+    }
+
+    /// Fires a notification immediately, but only once per calendar day.
+    private static func fireOnceToday(id: String, title: String, body: String) {
+        let todayKey = toLocalDateKey(Date())
+        let fullId = "\(id)-\(todayKey)"
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: fullId, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private static func formatNumber(_ n: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 
     // MARK: - Notification Hour

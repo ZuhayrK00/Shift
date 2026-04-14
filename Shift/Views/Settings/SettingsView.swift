@@ -26,7 +26,7 @@ struct SettingsView: View {
                             icon: "person.fill",
                             iconColor: colors.accent,
                             title: "Profile",
-                            subtitle: "Name, age, weight, photo"
+                            subtitle: "Name, age, photo"
                         )
                     }
                 }

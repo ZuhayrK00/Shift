@@ -41,7 +41,7 @@ struct PlansView: View {
         .navigationDestination(isPresented: $showNewPlan) {
             NewPlanView(
                 onCreate: { newPlan in
-                    planItems.append(WorkoutPlanWithCount(plan: newPlan, exerciseCount: 0))
+                    planItems.append(WorkoutPlanWithCount(plan: newPlan, exerciseCount: 0, muscleGroups: [], exerciseImageUrls: [], estimatedMinutes: 0))
                 },
                 onSaved: { name, deleted in
                     toastMessage = deleted
@@ -146,22 +146,89 @@ private struct PlanCard: View {
     let item: WorkoutPlanWithCount
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header: name + chevron
+            HStack {
                 Text(item.plan.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(colors.text)
                     .lineLimit(1)
-                Text(pluralise(item.exerciseCount, "exercise"))
-                    .font(.system(size: 12))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(colors.muted)
             }
 
-            Spacer()
+            // Exercise thumbnails
+            if !item.exerciseImageUrls.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(item.exerciseImageUrls.prefix(4), id: \.self) { urlString in
+                        if let url = URL(string: urlString) {
+                            CachedAsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().scaledToFill()
+                                default:
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(colors.surface2)
+                                }
+                            }
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(colors.border, lineWidth: 1)
+                            )
+                        }
+                    }
+                    if item.exerciseCount > 4 {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(colors.surface2)
+                            Text("+\(item.exerciseCount - 4)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(colors.muted)
+                        }
+                        .frame(width: 52, height: 52)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(colors.border, lineWidth: 1)
+                        )
+                    }
+                }
+            }
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(colors.muted)
+            // Footer: exercise count + duration + muscle groups
+            HStack(spacing: 8) {
+                Text(pluralise(item.exerciseCount, "exercise"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(colors.muted)
+
+                if item.estimatedMinutes > 0 {
+                    Circle()
+                        .fill(colors.muted.opacity(0.4))
+                        .frame(width: 3, height: 3)
+
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 10))
+                        Text(WorkoutDurationEstimator.formatDuration(minutes: item.estimatedMinutes))
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(colors.muted)
+                }
+
+                if !item.muscleGroups.isEmpty {
+                    Circle()
+                        .fill(colors.muted.opacity(0.4))
+                        .frame(width: 3, height: 3)
+
+                    Text(item.muscleGroups.joined(separator: ", "))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(colors.accent)
+                        .lineLimit(1)
+                }
+            }
         }
         .padding(16)
         .background(colors.surface)

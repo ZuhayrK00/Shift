@@ -1,11 +1,36 @@
 import SwiftUI
 import GRDB
+import UserNotifications
+
+// MARK: - Notification Delegate
+
+class ShiftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        if response.actionIdentifier == NotificationManager.finishWorkoutAction {
+            let sessionId = response.notification.request.content.userInfo["sessionId"] as? String
+            if let sessionId {
+                try? await WorkoutService.finishSession(sessionId)
+            }
+        }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+}
 
 // MARK: - App entry point
 
 @main
 struct ShiftApp: App {
     @State private var authManager = AuthManager()
+    private let notificationDelegate = ShiftNotificationDelegate()
 
     // Ensure the database is opened before any view appears.
     private let database = AppDatabase.shared
@@ -13,6 +38,8 @@ struct ShiftApp: App {
     init() {
         setAuthManager(authManager)
         NotificationManager.requestPermissionIfNeeded()
+        NotificationManager.registerCategories()
+        UNUserNotificationCenter.current().delegate = notificationDelegate
         Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
@@ -24,12 +51,19 @@ struct ShiftApp: App {
         }
     }
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(authManager)
                 .preferredColorScheme(preferredScheme)
                 .shiftTheme()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task { await GoalNotificationService.checkAndNotifyGoalCompletion() }
+            }
         }
     }
 }
