@@ -145,7 +145,9 @@ struct ProfileService {
     /// expected to have already obtained image `Data` and passes it here directly.
     static func uploadProfilePicture(imageData: Data, userId: String) async throws -> String? {
         let timestamp = Int(Date().timeIntervalSince1970)
-        let path = "\(userId)/\(timestamp).jpg"
+        // Supabase auth.uid()::text returns lowercase UUIDs; Swift's uuidString is uppercase.
+        // The storage RLS policy compares folder name to auth.uid(), so the path must be lowercase.
+        let path = "\(userId.lowercased())/\(timestamp).jpg"
 
         _ = try await supabase.storage
             .from("avatars")
