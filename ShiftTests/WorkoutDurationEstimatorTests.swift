@@ -118,7 +118,7 @@ final class WorkoutDurationEstimatorTests: XCTestCase {
         rest: Int?
     ) -> PlanExercise {
         PlanExercise(
-            id: UUID().uuidString,
+            id: UUID().uuidString.lowercased(),
             planId: "plan-1",
             exerciseId: "ex-1",
             position: 0,

@@ -260,7 +260,7 @@ struct WeightDetailView: View {
                 .contextMenu {
                     Button(role: .destructive) {
                         Task {
-                            try? await WeightEntryRepository.delete(entry.id)
+                            try? await WeightEntryService.delete(entry.id)
                             await loadEntries()
                         }
                     } label: {
@@ -289,7 +289,7 @@ struct WeightDetailView: View {
         // Seed an initial entry from profile weight if table is empty
         if fetched.isEmpty, let profileWeight = authManager.user?.weight, profileWeight > 0 {
             let seed = WeightEntry(
-                id: UUID().uuidString,
+                id: UUID().uuidString.lowercased(),
                 userId: userId,
                 weight: profileWeight,
                 unit: authManager.user?.settings.weightUnit ?? "kg",
@@ -297,7 +297,7 @@ struct WeightDetailView: View {
                 recordedAt: Date(),
                 createdAt: Date()
             )
-            _ = try? await WeightEntryRepository.insert(seed)
+            _ = try? await WeightEntryService.insert(seed)
             fetched = [seed]
         }
 
@@ -429,7 +429,7 @@ struct WeightEntrySheet: View {
         let source = healthKitWeight.map({ abs($0 - w) < 0.05 }) == true ? "healthkit" : "manual"
 
         let entry = WeightEntry(
-            id: UUID().uuidString,
+            id: UUID().uuidString.lowercased(),
             userId: userId,
             weight: w,
             unit: weightUnit,
@@ -438,7 +438,7 @@ struct WeightEntrySheet: View {
             createdAt: Date()
         )
 
-        _ = try? await WeightEntryRepository.insert(entry)
+        _ = try? await WeightEntryService.insert(entry)
 
         // Update profile weight too
         _ = try? await ProfileService.updateProfile(ProfilePatch(weight: w))

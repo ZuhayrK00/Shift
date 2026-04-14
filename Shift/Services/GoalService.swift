@@ -31,7 +31,7 @@ struct GoalService {
 
         let currentMax = try await ExerciseGoalRepository.findCurrentMaxWeight(exerciseId: exerciseId) ?? 0
 
-        let id = UUID().uuidString
+        let id = UUID().uuidString.lowercased()
         let goal = ExerciseGoal(
             id: id,
             userId: userId,

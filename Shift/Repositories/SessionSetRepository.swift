@@ -204,6 +204,24 @@ struct SessionSetRepository {
         }
     }
 
+    /// Returns the latest completed_at timestamp across all sets in a session.
+    static func findLatestCompletedAt(sessionId: String) async throws -> Date? {
+        try await AppDatabase.shared.dbPool.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT MAX(completed_at) AS latest
+                    FROM session_sets
+                    WHERE session_id = ? AND is_completed = 1 AND completed_at IS NOT NULL
+                    """,
+                arguments: [sessionId]
+            )
+            guard let dateStr: String = row?["latest"] else { return nil }
+            return ISO8601DateFormatter.shared.date(from: dateStr)
+                ?? ISO8601DateFormatter.sharedWithFractional.date(from: dateStr)
+        }
+    }
+
     // MARK: - Writes
 
     static func insert(_ set: SessionSet) async throws {

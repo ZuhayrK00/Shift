@@ -74,8 +74,13 @@ struct NewPlanView: View {
             if let plan = createdPlan {
                 PlanEditorView(plan: plan) { deleted in
                     onSaved?(plan.name, deleted)
-                    dismiss()
                 }
+            }
+        }
+        .onChange(of: navigateToPlan) { _, isActive in
+            // When PlanEditorView is dismissed (save or delete), also dismiss NewPlanView
+            if !isActive && createdPlan != nil {
+                dismiss()
             }
         }
     }

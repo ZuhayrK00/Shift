@@ -52,9 +52,19 @@ enum GoalNotificationService {
     }
 
     /// Checks current HealthKit data and fires immediate congrats / cancels stale reminders.
-    /// Call on every app foreground event.
+    /// Called on every app foreground event and from HealthKit background delivery.
     static func checkAndNotifyGoalCompletion() async {
-        let settings = authManager.user?.settings ?? .default
+        // Read settings from auth manager, or fall back to local profile cache
+        // (auth manager may not be loaded when woken in the background by HealthKit)
+        let settings: UserSettings
+        if let userSettings = authManager.user?.settings {
+            settings = userSettings
+        } else if let userId = authManager.currentUserId,
+                  let profile = try? await ProfileRepository.findById(userId) {
+            settings = profile.settings
+        } else {
+            settings = .default
+        }
         guard HealthKitService.isAvailable else { return }
 
         // Fetch today's activity
@@ -74,9 +84,14 @@ enum GoalNotificationService {
     }
 
     /// Fires a notification immediately, but only once per calendar day.
+    /// Uses UserDefaults to track which notifications were already sent.
     private static func fireOnceToday(id: String, title: String, body: String) {
         let todayKey = toLocalDateKey(Date())
         let fullId = "\(id)-\(todayKey)"
+
+        // Check if we already fired this notification today
+        let sentKey = "shift.notification.sent.\(fullId)"
+        guard !UserDefaults.standard.bool(forKey: sentKey) else { return }
 
         let content = UNMutableNotificationContent()
         content.title = title
@@ -86,6 +101,23 @@ enum GoalNotificationService {
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(identifier: fullId, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)
+
+        // Mark as sent so it won't fire again today
+        UserDefaults.standard.set(true, forKey: sentKey)
+
+        // Clean up old sent keys from previous days
+        cleanupOldSentKeys(currentKey: todayKey, prefix: id)
+    }
+
+    /// Removes sent-tracking keys from previous days to prevent UserDefaults bloat.
+    private static func cleanupOldSentKeys(currentKey: String, prefix: String) {
+        let allKeys = UserDefaults.standard.dictionaryRepresentation().keys
+        let oldKeys = allKeys.filter {
+            $0.hasPrefix("shift.notification.sent.\(prefix)-") && !$0.hasSuffix(currentKey)
+        }
+        for key in oldKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     private static func formatNumber(_ n: Int) -> String {
@@ -353,53 +385,47 @@ enum GoalNotificationService {
         guard budget > 0 else { return 0 }
         var scheduled = 0
 
-        // Schedule a daily evening check (at 8pm) to remind if behind
         let formattedGoal = {
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
             return formatter.string(from: NSNumber(value: stepGoal)) ?? "\(stepGoal)"
         }()
 
+        // Check if today's goal is already hit — skip today's reminder if so
+        let todayAlreadyHit: Bool
+        if let activity = await HealthKitService.fetchTodayActivity() {
+            todayAlreadyHit = activity.steps >= stepGoal
+        } else {
+            todayAlreadyHit = false
+        }
+
         // Evening reminder at 8pm — "you still have time"
-        for dayOffset in 0..<min(7, budget / 2) {
-            var eveningComponents = DateComponents()
-            eveningComponents.hour = 20
-            eveningComponents.minute = 0
+        // Only schedule for days when the goal hasn't been reached yet.
+        // Real-time congrats are handled by checkAndNotifyGoalCompletion
+        // via HealthKit background delivery — no pre-scheduled congrats needed.
+        let cal = Calendar.current
+        for dayOffset in 0..<min(7, budget) {
+            // Skip today's reminder if already hit
+            if dayOffset == 0 && todayAlreadyHit { continue }
+            // Skip today if it's already past 8pm
+            if dayOffset == 0 && cal.component(.hour, from: Date()) >= 20 { continue }
+
+            var comps = DateComponents()
+            comps.hour = 20
+            comps.minute = 0
             if dayOffset > 0 {
-                let futureDate = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
-                let cal = Calendar.current
-                eveningComponents.year = cal.component(.year, from: futureDate)
-                eveningComponents.month = cal.component(.month, from: futureDate)
-                eveningComponents.day = cal.component(.day, from: futureDate)
+                let futureDate = cal.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+                comps.year = cal.component(.year, from: futureDate)
+                comps.month = cal.component(.month, from: futureDate)
+                comps.day = cal.component(.day, from: futureDate)
             }
 
-            let eveningMsg = stepReminderMessage(goal: formattedGoal)
+            let msg = stepReminderMessage(goal: formattedGoal)
             NotificationManager.scheduleGoalNotification(
                 identifier: "shift.steps-remind-\(dayOffset)",
-                title: eveningMsg.title,
-                body: eveningMsg.body,
-                at: eveningComponents
-            )
-            scheduled += 1
-
-            // Morning congratulations check at notification hour
-            var morningComponents = DateComponents()
-            morningComponents.hour = hour
-            morningComponents.minute = 0
-            if dayOffset > 0 {
-                let futureDate = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
-                let cal = Calendar.current
-                morningComponents.year = cal.component(.year, from: futureDate)
-                morningComponents.month = cal.component(.month, from: futureDate)
-                morningComponents.day = cal.component(.day, from: futureDate)
-            }
-
-            let congratsMsg = stepCongratsMessage(goal: formattedGoal)
-            NotificationManager.scheduleGoalNotification(
-                identifier: "shift.steps-congrats-\(dayOffset)",
-                title: congratsMsg.title,
-                body: congratsMsg.body,
-                at: morningComponents
+                title: msg.title,
+                body: msg.body,
+                at: comps
             )
             scheduled += 1
         }
@@ -419,14 +445,5 @@ enum GoalNotificationService {
         ])
     }
 
-    private static func stepCongratsMessage(goal: String) -> Message {
-        pickVariant([
-            Message(title: "Steps crushed!", body: "You hit your \(goal)-step goal yesterday. Keep that momentum going."),
-            Message(title: "Goal achieved", body: "You reached \(goal) steps. That's consistency right there."),
-            Message(title: "Walking warrior", body: "Yesterday's step goal: smashed. Let's do it again today."),
-            Message(title: "Nice work", body: "You nailed your \(goal)-step target. Every step adds up."),
-            Message(title: "On a roll", body: "Step goal hit. Keep stacking those active days.")
-        ])
-    }
 
 }

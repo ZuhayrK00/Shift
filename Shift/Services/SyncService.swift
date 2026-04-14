@@ -8,14 +8,28 @@ struct SyncService {
 
     private static let lastSyncedKey = "shift:last_synced_at"
 
+    /// Prevents concurrent flush calls from double-processing the same mutations.
+    private static let flushLock = NSLock()
+    private static var isFlushing = false
+
     // MARK: - Queue flush
 
     /// Drains the local mutation queue into Supabase in FIFO order.
     /// Stops processing on the first failure so ordering is preserved.
+    /// Serialized — concurrent calls return immediately if a flush is already in progress.
     ///
     /// - Returns: A tuple of how many mutations were flushed vs. failed.
     @discardableResult
     static func flushQueue() async throws -> (flushed: Int, failed: Int) {
+        // Skip if another flush is already running
+        let acquired: Bool = flushLock.withLock {
+            guard !isFlushing else { return false }
+            isFlushing = true
+            return true
+        }
+        guard acquired else { return (flushed: 0, failed: 0) }
+        defer { flushLock.withLock { isFlushing = false } }
+
         let pending = try await MutationQueueRepository.readPending()
         var flushed = 0
         var failed  = 0
@@ -112,9 +126,12 @@ struct SyncService {
         let exercises = (try? decoder.decode([Exercise].self, from: exResponse.data)) ?? []
         try await ExerciseRepository.replaceBuiltIn(exercises)
 
-        // Cache profile
+        // Cache profile — but only if there are no pending profile mutations
         if let userId = authManager.currentUserId {
-            _ = try? await ProfileService.fetchAndCacheProfile(userId)
+            let pendingIds = (try? await MutationQueueRepository.pendingMutationIds()) ?? []
+            if !pendingIds.contains(userId) {
+                _ = try? await ProfileService.fetchAndCacheProfile(userId)
+            }
         }
 
         // Record sync timestamp
@@ -137,6 +154,10 @@ struct SyncService {
         // Flush pending local writes first so nothing is lost
         _ = try? await flushQueue()
 
+        // Collect IDs that still have pending mutations (failed to flush).
+        // We must not overwrite these — they have unsaved local changes.
+        let pendingIds = (try? await MutationQueueRepository.pendingMutationIds()) ?? []
+
         let decoder = JSONDecoder()
 
         // 1. Custom exercises (created by this user)
@@ -146,7 +167,7 @@ struct SyncService {
             .eq("created_by", value: userId)
             .execute()
         let customExercises = (try? decoder.decode([Exercise].self, from: customExData.data)) ?? []
-        for ex in customExercises {
+        for ex in customExercises where !pendingIds.contains(ex.id) {
             try? await ExerciseRepository.upsert(ex)
         }
 
@@ -156,13 +177,14 @@ struct SyncService {
             .select()
             .execute()
         let plans = (try? decoder.decode([WorkoutPlan].self, from: plansData.data)) ?? []
+        let activePlans = plans.filter { !pendingIds.contains($0.id) }
         try await AppDatabase.shared.dbPool.write { db in
-            for plan in plans { try plan.save(db) }
+            for plan in activePlans { try plan.save(db) }
         }
 
         // 3. Plan exercises (for all plans)
-        if !plans.isEmpty {
-            let planIds = plans.map { $0.id }
+        if !activePlans.isEmpty {
+            let planIds = activePlans.map { $0.id }
             let peData = try await supabase
                 .from("plan_exercises")
                 .select()
@@ -170,7 +192,9 @@ struct SyncService {
                 .execute()
             let planExercises = (try? decoder.decode([PlanExercise].self, from: peData.data)) ?? []
             try await AppDatabase.shared.dbPool.write { db in
-                for pe in planExercises { try pe.save(db) }
+                for pe in planExercises where !pendingIds.contains(pe.id) {
+                    try pe.save(db)
+                }
             }
         }
 
@@ -180,14 +204,15 @@ struct SyncService {
             .select()
             .execute()
         let sessions = (try? decoder.decode([WorkoutSession].self, from: sessionsData.data)) ?? []
+        let activeSessions = sessions.filter { !pendingIds.contains($0.id) }
         try await AppDatabase.shared.dbPool.write { db in
-            for session in sessions { try session.save(db) }
+            for session in activeSessions { try session.save(db) }
         }
 
         // 5. Session sets (for all sessions)
-        if !sessions.isEmpty {
+        if !activeSessions.isEmpty {
             // Pull in batches to avoid overly large queries
-            let sessionIds = sessions.map { $0.id }
+            let sessionIds = activeSessions.map { $0.id }
             let batchSize = 50
             for batch in stride(from: 0, to: sessionIds.count, by: batchSize) {
                 let batchIds = Array(sessionIds[batch..<min(batch + batchSize, sessionIds.count)])
@@ -198,7 +223,9 @@ struct SyncService {
                     .execute()
                 let sets = (try? decoder.decode([SessionSet].self, from: setsData.data)) ?? []
                 try await AppDatabase.shared.dbPool.write { db in
-                    for s in sets { try s.save(db) }
+                    for s in sets where !pendingIds.contains(s.id) {
+                        try s.save(db)
+                    }
                 }
             }
         }
@@ -210,7 +237,9 @@ struct SyncService {
             .execute()
         let goals = (try? decoder.decode([ExerciseGoal].self, from: goalsData.data)) ?? []
         try await AppDatabase.shared.dbPool.write { db in
-            for goal in goals { try goal.save(db) }
+            for goal in goals where !pendingIds.contains(goal.id) {
+                try goal.save(db)
+            }
         }
 
         // 7. Weight entries
@@ -220,7 +249,9 @@ struct SyncService {
             .execute()
         let weightEntries = (try? decoder.decode([WeightEntry].self, from: weightData.data)) ?? []
         try await AppDatabase.shared.dbPool.write { db in
-            for entry in weightEntries { try entry.save(db) }
+            for entry in weightEntries where !pendingIds.contains(entry.id) {
+                try entry.save(db)
+            }
         }
     }
 
@@ -239,18 +270,11 @@ struct SyncService {
         guard let jsonValue = try? JSONDecoder().decode(AnyJSON.self, from: jsonData) else {
             throw SyncError.encodingFailed
         }
-        // Use upsert for profiles since the row may already exist (created by trigger)
-        if table == "profiles" {
-            try await supabase
-                .from(table)
-                .upsert(jsonValue)
-                .execute()
-        } else {
-            try await supabase
-                .from(table)
-                .insert(jsonValue)
-                .execute()
-        }
+        // Use upsert for all tables so replayed mutations are idempotent
+        try await supabase
+            .from(table)
+            .upsert(jsonValue)
+            .execute()
     }
 
     private static func executeUpdate(table: String, id: String, payload: [String: Any]) async throws {

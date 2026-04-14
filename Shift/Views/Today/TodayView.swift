@@ -426,6 +426,12 @@ struct TodayView: View {
         starting = true
         defer { starting = false }
 
+        // If there's already an in-progress session for this date, navigate to it
+        if let existingId = try? await WorkoutService.getInProgressSessionId(for: selectedDate) {
+            navigationPath.append(existingId)
+            return
+        }
+
         do {
             let startedAt = isToday ? Date() : noonOfLocalDate(selectedDate)
             let session: WorkoutSession

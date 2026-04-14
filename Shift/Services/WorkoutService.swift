@@ -21,7 +21,7 @@ struct WorkoutService {
         guard let userId = try? authManager.requireUserId() else {
             throw WorkoutServiceError.notAuthenticated
         }
-        let id = UUID().uuidString
+        let id = UUID().uuidString.lowercased()
         let session = WorkoutSession(
             id: id,
             userId: userId,
@@ -52,7 +52,24 @@ struct WorkoutService {
 
     static func finishSession(_ sessionId: String) async throws {
         NotificationManager.cancelIdleWorkoutNotification()
-        let endedAt = Date()
+
+        // Determine ended-at: use "now" for today's sessions, but for past-dated sessions
+        // use the latest set completion time (or startedAt + a small offset)
+        let endedAt: Date
+        if let session = try await SessionRepository.findById(sessionId) {
+            let now = Date()
+            let sessionAge = now.timeIntervalSince(session.startedAt)
+            if sessionAge > 12 * 3600 {
+                // Past-dated session — use the latest completed set time, or startedAt + 1 hour
+                let latestSet = try await SessionSetRepository.findLatestCompletedAt(sessionId: sessionId)
+                endedAt = latestSet ?? session.startedAt.addingTimeInterval(3600)
+            } else {
+                endedAt = now
+            }
+        } else {
+            endedAt = Date()
+        }
+
         try await SessionRepository.setEndedAt(sessionId, endedAt)
         try await enqueue(table: "workout_sessions", op: "update", payload: [
             "id": sessionId,
@@ -103,6 +120,10 @@ struct WorkoutService {
         // Delete the session itself
         try await SessionRepository.delete(sessionId)
         try await enqueue(table: "workout_sessions", op: "delete", payload: ["id": sessionId])
+
+        // Immediately flush so the delete reaches Supabase before the app
+        // is killed — prevents pullUserData from re-inserting the session.
+        try? await SyncService.flushQueue()
     }
 
     // MARK: - Exercises in session
@@ -155,8 +176,8 @@ struct WorkoutService {
                 setNumber: nextNumber,
                 setType: lastCompleted?.setType ?? .normal
             )
-            try await SessionSetRepository.update(placeholder.id, patch: patch)
-            try await SessionSetRepository.setCompletedAt(placeholder.id, date: Date())
+            // update() already sets completed_at and returns the timestamp
+            let completedAt = try await SessionSetRepository.update(placeholder.id, patch: patch)
             if placeholder.groupId == nil, let gid = inheritedGroupId {
                 try await SessionSetRepository.setGroupId(placeholder.id, groupId: gid)
             }
@@ -166,7 +187,7 @@ struct WorkoutService {
             completedSet.reps = lastCompleted?.reps ?? 0
             completedSet.weight = lastCompleted?.weight
             completedSet.isCompleted = true
-            completedSet.completedAt = Date()
+            completedSet.completedAt = completedAt
             completedSet.setType = lastCompleted?.setType ?? .normal
             completedSet.groupId = placeholder.groupId ?? inheritedGroupId
 
@@ -183,7 +204,7 @@ struct WorkoutService {
         }
 
         // No placeholders — insert a fresh set
-        let id = UUID().uuidString
+        let id = UUID().uuidString.lowercased()
         let newSet = SessionSet(
             id: id,
             sessionId: sessionId,
@@ -209,7 +230,7 @@ struct WorkoutService {
         exerciseIds: [String],
         asGroup: Bool = false
     ) async throws {
-        let groupId: String? = asGroup ? UUID().uuidString : nil
+        let groupId: String? = asGroup ? UUID().uuidString.lowercased() : nil
 
         for exerciseId in exerciseIds {
             // Position placeholder after any existing sets
@@ -219,7 +240,7 @@ struct WorkoutService {
             )
             let nextNumber = existing.count + 1
 
-            let id = UUID().uuidString
+            let id = UUID().uuidString.lowercased()
             let placeholder = SessionSet(
                 id: id,
                 sessionId: sessionId,

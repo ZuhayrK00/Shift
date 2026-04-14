@@ -84,16 +84,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    NavigationLink {
-                        SyncSettingsPage()
-                    } label: {
-                        settingsRow(
-                            icon: "arrow.triangle.2.circlepath",
-                            iconColor: colors.success,
-                            title: "Sync",
-                            subtitle: "Pull & push data"
-                        )
-                    }
                 }
                 .listRowBackground(colors.surface)
 
@@ -738,73 +728,45 @@ private struct HealthSettingsPage: View {
         settings.healthKit.countExternalWorkouts = countExternal
 
         _ = try? await ProfileService.updateSettings(settings)
+
+        // Auto-read weight from HealthKit when body weight sync is newly enabled
+        if !wasEnabled.syncBodyWeight && syncBodyWeight {
+            await autoReadHealthKitWeight(settings: settings)
+        }
+
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
         dismiss()
     }
-}
 
-// MARK: - Sync Settings Page
+    /// Reads the latest body weight from HealthKit and saves it to the profile + weight log.
+    private func autoReadHealthKitWeight(settings: UserSettings) async {
+        guard let weightKg = await HealthKitService.readLatestBodyWeight(),
+              let userId = try? authManager.requireUserId() else { return }
 
-private struct SyncSettingsPage: View {
-    @Environment(\.shiftColors) private var colors
-
-    @State private var lastSyncedText = "Never"
-
-    var body: some View {
-        ZStack {
-            colors.bg.ignoresSafeArea()
-
-            Form {
-                Section {
-                    HStack {
-                        Text("Last synced")
-                            .foregroundStyle(colors.text)
-                        Spacer()
-                        Text(lastSyncedText)
-                            .foregroundStyle(colors.muted)
-                            .font(.system(size: 13))
-                    }
-                }
-                .listRowBackground(colors.surface)
-
-                Section {
-                    Button {
-                        Task {
-                            _ = try? await SyncService.pullReferenceData()
-                            lastSyncedText = formatDate(Date())
-                        }
-                    } label: {
-                        Label("Pull reference data", systemImage: "arrow.down.circle")
-                            .foregroundStyle(colors.accent)
-                    }
-
-                    Button {
-                        Task {
-                            SyncService.flushInBackground()
-                            lastSyncedText = formatDate(Date())
-                        }
-                    } label: {
-                        Label("Push pending changes", systemImage: "arrow.up.circle")
-                            .foregroundStyle(colors.accent)
-                    }
-                }
-                .listRowBackground(colors.surface)
-            }
-            .scrollContentBackground(.hidden)
+        // Convert to user's preferred unit
+        let displayWeight: Double
+        let unit = settings.weightUnit
+        if unit == "lbs" {
+            displayWeight = (weightKg * 2.20462 * 10).rounded() / 10
+        } else {
+            displayWeight = (weightKg * 10).rounded() / 10
         }
-        .navigationTitle("Sync")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if let syncDate = SyncService.getLastSyncedAt() {
-                lastSyncedText = formatDate(syncDate)
-            }
-        }
-    }
 
-    private func formatDate(_ date: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "h:mm a"
-        return f.string(from: date)
+        // Update profile weight
+        _ = try? await ProfileService.updateProfile(ProfilePatch(weight: displayWeight))
+
+        // Log a weight entry
+        let entry = WeightEntry(
+            id: UUID().uuidString.lowercased(),
+            userId: userId,
+            weight: displayWeight,
+            unit: unit,
+            source: "healthkit",
+            recordedAt: Date()
+        )
+        _ = try? await WeightEntryService.insert(entry)
     }
 }
+

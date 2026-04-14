@@ -40,4 +40,20 @@ struct MutationQueueRepository {
             try MutationQueueRow.fetchAll(db, sql: "SELECT * FROM mutation_queue ORDER BY id ASC")
         }
     }
+
+    /// Returns the set of record IDs that have any pending mutation in the queue.
+    /// Used by pullUserData to avoid overwriting local changes with stale remote data.
+    static func pendingMutationIds() async throws -> Set<String> {
+        let rows = try await AppDatabase.shared.dbPool.read { db in
+            try MutationQueueRow.fetchAll(db, sql: "SELECT * FROM mutation_queue ORDER BY id ASC")
+        }
+        var ids = Set<String>()
+        for row in rows {
+            guard let data = row.payload.data(using: .utf8),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = dict["id"] as? String else { continue }
+            ids.insert(id)
+        }
+        return ids
+    }
 }

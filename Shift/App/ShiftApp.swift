@@ -40,6 +40,7 @@ struct ShiftApp: App {
         NotificationManager.requestPermissionIfNeeded()
         NotificationManager.registerCategories()
         UNUserNotificationCenter.current().delegate = notificationDelegate
+        HealthKitService.enableStepCountBackgroundDelivery()
         Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 

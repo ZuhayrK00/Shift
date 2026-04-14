@@ -48,7 +48,7 @@ struct PlanService {
 
     static func createPlan(name: String) async throws -> WorkoutPlan {
         let userId = try authManager.requireUserId()
-        let id = UUID().uuidString
+        let id = UUID().uuidString.lowercased()
         let plan = WorkoutPlan(id: id, userId: userId, name: name, createdAt: Date())
 
         try await PlanRepository.insert(plan)
@@ -91,11 +91,11 @@ struct PlanService {
     ) async throws -> [PlanExercise] {
         var maxPosition = try await PlanRepository.findMaxPosition(planId: planId)
         var added: [PlanExercise] = []
-        let groupId: String? = asGroup ? UUID().uuidString : nil
+        let groupId: String? = asGroup ? UUID().uuidString.lowercased() : nil
 
         for exerciseId in exerciseIds {
             maxPosition += 1
-            let id = UUID().uuidString
+            let id = UUID().uuidString.lowercased()
             let pe = PlanExercise(
                 id: id,
                 planId: planId,
@@ -153,7 +153,7 @@ struct PlanService {
         }
 
         let userId = try authManager.requireUserId()
-        let sessionId = UUID().uuidString
+        let sessionId = UUID().uuidString.lowercased()
         let session = WorkoutSession(
             id: sessionId,
             userId: userId,
@@ -188,14 +188,14 @@ struct PlanService {
             let sessionGroupId: String? = {
                 guard let pgid = pe.groupId else { return nil }
                 if let existing = planGroupToSessionGroup[pgid] { return existing }
-                let newId = UUID().uuidString
+                let newId = UUID().uuidString.lowercased()
                 planGroupToSessionGroup[pgid] = newId
                 return newId
             }()
 
             let setCount = max(pe.targetSets, 1)
             for setNum in 1...setCount {
-                let setId = UUID().uuidString
+                let setId = UUID().uuidString.lowercased()
                 let placeholder = SessionSet(
                     id: setId,
                     sessionId: sessionId,

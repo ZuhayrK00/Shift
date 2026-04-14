@@ -27,10 +27,12 @@ struct HealthKitService {
     private static let standTimeType = HKQuantityType(.appleStandTime)
     private static let stepCountType = HKQuantityType(.stepCount)
     private static let distanceType = HKQuantityType(.distanceWalkingRunning)
+    private static let heartRateType = HKQuantityType(.heartRate)
 
     private static let readTypes: Set<HKObjectType> = [
         workoutType, bodyMassType,
         activeEnergyType, exerciseTimeType, standTimeType, stepCountType, distanceType,
+        heartRateType,
         HKObjectType.activitySummaryType()
     ]
     private static let writeTypes: Set<HKSampleType> = [workoutType, bodyMassType]
@@ -44,6 +46,26 @@ struct HealthKitService {
     static func requestAuthorization() async throws {
         guard isAvailable else { return }
         try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
+    }
+
+    // MARK: - Background delivery
+
+    /// Sets up a HealthKit observer query for step count and enables background delivery.
+    /// When steps update (even while app is closed), iOS wakes the app briefly to run the handler.
+    /// Call once at app launch.
+    static func enableStepCountBackgroundDelivery() {
+        guard isAvailable else { return }
+
+        let query = HKObserverQuery(sampleType: stepCountType, predicate: nil) { _, completionHandler, _ in
+            // HealthKit woke us — check if step goal is hit and fire notification
+            Task {
+                await GoalNotificationService.checkAndNotifyGoalCompletion()
+                completionHandler()
+            }
+        }
+        store.execute(query)
+
+        store.enableBackgroundDelivery(for: stepCountType, frequency: .hourly) { _, _ in }
     }
 
     // MARK: - Save workout
@@ -140,6 +162,48 @@ struct HealthKitService {
                     workout.metadata?["ShiftSessionId"] == nil
                 }
                 continuation.resume(returning: external.count)
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - Session stats (calories + heart rate)
+
+    /// Returns total active energy burned (kcal) during a time range.
+    static func fetchCalories(from start: Date, to end: Date) async -> Double? {
+        guard isAvailable else { return nil }
+
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: activeEnergyType,
+                quantitySamplePredicate: predicate,
+                options: .cumulativeSum
+            ) { _, result, _ in
+                let kcal = result?.sumQuantity()?.doubleValue(for: .kilocalorie())
+                continuation.resume(returning: kcal)
+            }
+            store.execute(query)
+        }
+    }
+
+    /// Returns average heart rate (bpm) during a time range, or nil if no samples exist.
+    static func fetchAverageHeartRate(from start: Date, to end: Date) async -> Double? {
+        guard isAvailable else { return nil }
+
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
+
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: heartRateType,
+                quantitySamplePredicate: predicate,
+                options: .discreteAverage
+            ) { _, result, _ in
+                let bpm = result?.averageQuantity()?.doubleValue(
+                    for: HKUnit.count().unitDivided(by: .minute())
+                )
+                continuation.resume(returning: bpm)
             }
             store.execute(query)
         }

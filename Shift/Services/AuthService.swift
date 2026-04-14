@@ -44,9 +44,13 @@ class AuthManager {
 
     /// Builds the full User from the session + local/remote profile cache.
     func loadUser(_ session: Session) async {
-        await MainActor.run { isLoading = true }
+        // Only show loading screen on first load — not on token refreshes,
+        // which would destroy and recreate MainTabView (re-triggering sync).
+        if user == nil {
+            await MainActor.run { isLoading = true }
+        }
 
-        let userId = session.user.id.uuidString
+        let userId = session.user.id.uuidString.lowercased()
 
         // Try local cache first, fall back to remote with a timeout
         let profile: Profile?
@@ -124,7 +128,7 @@ class AuthManager {
     /// This avoids flashing the loading screen and destroying the tab view.
     func refreshUser() async {
         guard let session else { return }
-        let userId = session.user.id.uuidString
+        let userId = session.user.id.uuidString.lowercased()
         let profile = try? await ProfileRepository.findById(userId)
         let settings = profile?.settings ?? .default
 

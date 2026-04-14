@@ -31,6 +31,8 @@ struct WorkoutView: View {
     @State private var loading                  = true
     @State private var showFinishAlert          = false
     @State private var showDiscardAlert         = false
+    @State private var sessionCalories: Double?
+    @State private var sessionAvgHeartRate: Double?
 
     // True once the session has an endedAt timestamp
     private var isCompleted: Bool { session?.endedAt != nil }
@@ -182,6 +184,26 @@ struct WorkoutView: View {
                     label: weightUnit,
                     icon: "scalemass"
                 )
+            }
+
+            // HealthKit stats (calories + heart rate)
+            if sessionCalories != nil || sessionAvgHeartRate != nil {
+                HStack(spacing: 24) {
+                    if let cal = sessionCalories, cal > 0 {
+                        completedStat(
+                            value: "\(Int(cal.rounded()))",
+                            label: "kcal",
+                            icon: "flame.fill"
+                        )
+                    }
+                    if let bpm = sessionAvgHeartRate, bpm > 0 {
+                        completedStat(
+                            value: "\(Int(bpm.rounded()))",
+                            label: "avg bpm",
+                            icon: "heart.fill"
+                        )
+                    }
+                }
             }
 
             // Time range
@@ -452,6 +474,17 @@ struct WorkoutView: View {
             newBlocks.append(ExerciseBlock(exercise: ex, sets: sets))
         }
         blocks = newBlocks
+
+        // Fetch HealthKit stats for completed sessions
+        if sess.endedAt != nil,
+           authManager.user?.settings.healthKit.syncWorkouts == true {
+            let start = sess.startedAt
+            let end = sess.endedAt ?? Date()
+            async let cal = HealthKitService.fetchCalories(from: start, to: end)
+            async let hr = HealthKitService.fetchAverageHeartRate(from: start, to: end)
+            sessionCalories = await cal
+            sessionAvgHeartRate = await hr
+        }
     }
 
     private func addExercises(_ exercises: [Exercise], asGroup: Bool) async {
