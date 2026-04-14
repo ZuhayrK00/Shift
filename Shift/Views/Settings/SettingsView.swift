@@ -71,6 +71,19 @@ struct SettingsView: View {
 
                 // Data
                 Section {
+                    if HealthKitService.isAvailable {
+                        NavigationLink {
+                            HealthSettingsPage(onSaved: onSaved)
+                        } label: {
+                            settingsRow(
+                                icon: "heart.fill",
+                                iconColor: .pink,
+                                title: "Health",
+                                subtitle: "Apple Health integration"
+                            )
+                        }
+                    }
+
                     NavigationLink {
                         SyncSettingsPage()
                     } label: {
@@ -147,13 +160,10 @@ private struct ProfileSettingsPage: View {
 
     @State private var name = ""
     @State private var ageText = ""
-    @State private var weightText = ""
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarData: Data?
     @State private var isSaving = false
     @State private var saveError: String?
-
-    private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
 
     var body: some View {
         ZStack {
@@ -214,17 +224,6 @@ private struct ProfileSettingsPage: View {
                             .keyboardType(.numberPad)
                             .foregroundStyle(colors.text)
                     }
-                    LabeledContent("Weight") {
-                        HStack(spacing: 4) {
-                            TextField("e.g. 80", text: $weightText)
-                                .multilineTextAlignment(.trailing)
-                                .keyboardType(.decimalPad)
-                                .foregroundStyle(colors.text)
-                            Text(weightUnit)
-                                .foregroundStyle(colors.muted)
-                                .font(.system(size: 13))
-                        }
-                    }
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
@@ -268,10 +267,6 @@ private struct ProfileSettingsPage: View {
         guard let user = authManager.user else { return }
         name = user.name ?? ""
         ageText = user.age.map { "\($0)" } ?? ""
-        weightText = user.weight.map {
-            $0.truncatingRemainder(dividingBy: 1) == 0
-                ? String(format: "%.0f", $0) : "\($0)"
-        } ?? ""
     }
 
     private func save() async {
@@ -280,8 +275,7 @@ private struct ProfileSettingsPage: View {
 
         var patch = ProfilePatch(
             name: name.isEmpty ? nil : name,
-            age: Int(ageText),
-            weight: Double(weightText)
+            age: Int(ageText)
         )
 
         if let data = avatarData, let userId = authManager.currentUserId {
@@ -295,7 +289,7 @@ private struct ProfileSettingsPage: View {
             }
         }
 
-        try? await ProfileService.updateProfile(patch)
+        _ = try? await ProfileService.updateProfile(patch)
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
@@ -442,7 +436,7 @@ private struct PreferencesSettingsPage: View {
         settings.distanceUnit = distanceUnit
         settings.weekStartsOn = weekStartsOn
         settings.theme = theme
-        try? await ProfileService.updateSettings(settings)
+        _ = try? await ProfileService.updateSettings(settings)
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
@@ -523,7 +517,7 @@ private struct WorkoutSettingsPage: View {
             enabled: restTimerEnabled,
             durationSeconds: restTimerDuration
         )
-        try? await ProfileService.updateSettings(settings)
+        _ = try? await ProfileService.updateSettings(settings)
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
@@ -607,9 +601,144 @@ private struct NotificationSettingsPage: View {
             exerciseGoalReminders: exerciseGoalReminders,
             frequencyReminders: frequencyReminders
         )
-        try? await ProfileService.updateSettings(settings)
+        _ = try? await ProfileService.updateSettings(settings)
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
+        isSaving = false
+        onSaved?()
+        dismiss()
+    }
+}
+
+// MARK: - Health Settings Page
+
+private struct HealthSettingsPage: View {
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.shiftColors) private var colors
+    @Environment(\.dismiss) private var dismiss
+
+    var onSaved: (() -> Void)?
+
+    @State private var syncWorkouts = false
+    @State private var syncBodyWeight = false
+    @State private var countExternal = false
+    @State private var isSaving = false
+    @State private var showAuthAlert = false
+
+    var body: some View {
+        ZStack {
+            colors.bg.ignoresSafeArea()
+
+            Form {
+                Section {
+                    Toggle(isOn: $syncWorkouts) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Save workouts to Health")
+                                .foregroundStyle(colors.text)
+                            Text("Completed sessions appear in Apple Health")
+                                .font(.system(size: 12))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }
+                    .tint(colors.accent)
+                } header: {
+                    Text("Workouts")
+                }
+                .listRowBackground(colors.surface)
+
+                Section {
+                    Toggle(isOn: $syncBodyWeight) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sync body weight")
+                                .foregroundStyle(colors.text)
+                            Text("Read from smart scales, write when you update")
+                                .font(.system(size: 12))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }
+                    .tint(colors.accent)
+                } header: {
+                    Text("Body Weight")
+                }
+                .listRowBackground(colors.surface)
+
+                Section {
+                    Toggle(isOn: $countExternal) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Count external workouts")
+                                .foregroundStyle(colors.text)
+                            Text("Include strength workouts from other apps in your weekly goal")
+                                .font(.system(size: 12))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }
+                    .tint(colors.accent)
+                } header: {
+                    Text("Goals")
+                }
+                .listRowBackground(colors.surface)
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Health")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    Task { await save() }
+                } label: {
+                    if isSaving {
+                        ProgressView().scaleEffect(0.8)
+                    } else {
+                        Text("Save")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(colors.accent)
+                    }
+                }
+                .disabled(isSaving)
+            }
+        }
+        .onAppear { populateFields() }
+        .alert("Health Access Required", isPresented: $showAuthAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Enable Health access for Shift in Settings > Privacy & Security > Health.")
+        }
+    }
+
+    private func populateFields() {
+        let hk = authManager.user?.settings.healthKit ?? .init()
+        syncWorkouts = hk.syncWorkouts
+        syncBodyWeight = hk.syncBodyWeight
+        countExternal = hk.countExternalWorkouts
+    }
+
+    private func save() async {
+        isSaving = true
+
+        // Request authorization if any toggle is being enabled
+        let wasEnabled = authManager.user?.settings.healthKit ?? .init()
+        let needsAuth = (!wasEnabled.syncWorkouts && syncWorkouts)
+            || (!wasEnabled.syncBodyWeight && syncBodyWeight)
+            || (!wasEnabled.countExternalWorkouts && countExternal)
+
+        if needsAuth {
+            do {
+                try await HealthKitService.requestAuthorization()
+            } catch {
+                showAuthAlert = true
+                isSaving = false
+                return
+            }
+        }
+
+        var settings = authManager.user?.settings ?? .default
+        settings.healthKit.syncWorkouts = syncWorkouts
+        settings.healthKit.syncBodyWeight = syncBodyWeight
+        settings.healthKit.countExternalWorkouts = countExternal
+
+        _ = try? await ProfileService.updateSettings(settings)
+        await authManager.refreshUser()
         isSaving = false
         onSaved?()
         dismiss()
@@ -643,7 +772,7 @@ private struct SyncSettingsPage: View {
                 Section {
                     Button {
                         Task {
-                            try? await SyncService.pullReferenceData()
+                            _ = try? await SyncService.pullReferenceData()
                             lastSyncedText = formatDate(Date())
                         }
                     } label: {

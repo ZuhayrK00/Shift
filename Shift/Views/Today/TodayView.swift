@@ -14,6 +14,8 @@ struct TodayView: View {
     @State private var isLoading = false
     @State private var starting = false
     @State private var navigationPath = NavigationPath()
+    @State private var activityData: ActivityData?
+    @State private var showActivityDetail = false
 
     private var todayKey: String { toLocalDateKey(Date()) }
     private var selectedKey: String { toLocalDateKey(selectedDate) }
@@ -73,12 +75,27 @@ struct TodayView: View {
                         } else {
                             sessionList
                         }
+
+                        // HealthKit activity (below workouts)
+                        if !isFuture, let activity = activityData {
+                            Button {
+                                showActivityDetail = true
+                            } label: {
+                                activityCard(activity)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 16)
+                        }
                     }
                 }
             }
             .navigationBarHidden(true)
             .navigationDestination(for: String.self) { sessionId in
                 WorkoutView(sessionId: sessionId)
+            }
+            .navigationDestination(isPresented: $showActivityDetail) {
+                ActivityDetailView(activityData: activityData ?? ActivityData())
             }
         }
         .task { await loadData() }
@@ -123,8 +140,8 @@ struct TodayView: View {
                 .buttonStyle(.plain)
             }
 
-            // Still show start button if there are only completed sessions (allow multiple workouts per day)
-            if inProgressSessions.isEmpty {
+            // Show start button only if no sessions at all for this day
+            if inProgressSessions.isEmpty && completedSessions.isEmpty {
                 startButtons
             }
         }
@@ -221,6 +238,136 @@ struct TodayView: View {
         .padding(.top, 60)
     }
 
+    // MARK: - Activity card
+
+    private func activityCard(_ activity: ActivityData) -> some View {
+        VStack(spacing: 16) {
+            // Rings row
+            HStack(spacing: 24) {
+                // Activity rings
+                ZStack {
+                    // Move ring (outer)
+                    Circle()
+                        .stroke(colors.border, lineWidth: 6)
+                        .frame(width: 72, height: 72)
+                    Circle()
+                        .trim(from: 0, to: min(1.0, activity.moveGoal > 0 ? activity.moveCalories / activity.moveGoal : 0))
+                        .stroke(Color.red, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .frame(width: 72, height: 72)
+                        .rotationEffect(.degrees(-90))
+
+                    // Exercise ring (middle)
+                    Circle()
+                        .stroke(colors.border, lineWidth: 6)
+                        .frame(width: 56, height: 56)
+                    Circle()
+                        .trim(from: 0, to: min(1.0, activity.exerciseGoal > 0 ? activity.exerciseMinutes / activity.exerciseGoal : 0))
+                        .stroke(Color.green, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .frame(width: 56, height: 56)
+                        .rotationEffect(.degrees(-90))
+
+                    // Stand ring (inner)
+                    Circle()
+                        .stroke(colors.border, lineWidth: 6)
+                        .frame(width: 40, height: 40)
+                    Circle()
+                        .trim(from: 0, to: min(1.0, activity.standGoal > 0 ? activity.standHours / activity.standGoal : 0))
+                        .stroke(Color.cyan, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .frame(width: 40, height: 40)
+                        .rotationEffect(.degrees(-90))
+                }
+
+                // Stats
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                        Text("Move")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.red)
+                        Spacer()
+                        Text("\(Int(activity.moveCalories))/\(Int(activity.moveGoal)) kcal")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(colors.text)
+                    }
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.green).frame(width: 8, height: 8)
+                        Text("Exercise")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.green)
+                        Spacer()
+                        Text("\(Int(activity.exerciseMinutes))/\(Int(activity.exerciseGoal)) min")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(colors.text)
+                    }
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.cyan).frame(width: 8, height: 8)
+                        Text("Stand")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.cyan)
+                        Spacer()
+                        Text("\(Int(activity.standHours))/\(Int(activity.standGoal)) hrs")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(colors.text)
+                    }
+                }
+            }
+
+            // Steps
+            HStack {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 14))
+                    .foregroundStyle(colors.accent)
+                Text("Steps")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(colors.muted)
+                Spacer()
+                if let goal = authManager.user?.settings.dailyStepGoal {
+                    Text("\(formatSteps(activity.steps))/\(formatSteps(goal))")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(colors.text)
+                } else {
+                    Text(formatSteps(activity.steps))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(colors.text)
+                }
+            }
+            .padding(.top, 4)
+
+            // Distance
+            HStack {
+                Image(systemName: "map.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(colors.accent)
+                Text("Distance")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(colors.muted)
+                Spacer()
+                Text(formatDistance(activity.distanceKm))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(colors.text)
+            }
+        }
+        .padding(16)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(colors.border, lineWidth: 1)
+        )
+    }
+
+    private func formatSteps(_ steps: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: steps)) ?? "\(steps)"
+    }
+
+    private func formatDistance(_ km: Double) -> String {
+        let unit = authManager.user?.settings.distanceUnit ?? "km"
+        let value = unit == "mi" ? km * 0.621371 : km
+        return String(format: "%.2f %@", value, unit)
+    }
+
     // MARK: - Data loading
 
     private func loadData() async {
@@ -239,6 +386,12 @@ struct TodayView: View {
         isLoading = false
 
         await loadSessionsForDate()
+
+        // Load HealthKit activity in background
+        if HealthKitService.isAvailable {
+            _ = try? await HealthKitService.requestAuthorization()
+            activityData = await HealthKitService.fetchActivity(for: selectedDate)
+        }
     }
 
     private func loadSessionsForDate() async {
@@ -246,6 +399,11 @@ struct TodayView: View {
         async let inProgress = WorkoutService.getInProgressSessions(for: selectedDate)
         completedSessions = (try? await completed) ?? []
         inProgressSessions = (try? await inProgress) ?? []
+
+        // Load activity for selected date
+        if HealthKitService.isAvailable {
+            activityData = await HealthKitService.fetchActivity(for: selectedDate)
+        }
     }
 
     /// Lightweight refresh for when we return from a pushed view (e.g. after discarding a workout).
@@ -257,6 +415,10 @@ struct TodayView: View {
         _ = await sessionsRefresh
         completedDates = (try? await completedDatesResult) ?? []
         inProgressDates = (try? await inProgressDatesResult) ?? []
+
+        if HealthKitService.isAvailable {
+            activityData = await HealthKitService.fetchActivity(for: selectedDate)
+        }
     }
 
     private func startWorkout(plan: WorkoutPlan?) async {

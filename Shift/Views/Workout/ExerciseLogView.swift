@@ -257,7 +257,7 @@ struct ExerciseLogView: View {
     }
 
     private func reloadSets() async {
-        var allSets = (try? await WorkoutService.getSetsFor(
+        let allSets = (try? await WorkoutService.getSetsFor(
             sessionId: sessionId, exerciseId: exerciseId)) ?? []
 
         // Renumber: completed first, then placeholders, sequential from 1

@@ -135,13 +135,15 @@ struct CachedAsyncImage<Content: View>: View {
                     return
                 }
                 await withCheckedContinuation { continuation in
-                    ImageCache.shared.fetch(url) { img in
-                        if let img {
-                            phase = .success(Image(uiImage: img))
-                        } else {
-                            phase = .empty
+                    ImageCache.shared.fetch(url) { [self] img in
+                        Task { @MainActor in
+                            if let img {
+                                phase = .success(Image(uiImage: img))
+                            } else {
+                                phase = .empty
+                            }
+                            continuation.resume()
                         }
-                        continuation.resume()
                     }
                 }
             }

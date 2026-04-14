@@ -67,6 +67,17 @@ struct WorkoutService {
                 }
             }
             await GoalNotificationService.scheduleAllNotifications()
+
+            // Save workout to HealthKit if enabled
+            if authManager.user?.settings.healthKit.syncWorkouts == true {
+                if let session = try? await SessionRepository.findById(sessionId),
+                   session.endedAt != nil {
+                    let eIds = (try? await SessionSetRepository.findExerciseIds(sessionId: sessionId)) ?? []
+                    let exerciseMap = (try? await ExerciseRepository.findByIds(eIds)) ?? [:]
+                    let nameMap = exerciseMap.mapValues(\.name)
+                    try? await HealthKitService.saveWorkout(session: session, exerciseNames: nameMap)
+                }
+            }
         }
     }
 

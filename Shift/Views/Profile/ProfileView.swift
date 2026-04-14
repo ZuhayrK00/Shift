@@ -14,6 +14,11 @@ struct ProfileView: View {
     @State private var showFrequencyEditor = false
     @State private var activeExerciseGoals: [(goal: ExerciseGoal, exercise: Exercise)] = []
     @State private var isLoadingGoals = false
+    @State private var latestWeight: WeightEntry?
+    @State private var previousWeight: WeightEntry?
+    @State private var showWeightDetail = false
+    @State private var showStepGoalEditor = false
+    @State private var todaySteps: Int = 0
 
     private var user: User? { authManager.user }
 
@@ -27,6 +32,14 @@ struct ProfileView: View {
                     headerCard
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
+
+                    // Body weight
+                    weightCard
+                        .padding(.horizontal, 16)
+
+                    // Step goal
+                    stepGoalCard
+                        .padding(.horizontal, 16)
 
                     // Weekly goal
                     frequencyGoalCard
@@ -64,6 +77,9 @@ struct ProfileView: View {
                 }
             }
         }
+        .navigationDestination(isPresented: $showWeightDetail) {
+            WeightDetailView()
+        }
         .navigationDestination(isPresented: $showSettings) {
             SettingsView(onSaved: {
                 toastMessage = "Settings saved"
@@ -76,6 +92,11 @@ struct ProfileView: View {
         .navigationDestination(for: Exercise.self) { exercise in
             ExerciseDetailView(exercise: exercise, initialTab: .goals)
         }
+        .sheet(isPresented: $showStepGoalEditor) {
+            StepGoalEditorSheet {
+                Task { await GoalNotificationService.scheduleAllNotifications() }
+            }
+        }
         .sheet(isPresented: $showFrequencyEditor) {
             FrequencyGoalEditorSheet {
                 Task { frequencyProgress = try? await GoalService.getFrequencyProgress() }
@@ -84,6 +105,8 @@ struct ProfileView: View {
         .task {
             await loadPersonalBests()
             await loadExerciseGoals()
+            await loadWeightEntries()
+            await loadTodaySteps()
             frequencyProgress = try? await GoalService.getFrequencyProgress()
         }
         .overlay(alignment: .bottom) {
@@ -144,6 +167,196 @@ struct ProfileView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(colors.border, lineWidth: 1)
         )
+    }
+
+    // MARK: - Weight card
+
+    private var weightCard: some View {
+        let weightUnit = user?.settings.weightUnit ?? "kg"
+        let diff: Double? = {
+            guard let l = latestWeight, let p = previousWeight else { return nil }
+            return l.weight - p.weight
+        }()
+
+        return Button {
+            showWeightDetail = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(colors.accent.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "scalemass.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(colors.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Body Weight")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(colors.muted)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+
+                    if let latest = latestWeight {
+                        HStack(spacing: 6) {
+                            Text(formatWeightValue(latest.weight) + " " + weightUnit)
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(colors.text)
+
+                            if let diff, abs(diff) > 0.05 {
+                                HStack(spacing: 2) {
+                                    Image(systemName: diff > 0 ? "arrow.up.right" : "arrow.down.right")
+                                        .font(.system(size: 10, weight: .bold))
+                                    Text("\(diff > 0 ? "+" : "")\(formatWeightValue(diff))")
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+                                .foregroundStyle(colors.muted)
+                            }
+                        }
+                    } else if let profileWeight = user?.weight {
+                        Text(formatWeightValue(profileWeight) + " " + weightUnit)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(colors.text)
+                    } else {
+                        Text("Tap to log")
+                            .font(.system(size: 15))
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(colors.muted)
+            }
+            .padding(16)
+            .background(colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(colors.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func formatWeightValue(_ value: Double) -> String {
+        value == value.rounded() ? String(format: "%.0f", value) : String(format: "%.1f", value)
+    }
+
+    // MARK: - Step goal card
+
+    private var stepGoalCard: some View {
+        let stepGoal = user?.settings.dailyStepGoal
+        let progress: Double = {
+            guard let goal = stepGoal, goal > 0 else { return 0 }
+            return min(1.0, Double(todaySteps) / Double(goal))
+        }()
+
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "figure.walk")
+                        .font(.system(size: 14))
+                        .foregroundStyle(colors.accent)
+                    Text("Daily Steps")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(colors.text)
+                }
+                Spacer()
+                Button {
+                    showStepGoalEditor = true
+                } label: {
+                    Image(systemName: stepGoal != nil ? "pencil" : "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(colors.accent)
+                        .frame(width: 32, height: 32)
+                        .background(colors.accent.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let goal = stepGoal {
+                HStack(spacing: 20) {
+                    // Progress ring
+                    ZStack {
+                        Circle()
+                            .stroke(colors.border, lineWidth: 8)
+                            .frame(width: 72, height: 72)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(
+                                progress >= 1.0
+                                    ? AnyShapeStyle(colors.success)
+                                    : AnyShapeStyle(LinearGradient(
+                                        colors: [colors.accent, colors.accent2],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )),
+                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                            )
+                            .frame(width: 72, height: 72)
+                            .rotationEffect(.degrees(-90))
+
+                        Image(systemName: "figure.walk")
+                            .font(.system(size: 18))
+                            .foregroundStyle(progress >= 1.0 ? colors.success : colors.accent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(formatSteps(todaySteps))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundStyle(colors.text)
+                        Text("of \(formatSteps(goal)) steps")
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.muted)
+
+                        if progress >= 1.0 {
+                            Text("Goal reached!")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(colors.success)
+                        } else {
+                            let remaining = max(0, goal - todaySteps)
+                            Text("\(formatSteps(remaining)) to go")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }
+
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "shoeprints.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(colors.muted.opacity(0.5))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No step goal set")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(colors.text)
+                        Text("Set a daily step target to stay active.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(colors.border, lineWidth: 1)
+        )
+    }
+
+    private func formatSteps(_ steps: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: steps)) ?? "\(steps)"
     }
 
     // MARK: - Weekly goal card
@@ -438,6 +651,20 @@ struct ProfileView: View {
         isLoadingPBs = false
     }
 
+    private func loadTodaySteps() async {
+        if HealthKitService.isAvailable {
+            let activity = await HealthKitService.fetchTodayActivity()
+            todaySteps = activity?.steps ?? 0
+        }
+    }
+
+    private func loadWeightEntries() async {
+        guard let userId = try? authManager.requireUserId() else { return }
+        let entries = (try? await WeightEntryRepository.findAll(userId: userId)) ?? []
+        latestWeight = entries.first
+        previousWeight = entries.count > 1 ? entries[1] : nil
+    }
+
     private func loadExerciseGoals() async {
         guard let userId = try? authManager.requireUserId() else { return }
         isLoadingGoals = true
@@ -579,7 +806,7 @@ struct FrequencyGoalEditorSheet: View {
         isSaving = true
         var settings = authManager.user?.settings ?? .default
         settings.weeklyFrequencyGoal = target
-        try? await ProfileService.updateSettings(settings)
+        _ = try? await ProfileService.updateSettings(settings)
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
         isSaving = false
@@ -591,12 +818,110 @@ struct FrequencyGoalEditorSheet: View {
         isSaving = true
         var settings = authManager.user?.settings ?? .default
         settings.weeklyFrequencyGoal = nil
-        try? await ProfileService.updateSettings(settings)
+        _ = try? await ProfileService.updateSettings(settings)
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
         isSaving = false
         onSaved?()
         dismiss()
+    }
+}
+
+// MARK: - StepGoalEditorSheet
+
+struct StepGoalEditorSheet: View {
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.shiftColors) private var colors
+    @Environment(\.dismiss) private var dismiss
+
+    var onSaved: (() -> Void)?
+
+    @State private var stepGoal: Int = 10000
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                colors.bg.ignoresSafeArea()
+
+                Form {
+                    Section("Daily Step Goal") {
+                        Stepper(
+                            formatSteps(stepGoal) + " steps",
+                            value: $stepGoal,
+                            in: 1000...50000,
+                            step: 1000
+                        )
+                        .foregroundStyle(colors.text)
+                    }
+                    .listRowBackground(colors.surface)
+
+                    Section {
+                        Button(role: .destructive) {
+                            Task { await clearGoal() }
+                        } label: {
+                            Text("Remove Goal")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .listRowBackground(colors.surface)
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Step Goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(colors.muted)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().scaleEffect(0.8)
+                        } else {
+                            Text("Save")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(colors.accent)
+                        }
+                    }
+                    .disabled(isSaving)
+                }
+            }
+            .onAppear {
+                stepGoal = authManager.user?.settings.dailyStepGoal ?? 10000
+            }
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        var settings = authManager.user?.settings ?? .default
+        settings.dailyStepGoal = stepGoal
+        _ = try? await ProfileService.updateSettings(settings)
+        await authManager.refreshUser()
+        isSaving = false
+        onSaved?()
+        dismiss()
+    }
+
+    private func clearGoal() async {
+        isSaving = true
+        var settings = authManager.user?.settings ?? .default
+        settings.dailyStepGoal = nil
+        _ = try? await ProfileService.updateSettings(settings)
+        await authManager.refreshUser()
+        isSaving = false
+        onSaved?()
+        dismiss()
+    }
+
+    private func formatSteps(_ steps: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: steps)) ?? "\(steps)"
     }
 }
 
@@ -611,7 +936,7 @@ struct AvatarView: View {
     var body: some View {
         Group {
             if let urlString = url, let imgUrl = URL(string: urlString) {
-                AsyncImage(url: imgUrl) { phase in
+                CachedAsyncImage(url: imgUrl) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()

@@ -14,7 +14,7 @@ struct ContentView: View {
                 MainTabView()
                     .task {
                         SyncService.flushInBackground()
-                        try? await SyncService.pullReferenceData()
+                        _ = try? await SyncService.pullReferenceData()
                         // Prefetch all exercise images early so they're instant everywhere
                         if let exercises = try? await ExerciseService.listExercises() {
                             let urls = exercises.compactMap { $0.imageUrl.flatMap(URL.init) }

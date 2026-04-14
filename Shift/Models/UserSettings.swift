@@ -12,6 +12,20 @@ struct RestTimerSettings: Codable, Hashable {
     }
 }
 
+// MARK: - HealthKitSettings
+
+struct HealthKitSettings: Codable, Hashable {
+    var syncWorkouts: Bool = false
+    var syncBodyWeight: Bool = false
+    var countExternalWorkouts: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case syncWorkouts = "sync_workouts"
+        case syncBodyWeight = "sync_body_weight"
+        case countExternalWorkouts = "count_external_workouts"
+    }
+}
+
 // MARK: - NotificationSettings
 
 struct NotificationSettings: Codable, Hashable {
@@ -34,7 +48,9 @@ struct UserSettings: Codable, Hashable {
     var theme: String = "dark"
     var restTimer: RestTimerSettings = .init()
     var weeklyFrequencyGoal: Int? = nil
+    var dailyStepGoal: Int? = nil
     var notifications: NotificationSettings = .init()
+    var healthKit: HealthKitSettings = .init()
 
     static let `default` = UserSettings()
 
@@ -46,6 +62,8 @@ struct UserSettings: Codable, Hashable {
         case weekStartsOn = "week_starts_on"
         case restTimer = "rest_timer"
         case weeklyFrequencyGoal = "weekly_frequency_goal"
+        case dailyStepGoal = "daily_step_goal"
         case notifications
+        case healthKit = "health_kit"
     }
 }

@@ -30,6 +30,15 @@ struct SessionSetRepository {
 
     // MARK: - Reads
 
+    static func findForSession(_ sessionId: String) async throws -> [SessionSet] {
+        try await AppDatabase.shared.dbPool.read { db in
+            try SessionSet
+                .filter(Column("session_id") == sessionId && Column("is_completed") == 1)
+                .order(Column("exercise_id"), Column("set_number"))
+                .fetchAll(db)
+        }
+    }
+
     static func findForExercise(sessionId: String, exerciseId: String) async throws -> [SessionSet] {
         try await AppDatabase.shared.dbPool.read { db in
             try SessionSet

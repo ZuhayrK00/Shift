@@ -87,7 +87,7 @@ struct SyncService {
     @discardableResult
     static func pullReferenceData() async throws -> (muscleGroups: Int, exercises: Int) {
         // Flush first so any pending writes are committed before we read back
-        try? await flushQueue()
+        _ = try? await flushQueue()
 
         // Muscle groups
         let mgResponse = try await supabase

@@ -100,6 +100,11 @@ struct GoalService {
         let weekStart = Self.startOfCurrentWeek(weekStartsOn: settings.weekStartsOn)
         let sessions = try await SessionRepository.findCompletedSince(weekStart, userId: userId)
 
+        var totalCount = sessions.count
+        if settings.healthKit.countExternalWorkouts {
+            totalCount += await HealthKitService.countExternalWorkouts(since: weekStart)
+        }
+
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let daysSinceStart = cal.dateComponents([.day], from: cal.startOfDay(for: weekStart), to: today).day ?? 0
@@ -108,7 +113,7 @@ struct GoalService {
 
         return FrequencyProgress(
             target: target,
-            completed: sessions.count,
+            completed: totalCount,
             dayOfWeek: dayOfWeek,
             daysRemainingInWeek: daysRemaining
         )

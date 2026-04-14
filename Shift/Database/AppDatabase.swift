@@ -209,6 +209,25 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addWeightEntries") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS weight_entries (
+                    id          TEXT PRIMARY KEY NOT NULL,
+                    user_id     TEXT NOT NULL,
+                    weight      REAL NOT NULL,
+                    unit        TEXT NOT NULL DEFAULT 'kg',
+                    source      TEXT NOT NULL DEFAULT 'manual',
+                    recorded_at TEXT NOT NULL,
+                    created_at  TEXT NOT NULL
+                )
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_weight_entries_user
+                    ON weight_entries (user_id, recorded_at)
+            """)
+        }
+
         return migrator
     }
 }
