@@ -143,34 +143,31 @@ struct ExerciseHistoryService {
             }()
 
             let date = session.date
-            heaviestWeightPoints.append(ChartPoint(date: date, value: maxWeight))
-            estimated1RMPoints.append(ChartPoint(date: date, value: est1RM))
-            totalVolumePoints.append(ChartPoint(date: date, value: volume))
+            heaviestWeightPoints.append(ChartPoint(date: date, value: convertWeight(maxWeight, to: unit)))
+            estimated1RMPoints.append(ChartPoint(date: date, value: convertWeight(est1RM, to: unit)))
+            totalVolumePoints.append(ChartPoint(date: date, value: convertWeight(volume, to: unit)))
 
             if maxWeight > allTimeMaxWeight { allTimeMaxWeight = maxWeight }
             if est1RM    > allTimeMax1RM    { allTimeMax1RM    = est1RM    }
             if volume    > allTimeMaxVolume { allTimeMaxVolume = volume    }
         }
 
-        let weightLabel = unit == "lb" ? "lb" : "kg"
-        let volumeLabel = unit == "lb" ? "lb" : "kg"
-
         let personalBests: [PersonalBestStat] = [
             PersonalBestStat(
                 label: "Best weight",
-                value: "\(formatWeight(allTimeMaxWeight)) \(weightLabel)",
+                value: formatWeight(allTimeMaxWeight, unit: unit),
                 subtitle: "Heaviest single lift",
                 icon: "trophy"
             ),
             PersonalBestStat(
                 label: "Est. 1RM",
-                value: "\(formatWeight(allTimeMax1RM)) \(weightLabel)",
+                value: formatWeight(allTimeMax1RM, unit: unit),
                 subtitle: "Estimated one-rep max",
                 icon: "dumbbell"
             ),
             PersonalBestStat(
                 label: "Best volume",
-                value: "\(formatWeight(allTimeMaxVolume)) \(volumeLabel)",
+                value: formatWeight(allTimeMaxVolume, unit: unit),
                 subtitle: "Most volume in a session",
                 icon: "chart.bar"
             ),
@@ -193,10 +190,5 @@ struct ExerciseHistoryService {
 
     // MARK: - Private helpers
 
-    private static func formatWeight(_ value: Double) -> String {
-        if value == value.rounded() {
-            return String(format: "%.0f", value)
-        }
-        return String(format: "%.1f", value)
-    }
+    // Weight formatting uses the global formatWeight() from Format.swift
 }

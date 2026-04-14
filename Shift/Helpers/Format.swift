@@ -32,6 +32,30 @@ func pluralise(_ count: Int, _ singular: String, _ plural: String? = nil) -> Str
     return "\(count) \(word)"
 }
 
+// MARK: - Weight formatting
+
+private let kgToLbs = 2.20462
+
+/// Converts a weight stored in kg to the display unit if needed.
+func convertWeight(_ kg: Double, to unit: String) -> Double {
+    unit == "lbs" ? kg * kgToLbs : kg
+}
+
+/// Converts a weight from the display unit back to kg for storage.
+func convertWeightToKg(_ value: Double, from unit: String) -> Double {
+    unit == "lbs" ? value / kgToLbs : value
+}
+
+/// Formats a weight value (stored in kg) for display in the user's chosen unit.
+///
+///     formatWeight(60, unit: "kg")  → "60 kg"
+///     formatWeight(60, unit: "lbs") → "132 lbs"
+func formatWeight(_ kg: Double, unit: String) -> String {
+    let val = convertWeight(kg, to: unit)
+    let numStr = val == val.rounded() ? String(format: "%.0f", val) : String(format: "%.1f", val)
+    return "\(numStr) \(unit)"
+}
+
 // MARK: - Date key helpers
 
 private let localDateKeyFormatter: DateFormatter = {

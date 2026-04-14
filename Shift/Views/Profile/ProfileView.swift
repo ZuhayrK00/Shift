@@ -161,7 +161,7 @@ struct ProfileView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(Array(personalBests.prefix(3).enumerated()), id: \.element.exerciseId) { index, pb in
-                        ProfilePBRow(pb: pb, rank: index)
+                        ProfilePBRow(pb: pb, rank: index, weightUnit: user?.settings.weightUnit ?? "kg")
                     }
                 }
             }
@@ -183,6 +183,7 @@ private struct ProfilePBRow: View {
     @Environment(\.shiftColors) private var colors
     let pb: PersonalBest
     let rank: Int
+    var weightUnit: String = "kg"
 
     private var rankColor: Color {
         switch rank {
@@ -231,8 +232,7 @@ private struct ProfilePBRow: View {
     }
 
     private var formattedWeight: String {
-        let val = pb.maxWeight
-        return val == val.rounded() ? "\(Int(val)) kg" : "\(val) kg"
+        formatWeight(pb.maxWeight, unit: weightUnit)
     }
 }
 

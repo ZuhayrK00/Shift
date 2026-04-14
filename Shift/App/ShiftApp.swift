@@ -14,10 +14,19 @@ struct ShiftApp: App {
         setAuthManager(authManager)
     }
 
+    private var preferredScheme: ColorScheme? {
+        switch authManager.user?.settings.theme {
+        case "dark":  return .dark
+        case "light": return .light
+        default:      return nil  // "system" or nil → follow system
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(authManager)
+                .preferredColorScheme(preferredScheme)
                 .shiftTheme()
         }
     }

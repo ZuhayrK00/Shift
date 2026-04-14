@@ -7,6 +7,9 @@ struct ExerciseHistoryView: View {
     let exerciseId: String
 
     @Environment(\.shiftColors) private var colors
+    @Environment(AuthManager.self) private var authManager
+
+    private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
 
     @State private var sessions: [HistorySession] = []
     @State private var loading = true
@@ -95,8 +98,7 @@ struct ExerciseHistoryView: View {
 
             let weightText: String = {
                 if let w = set.weight {
-                    return w.truncatingRemainder(dividingBy: 1) == 0
-                        ? String(format: "%.0f kg", w) : String(format: "%.1f kg", w)
+                    return formatWeight(w, unit: weightUnit)
                 }
                 return "Bodyweight"
             }()

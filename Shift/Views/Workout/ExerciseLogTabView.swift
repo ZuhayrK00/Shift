@@ -177,8 +177,7 @@ struct ExerciseLogTabView: View {
             let repsText = set.reps > 0 ? "\(set.reps) reps" : "—"
             let weightText: String = {
                 if let w = set.weight, w > 0 {
-                    return w.truncatingRemainder(dividingBy: 1) == 0
-                        ? String(format: "%.0f %@", w, weightUnit) : String(format: "%.1f %@", w, weightUnit)
+                    return formatWeight(w, unit: weightUnit)
                 }
                 return "—"
             }()
@@ -233,8 +232,7 @@ struct ExerciseLogTabView: View {
 
                 let weightText: String = {
                     if let w = set.weight {
-                        return w.truncatingRemainder(dividingBy: 1) == 0
-                            ? String(format: "%.0f %@", w, weightUnit) : String(format: "%.1f %@", w, weightUnit)
+                        return formatWeight(w, unit: weightUnit)
                     }
                     return "BW"
                 }()

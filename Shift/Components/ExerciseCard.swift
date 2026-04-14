@@ -7,6 +7,7 @@ struct ExerciseCard: View {
     let exercise: Exercise
     let sets: [SessionSet]
     var planExercise: PlanExercise?
+    var weightUnit: String = "kg"
     var onRemove: () -> Void = {}
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
 
@@ -24,10 +25,8 @@ struct ExerciseCard: View {
         }
         let setCount = pluralise(completed.count, "set")
         if let w = completed.last?.weight {
-            let weightStr = w.truncatingRemainder(dividingBy: 1) == 0
-                ? String(format: "%.0f kg", w) : String(format: "%.1f kg", w)
             let reps = pluralise(completed.last?.reps ?? 0, "rep")
-            return "\(setCount) × \(weightStr) × \(reps)"
+            return "\(setCount) × \(formatWeight(w, unit: weightUnit)) × \(reps)"
         }
         return setCount
     }
@@ -103,8 +102,7 @@ struct ExerciseCard: View {
             // Weight + reps
             let weightText: String = {
                 if let w = set.weight {
-                    return w.truncatingRemainder(dividingBy: 1) == 0
-                        ? String(format: "%.0f kg", w) : String(format: "%.1f kg", w)
+                    return formatWeight(w, unit: weightUnit)
                 }
                 return "—"
             }()

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct PersonalBestsView: View {
     @Environment(\.shiftColors) private var colors
+    @Environment(AuthManager.self) private var authManager
+
+    private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
 
     @State private var personalBests: [PersonalBest] = []
     @State private var isLoading = false
@@ -124,7 +127,7 @@ struct PersonalBestsView: View {
     }
 
     private func formattedWeight(_ val: Double) -> String {
-        val == val.rounded() ? "\(Int(val)) kg" : "\(val) kg"
+        formatWeight(val, unit: weightUnit)
     }
 
     private func rankColor(_ index: Int) -> Color {

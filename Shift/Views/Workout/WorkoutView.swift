@@ -19,6 +19,9 @@ struct WorkoutView: View {
 
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss)    private var dismiss
+    @Environment(AuthManager.self) private var authManager
+
+    private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
 
     @State private var session: WorkoutSession?
     @State private var blocks: [ExerciseBlock]  = []
@@ -102,6 +105,7 @@ struct WorkoutView: View {
                             blocks: group.blocks,
                             sessionId: sessionId,
                             planExerciseMap: planExerciseMap,
+                            weightUnit: weightUnit,
                             onRemove: { exId in
                                 Task { await removeExercise(exerciseId: exId) }
                             },
@@ -207,6 +211,7 @@ struct WorkoutView: View {
                 exercise: block.exercise,
                 sets: block.sets,
                 planExercise: planExerciseMap[block.exercise.id],
+                weightUnit: weightUnit,
                 onRemove: {
                     Task { await removeExercise(exerciseId: block.exercise.id) }
                 },

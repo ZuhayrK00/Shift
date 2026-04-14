@@ -121,7 +121,7 @@ struct ExerciseLogView: View {
                 onSelectSet: { set in
                     if let s = set {
                         selectedSetId = s.id
-                        weight = s.weight ?? 0
+                        weight = convertWeight(s.weight ?? 0, to: weightUnit)
                         reps   = Double(s.reps)
                     } else {
                         selectedSetId = nil
@@ -169,10 +169,10 @@ struct ExerciseLogView: View {
 
     private func seedStepperValues(from allSets: [SessionSet]) {
         if let last = allSets.last(where: { $0.isCompleted }) {
-            weight = last.weight ?? 0
+            weight = convertWeight(last.weight ?? 0, to: weightUnit)
             reps   = Double(last.reps)
         } else if let plan = planExercise {
-            weight = plan.targetWeight ?? 0
+            weight = convertWeight(plan.targetWeight ?? 0, to: weightUnit)
             reps   = Double(plan.defaultReps)
         } else {
             weight = 0; reps = 0
@@ -181,13 +181,19 @@ struct ExerciseLogView: View {
 
     // MARK: - Set actions
 
+    /// Converts the stepper weight (in user's unit) back to kg for storage.
+    private var weightInKg: Double? {
+        guard weight > 0 else { return nil }
+        return convertWeightToKg(weight, from: weightUnit)
+    }
+
     private func addSet() async {
         // If there's a placeholder (incomplete) set, complete it instead of creating a new one
         let loggedSet: SessionSet?
         if let placeholder = sets.first(where: { !$0.isCompleted }) {
             try? await WorkoutService.updateSet(placeholder.id, patch: SetPatch(
                 reps: Int(reps),
-                weight: weight > 0 ? weight : nil,
+                weight: weightInKg,
                 isCompleted: true
             ))
             loggedSet = placeholder
@@ -196,7 +202,7 @@ struct ExerciseLogView: View {
             if let s = newSet {
                 try? await WorkoutService.updateSet(s.id, patch: SetPatch(
                     reps: Int(reps),
-                    weight: weight > 0 ? weight : nil
+                    weight: weightInKg
                 ))
             }
             loggedSet = newSet
@@ -226,7 +232,7 @@ struct ExerciseLogView: View {
         guard let id = selectedSetId else { return }
         try? await WorkoutService.updateSet(id, patch: SetPatch(
             reps: Int(reps),
-            weight: weight > 0 ? weight : nil
+            weight: weightInKg
         ))
         selectedSetId = nil
         await reloadSets()

@@ -40,7 +40,8 @@ struct TodayView: View {
                         WeekCalendar(
                             selected: $selectedDate,
                             completedDates: completedDates,
-                            inProgressDates: inProgressDates
+                            inProgressDates: inProgressDates,
+                            weekStartsOn: authManager.user?.settings.weekStartsOn ?? "monday"
                         )
                         .padding(.bottom, 24)
 

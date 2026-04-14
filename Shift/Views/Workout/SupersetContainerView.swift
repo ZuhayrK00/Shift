@@ -10,6 +10,7 @@ struct SupersetContainerView: View {
     let blocks: [ExerciseBlock]
     let sessionId: String
     var planExerciseMap: [String: PlanExercise] = [:]
+    var weightUnit: String = "kg"
     var onRemove: (String) -> Void  = { _ in }
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
 
@@ -49,6 +50,7 @@ struct SupersetContainerView: View {
                             exercise: block.exercise,
                             sets: block.sets,
                             planExercise: planExerciseMap[block.exercise.id],
+                            weightUnit: weightUnit,
                             onRemove: { onRemove(block.exercise.id) },
                             onChangeSetType: { set, type in onChangeSetType(set, type) }
                         )
