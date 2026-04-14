@@ -15,6 +15,7 @@ struct ContentView: View {
                     .task {
                         SyncService.flushInBackground()
                         _ = try? await SyncService.pullReferenceData()
+                        try? await SyncService.pullUserData()
                         // Prefetch all exercise images early so they're instant everywhere
                         if let exercises = try? await ExerciseService.listExercises() {
                             let urls = exercises.compactMap { $0.imageUrl.flatMap(URL.init) }

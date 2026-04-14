@@ -110,6 +110,10 @@ class AuthManager {
         )
     }
 
+    func signInWithGoogle() async throws {
+        try await supabase.auth.signInWithOAuth(provider: .google)
+    }
+
     func signOut() async throws {
         try await supabase.auth.signOut()
     }

@@ -99,9 +99,9 @@ struct SignInView: View {
                     .frame(height: 52)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                    // Google placeholder
+                    // Google Sign In
                     Button {
-                        // Google OAuth via web redirect — implement later
+                        Task { await signInWithGoogle() }
                     } label: {
                         HStack(spacing: 10) {
                             Text("G")
@@ -172,6 +172,15 @@ struct SignInView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func signInWithGoogle() async {
+        errorMessage = nil
+        do {
+            try await authManager.signInWithGoogle()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) async {

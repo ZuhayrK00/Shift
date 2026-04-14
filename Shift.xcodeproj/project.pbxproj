@@ -61,11 +61,21 @@
 			);
 			target = 3F824DDB2F8CEE74000009CB /* ShiftTimerWidgetExtension */;
 		};
+		3FB2F3FC2F8ED266003B8597 /* Exceptions for "Shift" folder in "Shift" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3F4C3C0B2F8CE0FC00A9EB58 /* Shift */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3F4C3C0E2F8CE0FC00A9EB58 /* Shift */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3FB2F3FC2F8ED266003B8597 /* Exceptions for "Shift" folder in "Shift" target */,
+			);
 			path = Shift;
 			sourceTree = "<group>";
 		};
@@ -458,6 +468,7 @@
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shift/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
@@ -499,6 +510,7 @@
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shift/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";

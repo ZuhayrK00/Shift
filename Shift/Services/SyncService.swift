@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+@preconcurrency import GRDB
 
 // MARK: - SyncService
 
@@ -123,6 +124,104 @@ struct SyncService {
         )
 
         return (muscleGroups: muscleGroups.count, exercises: exercises.count)
+    }
+
+    // MARK: - Full user data pull
+
+    /// Pulls all user-owned data from Supabase into the local database.
+    /// Called on sign-in so the user always has their full history locally.
+    /// Uses upsert (replace) so it's safe to call multiple times.
+    static func pullUserData() async throws {
+        guard let userId = authManager.currentUserId else { return }
+
+        // Flush pending local writes first so nothing is lost
+        _ = try? await flushQueue()
+
+        let decoder = JSONDecoder()
+
+        // 1. Custom exercises (created by this user)
+        let customExData = try await supabase
+            .from("exercises")
+            .select()
+            .eq("created_by", value: userId)
+            .execute()
+        let customExercises = (try? decoder.decode([Exercise].self, from: customExData.data)) ?? []
+        for ex in customExercises {
+            try? await ExerciseRepository.upsert(ex)
+        }
+
+        // 2. Workout plans
+        let plansData = try await supabase
+            .from("workout_plans")
+            .select()
+            .execute()
+        let plans = (try? decoder.decode([WorkoutPlan].self, from: plansData.data)) ?? []
+        try await AppDatabase.shared.dbPool.write { db in
+            for plan in plans { try plan.save(db) }
+        }
+
+        // 3. Plan exercises (for all plans)
+        if !plans.isEmpty {
+            let planIds = plans.map { $0.id }
+            let peData = try await supabase
+                .from("plan_exercises")
+                .select()
+                .in("plan_id", values: planIds)
+                .execute()
+            let planExercises = (try? decoder.decode([PlanExercise].self, from: peData.data)) ?? []
+            try await AppDatabase.shared.dbPool.write { db in
+                for pe in planExercises { try pe.save(db) }
+            }
+        }
+
+        // 4. Workout sessions
+        let sessionsData = try await supabase
+            .from("workout_sessions")
+            .select()
+            .execute()
+        let sessions = (try? decoder.decode([WorkoutSession].self, from: sessionsData.data)) ?? []
+        try await AppDatabase.shared.dbPool.write { db in
+            for session in sessions { try session.save(db) }
+        }
+
+        // 5. Session sets (for all sessions)
+        if !sessions.isEmpty {
+            // Pull in batches to avoid overly large queries
+            let sessionIds = sessions.map { $0.id }
+            let batchSize = 50
+            for batch in stride(from: 0, to: sessionIds.count, by: batchSize) {
+                let batchIds = Array(sessionIds[batch..<min(batch + batchSize, sessionIds.count)])
+                let setsData = try await supabase
+                    .from("session_sets")
+                    .select()
+                    .in("session_id", values: batchIds)
+                    .execute()
+                let sets = (try? decoder.decode([SessionSet].self, from: setsData.data)) ?? []
+                try await AppDatabase.shared.dbPool.write { db in
+                    for s in sets { try s.save(db) }
+                }
+            }
+        }
+
+        // 6. Exercise goals
+        let goalsData = try await supabase
+            .from("exercise_goals")
+            .select()
+            .execute()
+        let goals = (try? decoder.decode([ExerciseGoal].self, from: goalsData.data)) ?? []
+        try await AppDatabase.shared.dbPool.write { db in
+            for goal in goals { try goal.save(db) }
+        }
+
+        // 7. Weight entries
+        let weightData = try await supabase
+            .from("weight_entries")
+            .select()
+            .execute()
+        let weightEntries = (try? decoder.decode([WeightEntry].self, from: weightData.data)) ?? []
+        try await AppDatabase.shared.dbPool.write { db in
+            for entry in weightEntries { try entry.save(db) }
+        }
     }
 
     // MARK: - Last synced
