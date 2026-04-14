@@ -23,17 +23,19 @@ class AuthManager {
             switch event {
             case .initialSession, .signedIn, .tokenRefreshed:
                 if let session {
-                    self.session = session
+                    await MainActor.run { self.session = session }
                     await loadUser(session)
                 } else {
-                    self.isLoading = false
+                    await MainActor.run { self.isLoading = false }
                 }
             case .signedOut:
-                self.session = nil
-                self.user = nil
-                self.isLoading = false
+                await MainActor.run {
+                    self.session = nil
+                    self.user = nil
+                    self.isLoading = false
+                }
             default:
-                self.isLoading = false
+                await MainActor.run { self.isLoading = false }
             }
         }
     }
@@ -42,8 +44,7 @@ class AuthManager {
 
     /// Builds the full User from the session + local/remote profile cache.
     func loadUser(_ session: Session) async {
-        isLoading = true
-        defer { isLoading = false }
+        await MainActor.run { isLoading = true }
 
         let userId = session.user.id.uuidString
 
@@ -71,8 +72,7 @@ class AuthManager {
         let settings = profile?.settings ?? .default
         let createdAtDate: Date? = session.user.createdAt
 
-        self.session = session
-        self.user = User(
+        let newUser = User(
             id: userId,
             email: session.user.email,
             name: profile?.name,
@@ -82,6 +82,12 @@ class AuthManager {
             createdAt: createdAtDate,
             settings: settings
         )
+
+        await MainActor.run {
+            self.session = session
+            self.user = newUser
+            self.isLoading = false
+        }
     }
 
     // MARK: - Sign in / sign up
@@ -118,7 +124,7 @@ class AuthManager {
         let profile = try? await ProfileRepository.findById(userId)
         let settings = profile?.settings ?? .default
 
-        self.user = User(
+        let newUser = User(
             id: userId,
             email: session.user.email,
             name: profile?.name,
@@ -128,6 +134,8 @@ class AuthManager {
             createdAt: session.user.createdAt,
             settings: settings
         )
+
+        await MainActor.run { self.user = newUser }
     }
 
     // MARK: - Helpers
