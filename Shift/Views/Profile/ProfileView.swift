@@ -13,6 +13,7 @@ struct ProfileView: View {
     @State private var frequencyProgress: FrequencyProgress?
     @State private var showFrequencyEditor = false
     @State private var activeExerciseGoals: [(goal: ExerciseGoal, exercise: Exercise)] = []
+    @State private var exerciseCurrentMaxes: [String: Double] = [:]  // exerciseId -> current max weight
     @State private var isLoadingGoals = false
     @State private var latestWeight: WeightEntry?
     @State private var previousWeight: WeightEntry?
@@ -530,8 +531,7 @@ struct ProfileView: View {
 
         return HStack(spacing: 12) {
             // Mini progress ring
-            let currentMax = activeExerciseGoals.first(where: { $0.goal.id == goal.id })
-                .map { _ in goal.baselineWeight } ?? goal.baselineWeight
+            let currentMax = exerciseCurrentMaxes[goal.exerciseId] ?? goal.baselineWeight
             let progress = goal.targetWeight > goal.baselineWeight
                 ? min(1.0, max(0, (currentMax - goal.baselineWeight) / (goal.targetWeight - goal.baselineWeight)))
                 : 0.0
@@ -671,6 +671,16 @@ struct ProfileView: View {
         let goals = (try? await ExerciseGoalRepository.findActiveForUser(userId)) ?? []
         let exerciseIds = goals.map(\.exerciseId)
         let exerciseMap = (try? await ExerciseRepository.findByIds(exerciseIds)) ?? [:]
+
+        // Fetch current max weight for each exercise to show accurate progress rings
+        var maxes: [String: Double] = [:]
+        for exerciseId in Set(exerciseIds) {
+            if let max = try? await ExerciseGoalRepository.findCurrentMaxWeight(exerciseId: exerciseId) {
+                maxes[exerciseId] = max
+            }
+        }
+        exerciseCurrentMaxes = maxes
+
         activeExerciseGoals = goals.compactMap { goal in
             guard let exercise = exerciseMap[goal.exerciseId] else { return nil }
             return (goal: goal, exercise: exercise)
@@ -745,6 +755,7 @@ struct FrequencyGoalEditorSheet: View {
 
     @State private var target: Int = 3
     @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
@@ -771,6 +782,15 @@ struct FrequencyGoalEditorSheet: View {
                         }
                     }
                     .listRowBackground(colors.surface)
+
+                    if let saveError {
+                        Section {
+                            Text(saveError)
+                                .font(.system(size: 13))
+                                .foregroundStyle(colors.danger)
+                        }
+                        .listRowBackground(colors.surface)
+                    }
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -804,9 +824,16 @@ struct FrequencyGoalEditorSheet: View {
 
     private func save() async {
         isSaving = true
+        saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.weeklyFrequencyGoal = target
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
         isSaving = false
@@ -816,9 +843,16 @@ struct FrequencyGoalEditorSheet: View {
 
     private func clearGoal() async {
         isSaving = true
+        saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.weeklyFrequencyGoal = nil
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to remove goal: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
         isSaving = false
@@ -838,6 +872,7 @@ struct StepGoalEditorSheet: View {
 
     @State private var stepGoal: Int = 10000
     @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
@@ -865,6 +900,15 @@ struct StepGoalEditorSheet: View {
                         }
                     }
                     .listRowBackground(colors.surface)
+
+                    if let saveError {
+                        Section {
+                            Text(saveError)
+                                .font(.system(size: 13))
+                                .foregroundStyle(colors.danger)
+                        }
+                        .listRowBackground(colors.surface)
+                    }
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -898,9 +942,16 @@ struct StepGoalEditorSheet: View {
 
     private func save() async {
         isSaving = true
+        saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.dailyStepGoal = stepGoal
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
@@ -909,9 +960,16 @@ struct StepGoalEditorSheet: View {
 
     private func clearGoal() async {
         isSaving = true
+        saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.dailyStepGoal = nil
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to remove goal: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         isSaving = false
         onSaved?()

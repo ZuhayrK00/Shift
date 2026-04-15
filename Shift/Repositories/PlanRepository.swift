@@ -121,6 +121,11 @@ struct PlanRepository {
 
     static func delete(_ id: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
+            // Delete child plan_exercises first to avoid orphans
+            try db.execute(
+                sql: "DELETE FROM plan_exercises WHERE plan_id = ?",
+                arguments: [id]
+            )
             try db.execute(
                 sql: "DELETE FROM workout_plans WHERE id = ?",
                 arguments: [id]

@@ -118,10 +118,31 @@ struct ExerciseHistoryService {
         var estimated1RMPoints:   [ChartPoint] = []
         var totalVolumePoints:    [ChartPoint] = []
 
-        // Accumulators for personal-best stats
+        // Accumulators for personal-best stats (computed from ALL history, not filtered)
         var allTimeMaxWeight: Double = 0
         var allTimeMax1RM:    Double = 0
         var allTimeMaxVolume: Double = 0
+
+        for session in allHistory {
+            let allSets = session.sets.filter { $0.setType == .normal && $0.weight != nil }
+            guard !allSets.isEmpty else { continue }
+
+            let maxW = allSets.compactMap { $0.weight }.max() ?? 0
+            let vol = allSets.reduce(0.0) { acc, s in acc + (s.weight ?? 0) * Double(s.reps) }
+            let e1RM: Double = {
+                let best = allSets.max { a, b in
+                    let aEst = (a.weight ?? 0) * (1 + Double(a.reps) / 30)
+                    let bEst = (b.weight ?? 0) * (1 + Double(b.reps) / 30)
+                    return aEst < bEst
+                }
+                guard let s = best, let w = s.weight else { return 0 }
+                return w * (1 + Double(s.reps) / 30)
+            }()
+
+            if maxW > allTimeMaxWeight { allTimeMaxWeight = maxW }
+            if e1RM > allTimeMax1RM    { allTimeMax1RM    = e1RM }
+            if vol  > allTimeMaxVolume { allTimeMaxVolume = vol  }
+        }
 
         for session in filtered.reversed() {  // chronological for chart ordering
             let normalSets = session.sets.filter { $0.setType == .normal && $0.weight != nil }
@@ -146,10 +167,6 @@ struct ExerciseHistoryService {
             heaviestWeightPoints.append(ChartPoint(date: date, value: convertWeight(maxWeight, to: unit)))
             estimated1RMPoints.append(ChartPoint(date: date, value: convertWeight(est1RM, to: unit)))
             totalVolumePoints.append(ChartPoint(date: date, value: convertWeight(volume, to: unit)))
-
-            if maxWeight > allTimeMaxWeight { allTimeMaxWeight = maxWeight }
-            if est1RM    > allTimeMax1RM    { allTimeMax1RM    = est1RM    }
-            if volume    > allTimeMaxVolume { allTimeMaxVolume = volume    }
         }
 
         let personalBests: [PersonalBestStat] = [

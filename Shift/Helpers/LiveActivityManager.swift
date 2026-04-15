@@ -1,5 +1,8 @@
 import ActivityKit
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.shift.app", category: "LiveActivityManager")
 
 /// Manages the rest timer Live Activity. Start when a rest timer begins,
 /// end when it completes or the user skips.
@@ -10,8 +13,8 @@ enum LiveActivityManager {
     static func start(durationSeconds: Int) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        // End any existing activity first
-        stopCurrent()
+        // End any existing activity first (fire-and-forget but await internally)
+        Task { await endCurrentActivity() }
 
         let endTime = Date.now.addingTimeInterval(Double(durationSeconds))
         let state = RestTimerAttributes.TimerState(
@@ -20,7 +23,7 @@ enum LiveActivityManager {
         )
         let content = ActivityContent(
             state: state,
-            staleDate: endTime.addingTimeInterval(10)
+            staleDate: endTime
         )
 
         do {
@@ -31,20 +34,30 @@ enum LiveActivityManager {
             )
             currentActivityId = activity.id
         } catch {
-            // Live Activity failed — the in-app timer still works fine.
+            logger.error("Failed to start Live Activity: \(error.localizedDescription)")
         }
     }
 
     static func stop() {
-        stopCurrent()
+        Task { await endCurrentActivity() }
     }
 
-    private static func stopCurrent() {
-        guard let id = currentActivityId else { return }
-        let match = Activity<RestTimerAttributes>.activities.first { $0.id == id }
+    /// Ends all rest timer Live Activities — catches zombies left from background expiry.
+    static func endAllActivities() {
         Task {
-            await match?.end(nil, dismissalPolicy: .immediate)
+            for activity in Activity<RestTimerAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            currentActivityId = nil
         }
+    }
+
+    /// Ends the current Live Activity and waits for it to complete before clearing the ID.
+    /// This prevents zombie activities from being left on the Dynamic Island.
+    private static func endCurrentActivity() async {
+        guard let id = currentActivityId else { return }
         currentActivityId = nil
+        let match = Activity<RestTimerAttributes>.activities.first { $0.id == id }
+        await match?.end(nil, dismissalPolicy: .immediate)
     }
 }

@@ -118,6 +118,10 @@ class AuthManager {
         try await supabase.auth.signInWithOAuth(provider: .google)
     }
 
+    func updateEmail(_ newEmail: String) async throws {
+        try await supabase.auth.update(user: UserAttributes(email: newEmail))
+    }
+
     func signOut() async throws {
         try await supabase.auth.signOut()
     }
@@ -130,7 +134,8 @@ class AuthManager {
         guard let session else { return }
         let userId = session.user.id.uuidString.lowercased()
         let profile = try? await ProfileRepository.findById(userId)
-        let settings = profile?.settings ?? .default
+        // Only use settings from profile if we actually found one — never reset to defaults
+        let settings = profile?.settings ?? user?.settings ?? .default
 
         let newUser = User(
             id: userId,
@@ -148,7 +153,7 @@ class AuthManager {
 
     // MARK: - Helpers
 
-    var currentUserId: String? { session?.user.id.uuidString }
+    var currentUserId: String? { session?.user.id.uuidString.lowercased() }
 
     func requireUserId() throws -> String {
         guard let id = currentUserId else {

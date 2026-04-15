@@ -209,6 +209,33 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addMissingIndexes") { db in
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_workout_sessions_user_started
+                    ON workout_sessions (user_id, started_at)
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_session_sets_exercise
+                    ON session_sets (exercise_id)
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_plan_exercises_exercise
+                    ON plan_exercises (exercise_id)
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_plan_exercises_plan
+                    ON plan_exercises (plan_id)
+            """)
+
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_exercise_goals_user_completed
+                    ON exercise_goals (user_id, is_completed)
+            """)
+        }
+
         migrator.registerMigration("addWeightEntries") { db in
             try db.execute(sql: """
                 CREATE TABLE IF NOT EXISTS weight_entries (

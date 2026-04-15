@@ -21,27 +21,30 @@ struct SessionRepository {
         }
     }
 
-    static func findLatestInProgress() async throws -> WorkoutSession? {
+    static func findLatestInProgress(userId: String) async throws -> WorkoutSession? {
         try await AppDatabase.shared.dbPool.read { db in
             try WorkoutSession
+                .filter(Column("user_id") == userId)
                 .filter(Column("ended_at") == nil)
                 .order(Column("started_at").desc)
                 .fetchOne(db)
         }
     }
 
-    static func findCompleted() async throws -> [WorkoutSession] {
+    static func findCompleted(userId: String) async throws -> [WorkoutSession] {
         try await AppDatabase.shared.dbPool.read { db in
             try WorkoutSession
+                .filter(Column("user_id") == userId)
                 .filter(Column("ended_at") != nil)
                 .order(Column("started_at").asc)
                 .fetchAll(db)
         }
     }
 
-    static func findInProgress() async throws -> [WorkoutSession] {
+    static func findInProgress(userId: String) async throws -> [WorkoutSession] {
         try await AppDatabase.shared.dbPool.read { db in
             try WorkoutSession
+                .filter(Column("user_id") == userId)
                 .filter(Column("ended_at") == nil)
                 .order(Column("started_at").asc)
                 .fetchAll(db)
@@ -120,6 +123,11 @@ struct SessionRepository {
 
     static func delete(_ sessionId: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
+            // Delete child session_sets first to avoid orphans
+            try db.execute(
+                sql: "DELETE FROM session_sets WHERE session_id = ?",
+                arguments: [sessionId]
+            )
             try db.execute(
                 sql: "DELETE FROM workout_sessions WHERE id = ?",
                 arguments: [sessionId]

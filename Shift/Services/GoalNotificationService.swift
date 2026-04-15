@@ -41,8 +41,8 @@ enum GoalNotificationService {
             )
         }
 
-        // Step goal reminders
-        if settings.notifications.frequencyReminders, let stepGoal = settings.dailyStepGoal, stepGoal > 0 {
+        // Step goal reminders (separate toggle from frequency reminders)
+        if settings.notifications.stepGoalReminders, let stepGoal = settings.dailyStepGoal, stepGoal > 0 {
             scheduledCount += await scheduleStepGoalReminders(
                 stepGoal: stepGoal,
                 hour: notificationHour,
@@ -70,8 +70,9 @@ enum GoalNotificationService {
         // Fetch today's activity
         guard let activity = await HealthKitService.fetchTodayActivity() else { return }
 
-        // Check step goal
-        if let stepGoal = settings.dailyStepGoal, stepGoal > 0, activity.steps >= stepGoal {
+        // Check step goal (only if step notifications are enabled)
+        if settings.notifications.stepGoalReminders,
+           let stepGoal = settings.dailyStepGoal, stepGoal > 0, activity.steps >= stepGoal {
             // Cancel today's evening reminder — already hit
             NotificationManager.cancelNotifications(withPrefix: "shift.steps-remind-0")
             // Fire immediate congrats if not already sent today
@@ -83,15 +84,25 @@ enum GoalNotificationService {
         }
     }
 
+    /// Serial queue to prevent concurrent fireOnceToday calls from racing on UserDefaults.
+    private static let fireOnceLock = NSLock()
+
     /// Fires a notification immediately, but only once per calendar day.
     /// Uses UserDefaults to track which notifications were already sent.
+    /// Thread-safe: uses a lock to prevent duplicate notifications from concurrent calls.
     private static func fireOnceToday(id: String, title: String, body: String) {
+        fireOnceLock.lock()
+        defer { fireOnceLock.unlock() }
+
         let todayKey = toLocalDateKey(Date())
         let fullId = "\(id)-\(todayKey)"
 
         // Check if we already fired this notification today
         let sentKey = "shift.notification.sent.\(fullId)"
         guard !UserDefaults.standard.bool(forKey: sentKey) else { return }
+
+        // Mark as sent BEFORE scheduling to prevent duplicates
+        UserDefaults.standard.set(true, forKey: sentKey)
 
         let content = UNMutableNotificationContent()
         content.title = title
@@ -101,9 +112,6 @@ enum GoalNotificationService {
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(identifier: fullId, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)
-
-        // Mark as sent so it won't fire again today
-        UserDefaults.standard.set(true, forKey: sentKey)
 
         // Clean up old sent keys from previous days
         cleanupOldSentKeys(currentKey: todayKey, prefix: id)
@@ -410,15 +418,13 @@ enum GoalNotificationService {
             // Skip today if it's already past 8pm
             if dayOffset == 0 && cal.component(.hour, from: Date()) >= 20 { continue }
 
+            let targetDate = cal.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
             var comps = DateComponents()
+            comps.year = cal.component(.year, from: targetDate)
+            comps.month = cal.component(.month, from: targetDate)
+            comps.day = cal.component(.day, from: targetDate)
             comps.hour = 20
             comps.minute = 0
-            if dayOffset > 0 {
-                let futureDate = cal.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
-                comps.year = cal.component(.year, from: futureDate)
-                comps.month = cal.component(.month, from: futureDate)
-                comps.day = cal.component(.day, from: futureDate)
-            }
 
             let msg = stepReminderMessage(goal: formattedGoal)
             NotificationManager.scheduleGoalNotification(

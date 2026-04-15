@@ -12,6 +12,7 @@ struct ExerciseLogTabView: View {
     let weightUnit: String
     let weightIncrement: Double
     let selectedSetId: String?
+    var isBackfill: Bool = false
 
     @Binding var weight: Double
     @Binding var reps: Double
@@ -33,7 +34,7 @@ struct ExerciseLogTabView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
 
-                if timer.isActive {
+                if timer.isActive && !isBackfill {
                     RestTimerView(duration: restDuration, onDismiss: {})
                         .padding(.horizontal, 16)
                 }

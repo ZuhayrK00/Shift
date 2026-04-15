@@ -22,6 +22,7 @@ struct ExerciseLogView: View {
     @State private var restDuration: Int        = 90
     @State private var planExercise: PlanExercise?
     @State private var sessionDate: Date        = Date()
+    @State private var isBackfill               = false
     @State private var loading                  = true
 
     // MARK: - Tab enum
@@ -110,6 +111,7 @@ struct ExerciseLogView: View {
                 weightUnit: weightUnit,
                 weightIncrement: weightIncrement,
                 selectedSetId: selectedSetId,
+                isBackfill: isBackfill,
                 weight: $weight,
                 reps: $reps,
                 onAdd:    { Task { await addSet() } },
@@ -151,6 +153,10 @@ struct ExerciseLogView: View {
         let sess    = (try? await sessTask) ?? nil
         sessionDate = sess?.startedAt ?? Date()
 
+        // A session is a backfill if it's already ended OR started more than 12 hours ago
+        let sessionAge = Date().timeIntervalSince(sess?.startedAt ?? Date())
+        isBackfill = sess?.endedAt != nil || sessionAge > 12 * 3600
+
         let allSets = (try? await setsTask) ?? []
         sets = allSets
 
@@ -164,7 +170,10 @@ struct ExerciseLogView: View {
 
         seedStepperValues(from: allSets)
 
-        restDuration = authManager.user?.settings.restTimer.durationSeconds ?? 90
+        // Per-exercise rest duration takes priority over global setting
+        restDuration = planExercise?.restSeconds
+            ?? authManager.user?.settings.restTimer.durationSeconds
+            ?? 90
     }
 
     private func seedStepperValues(from allSets: [SessionSet]) {
@@ -188,6 +197,9 @@ struct ExerciseLogView: View {
     }
 
     private func addSet() async {
+        // Don't log empty sets — require at least 1 rep
+        guard Int(reps) > 0 else { return }
+
         // If there's a placeholder (incomplete) set, complete it instead of creating a new one
         let loggedSet: SessionSet?
         if let placeholder = sets.first(where: { !$0.isCompleted }) {
@@ -207,9 +219,9 @@ struct ExerciseLogView: View {
             }
             loggedSet = newSet
         }
-        // Start rest timer after logging
+        // Start rest timer after logging — but not when backfilling old sessions
         let restEnabled = authManager.user?.settings.restTimer.enabled ?? true
-        if restEnabled {
+        if restEnabled && !isBackfill {
             if let gid = loggedSet?.groupId {
                 let roundDone = (try? await WorkoutService.isGroupRoundComplete(
                     sessionId: sessionId, groupId: gid)) ?? false

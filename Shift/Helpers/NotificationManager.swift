@@ -1,4 +1,7 @@
 import UserNotifications
+import os.log
+
+private let logger = Logger(subsystem: "com.shift.app", category: "NotificationManager")
 
 /// Lightweight wrapper around UNUserNotificationCenter for local notifications.
 enum NotificationManager {
@@ -9,6 +12,13 @@ enum NotificationManager {
 
     static let workoutIdleCategory = "SHIFT_WORKOUT_IDLE"
     static let finishWorkoutAction = "FINISH_WORKOUT"
+
+    /// Checks if notifications are authorized before scheduling.
+    /// Returns true if authorized, false otherwise.
+    private static func isAuthorized() async -> Bool {
+        let settings = await center.notificationSettings()
+        return settings.authorizationStatus == .authorized
+    }
 
     /// Registers notification categories with actions. Call once at app launch.
     static func registerCategories() {
@@ -42,23 +52,29 @@ enum NotificationManager {
 
     /// Schedule a notification to fire when the rest timer finishes.
     static func scheduleRestTimerNotification(seconds: Int) {
-        let content = UNMutableNotificationContent()
-        content.title = "Rest Complete"
-        content.body = "Time to get back to work 💪"
-        content.sound = .default
+        Task {
+            guard await isAuthorized() else {
+                logger.info("Skipping rest timer notification — not authorized")
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "Rest Complete"
+            content.body = "Time to get back to work 💪"
+            content.sound = .default
 
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: Double(max(seconds, 1)),
-            repeats: false
-        )
+            let trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: Double(max(seconds, 1)),
+                repeats: false
+            )
 
-        let request = UNNotificationRequest(
-            identifier: restTimerIdentifier,
-            content: content,
-            trigger: trigger
-        )
+            let request = UNNotificationRequest(
+                identifier: restTimerIdentifier,
+                content: content,
+                trigger: trigger
+            )
 
-        center.add(request)
+            try? await center.add(request)
+        }
     }
 
     /// Cancel any pending rest timer notification (e.g. user skipped the timer).
@@ -80,23 +96,26 @@ enum NotificationManager {
         body: String,
         at dateComponents: DateComponents
     ) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
+        Task {
+            guard await isAuthorized() else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
 
-        let trigger = UNCalendarNotificationTrigger(
-            dateMatching: dateComponents,
-            repeats: false
-        )
+            let trigger = UNCalendarNotificationTrigger(
+                dateMatching: dateComponents,
+                repeats: false
+            )
 
-        let request = UNNotificationRequest(
-            identifier: identifier,
-            content: content,
-            trigger: trigger
-        )
+            let request = UNNotificationRequest(
+                identifier: identifier,
+                content: content,
+                trigger: trigger
+            )
 
-        center.add(request)
+            try? await center.add(request)
+        }
     }
 
     // MARK: - Idle Workout
@@ -108,25 +127,28 @@ enum NotificationManager {
     static func scheduleIdleWorkoutNotification(sessionId: String, seconds: Int = 1800) {
         cancelIdleWorkoutNotification()
 
-        let content = UNMutableNotificationContent()
-        content.title = "Still working out?"
-        content.body = "You haven't logged a set in a while. Finish up or keep going?"
-        content.sound = .default
-        content.categoryIdentifier = workoutIdleCategory
-        content.userInfo = ["sessionId": sessionId]
+        Task {
+            guard await isAuthorized() else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Still working out?"
+            content.body = "You haven't logged a set in a while. Finish up or keep going?"
+            content.sound = .default
+            content.categoryIdentifier = workoutIdleCategory
+            content.userInfo = ["sessionId": sessionId]
 
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: Double(max(seconds, 1)),
-            repeats: false
-        )
+            let trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: Double(max(seconds, 1)),
+                repeats: false
+            )
 
-        let request = UNNotificationRequest(
-            identifier: idleWorkoutIdentifier,
-            content: content,
-            trigger: trigger
-        )
+            let request = UNNotificationRequest(
+                identifier: idleWorkoutIdentifier,
+                content: content,
+                trigger: trigger
+            )
 
-        center.add(request)
+            try? await center.add(request)
+        }
     }
 
     /// Cancel the idle workout notification (e.g. when a new set is logged or workout finishes).

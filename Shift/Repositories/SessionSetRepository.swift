@@ -115,7 +115,7 @@ struct SessionSetRepository {
 
     /// Top-N personal bests: heaviest weight ever lifted per exercise,
     /// plus the date of the session in which that weight was first achieved.
-    static func findPersonalBests(limit: Int = 10) async throws -> [PersonalBest] {
+    static func findPersonalBests(userId: String, limit: Int = 10) async throws -> [PersonalBest] {
         try await AppDatabase.shared.dbPool.read { db in
             let sql = """
                 SELECT
@@ -123,12 +123,13 @@ struct SessionSetRepository {
                     e.name      AS exercise_name,
                     e.equipment AS equipment,
                     pb.max_weight,
-                    ws.started_at
+                    MAX(ws.started_at) AS started_at
                 FROM (
-                    SELECT exercise_id, MAX(weight) AS max_weight
-                    FROM session_sets
-                    WHERE is_completed = 1 AND weight IS NOT NULL
-                    GROUP BY exercise_id
+                    SELECT ss.exercise_id, MAX(ss.weight) AS max_weight
+                    FROM session_sets ss
+                    JOIN workout_sessions w ON w.id = ss.session_id
+                    WHERE ss.is_completed = 1 AND ss.weight IS NOT NULL AND w.user_id = ?
+                    GROUP BY ss.exercise_id
                 ) pb
                 JOIN session_sets s
                     ON s.exercise_id = pb.exercise_id
@@ -137,12 +138,13 @@ struct SessionSetRepository {
                 JOIN workout_sessions ws
                     ON ws.id = s.session_id
                     AND ws.ended_at IS NOT NULL
+                    AND ws.user_id = ?
                 JOIN exercises e ON e.id = pb.exercise_id
                 GROUP BY pb.exercise_id
                 ORDER BY pb.max_weight DESC
                 LIMIT ?
                 """
-            let rows = try Row.fetchAll(db, sql: sql, arguments: [limit])
+            let rows = try Row.fetchAll(db, sql: sql, arguments: [userId, userId, limit])
             return rows.compactMap { row -> PersonalBest? in
                 guard let maxWeight: Double = row["max_weight"] else { return nil }
                 let startedAtString: String = row["started_at"] ?? ""
@@ -161,7 +163,7 @@ struct SessionSetRepository {
     }
 
     /// Exercise ids ordered by how recently they were used in a completed session.
-    static func findRecentlyUsedExerciseIds() async throws -> [String] {
+    static func findRecentlyUsedExerciseIds(userId: String) async throws -> [String] {
         try await AppDatabase.shared.dbPool.read { db in
             let rows = try Row.fetchAll(
                 db,
@@ -169,10 +171,11 @@ struct SessionSetRepository {
                     SELECT s.exercise_id
                     FROM session_sets s
                     JOIN workout_sessions ws ON ws.id = s.session_id
-                    WHERE s.is_completed = 1 AND ws.ended_at IS NOT NULL
+                    WHERE s.is_completed = 1 AND ws.ended_at IS NOT NULL AND ws.user_id = ?
                     GROUP BY s.exercise_id
                     ORDER BY MAX(ws.started_at) DESC
-                    """
+                    """,
+                arguments: [userId]
             )
             return rows.map { $0["exercise_id"] }
         }
@@ -222,6 +225,18 @@ struct SessionSetRepository {
         }
     }
 
+    /// Returns the number of completed sets in a session.
+    static func countCompleted(sessionId: String) async throws -> Int {
+        try await AppDatabase.shared.dbPool.read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM session_sets WHERE session_id = ? AND is_completed = 1",
+                arguments: [sessionId]
+            )
+            return count ?? 0
+        }
+    }
+
     // MARK: - Writes
 
     static func insert(_ set: SessionSet) async throws {
@@ -252,9 +267,10 @@ struct SessionSetRepository {
                 setClauses.append("is_completed = ?")
                 args.append((isCompleted ? 1 : 0).databaseValue)
                 if isCompleted {
-                    completedAt = Date()
+                    let now = Date()
+                    completedAt = now
                     setClauses.append("completed_at = ?")
-                    args.append(ISO8601DateFormatter.shared.string(from: completedAt!).databaseValue)
+                    args.append(ISO8601DateFormatter.shared.string(from: now).databaseValue)
                 } else {
                     setClauses.append("completed_at = NULL")
                 }

@@ -276,15 +276,7 @@ struct WorkoutView: View {
     }
 
     private func formatDuration(_ minutes: Int) -> String {
-        if minutes < 60 {
-            return "\(minutes) min"
-        }
-        let hrs = minutes / 60
-        let mins = minutes % 60
-        if mins == 0 {
-            return "\(hrs) hr"
-        }
-        return "\(hrs) hr \(mins) min"
+        WorkoutDurationEstimator.formatDuration(minutes: minutes)
     }
 
     // MARK: - Stats row

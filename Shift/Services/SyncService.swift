@@ -1,6 +1,9 @@
 import Foundation
+import os.log
 import Supabase
 @preconcurrency import GRDB
+
+private let logger = Logger(subsystem: "com.shift.app", category: "SyncService")
 
 // MARK: - SyncService
 
@@ -39,7 +42,8 @@ struct SyncService {
                 guard let data = row.payload.data(using: .utf8),
                       let payloadDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else {
-                    // Malformed row — remove it so it doesn't block the queue
+                    // Malformed row — log it before removing so data loss is diagnosable
+                    logger.error("Malformed mutation payload (id=\(row.id), table=\(row.tableName), op=\(row.op)): \(row.payload)")
                     try await MutationQueueRepository.delete(rowId: row.id)
                     flushed += 1
                     continue
@@ -52,6 +56,7 @@ struct SyncService {
                 case "update":
                     // Extract the row id from the payload; the rest goes into the SET clause
                     guard let rowId = payloadDict["id"] as? String else {
+                        logger.error("Update mutation missing 'id' (id=\(row.id), table=\(row.tableName))")
                         try await MutationQueueRepository.delete(rowId: row.id)
                         flushed += 1
                         continue
@@ -62,6 +67,7 @@ struct SyncService {
 
                 case "delete":
                     guard let rowId = payloadDict["id"] as? String else {
+                        logger.error("Delete mutation missing 'id' (id=\(row.id), table=\(row.tableName))")
                         try await MutationQueueRepository.delete(rowId: row.id)
                         flushed += 1
                         continue
@@ -69,7 +75,8 @@ struct SyncService {
                     try await executeDelete(table: row.tableName, id: rowId)
 
                 default:
-                    // Unknown op — remove to unblock
+                    // Unknown op — log and remove to unblock
+                    logger.error("Unknown mutation op '\(row.op)' (id=\(row.id), table=\(row.tableName))")
                     try await MutationQueueRepository.delete(rowId: row.id)
                     flushed += 1
                     continue
@@ -80,8 +87,10 @@ struct SyncService {
 
             } catch {
                 failed += 1
-                // Stop processing on error to preserve mutation ordering
-                break
+                logger.error("Mutation flush failed (id=\(row.id), table=\(row.tableName), op=\(row.op)): \(error.localizedDescription)")
+                // Skip this mutation and continue processing the rest.
+                // The failed mutation stays in the queue for the next flush attempt.
+                continue
             }
         }
 
@@ -110,7 +119,13 @@ struct SyncService {
             .select()
             .execute()
 
-        let muscleGroups = (try? JSONDecoder().decode([MuscleGroup].self, from: mgResponse.data)) ?? []
+        let muscleGroups: [MuscleGroup]
+        do {
+            muscleGroups = try JSONDecoder().decode([MuscleGroup].self, from: mgResponse.data)
+        } catch {
+            logger.error("Failed to decode muscle groups: \(error.localizedDescription)")
+            muscleGroups = []
+        }
         for mg in muscleGroups {
             try await MuscleGroupRepository.upsert(mg)
         }
@@ -123,7 +138,13 @@ struct SyncService {
             .execute()
 
         let decoder = JSONDecoder()
-        let exercises = (try? decoder.decode([Exercise].self, from: exResponse.data)) ?? []
+        let exercises: [Exercise]
+        do {
+            exercises = try decoder.decode([Exercise].self, from: exResponse.data)
+        } catch {
+            logger.error("Failed to decode exercises: \(error.localizedDescription)")
+            exercises = []
+        }
         try await ExerciseRepository.replaceBuiltIn(exercises)
 
         // Cache profile — but only if there are no pending profile mutations
@@ -166,7 +187,9 @@ struct SyncService {
             .select()
             .eq("created_by", value: userId)
             .execute()
-        let customExercises = (try? decoder.decode([Exercise].self, from: customExData.data)) ?? []
+        let customExercises: [Exercise]
+        do { customExercises = try decoder.decode([Exercise].self, from: customExData.data) }
+        catch { logger.error("Failed to decode custom exercises: \(error.localizedDescription)"); customExercises = [] }
         for ex in customExercises where !pendingIds.contains(ex.id) {
             try? await ExerciseRepository.upsert(ex)
         }
@@ -176,7 +199,9 @@ struct SyncService {
             .from("workout_plans")
             .select()
             .execute()
-        let plans = (try? decoder.decode([WorkoutPlan].self, from: plansData.data)) ?? []
+        let plans: [WorkoutPlan]
+        do { plans = try decoder.decode([WorkoutPlan].self, from: plansData.data) }
+        catch { logger.error("Failed to decode workout plans: \(error.localizedDescription)"); plans = [] }
         let activePlans = plans.filter { !pendingIds.contains($0.id) }
         try await AppDatabase.shared.dbPool.write { db in
             for plan in activePlans { try plan.save(db) }
@@ -190,7 +215,9 @@ struct SyncService {
                 .select()
                 .in("plan_id", values: planIds)
                 .execute()
-            let planExercises = (try? decoder.decode([PlanExercise].self, from: peData.data)) ?? []
+            let planExercises: [PlanExercise]
+            do { planExercises = try decoder.decode([PlanExercise].self, from: peData.data) }
+            catch { logger.error("Failed to decode plan exercises: \(error.localizedDescription)"); planExercises = [] }
             try await AppDatabase.shared.dbPool.write { db in
                 for pe in planExercises where !pendingIds.contains(pe.id) {
                     try pe.save(db)
@@ -203,7 +230,9 @@ struct SyncService {
             .from("workout_sessions")
             .select()
             .execute()
-        let sessions = (try? decoder.decode([WorkoutSession].self, from: sessionsData.data)) ?? []
+        let sessions: [WorkoutSession]
+        do { sessions = try decoder.decode([WorkoutSession].self, from: sessionsData.data) }
+        catch { logger.error("Failed to decode workout sessions: \(error.localizedDescription)"); sessions = [] }
         let activeSessions = sessions.filter { !pendingIds.contains($0.id) }
         try await AppDatabase.shared.dbPool.write { db in
             for session in activeSessions { try session.save(db) }
@@ -221,7 +250,9 @@ struct SyncService {
                     .select()
                     .in("session_id", values: batchIds)
                     .execute()
-                let sets = (try? decoder.decode([SessionSet].self, from: setsData.data)) ?? []
+                let sets: [SessionSet]
+                do { sets = try decoder.decode([SessionSet].self, from: setsData.data) }
+                catch { logger.error("Failed to decode session sets: \(error.localizedDescription)"); sets = [] }
                 try await AppDatabase.shared.dbPool.write { db in
                     for s in sets where !pendingIds.contains(s.id) {
                         try s.save(db)
@@ -235,7 +266,9 @@ struct SyncService {
             .from("exercise_goals")
             .select()
             .execute()
-        let goals = (try? decoder.decode([ExerciseGoal].self, from: goalsData.data)) ?? []
+        let goals: [ExerciseGoal]
+        do { goals = try decoder.decode([ExerciseGoal].self, from: goalsData.data) }
+        catch { logger.error("Failed to decode exercise goals: \(error.localizedDescription)"); goals = [] }
         try await AppDatabase.shared.dbPool.write { db in
             for goal in goals where !pendingIds.contains(goal.id) {
                 try goal.save(db)
@@ -247,7 +280,9 @@ struct SyncService {
             .from("weight_entries")
             .select()
             .execute()
-        let weightEntries = (try? decoder.decode([WeightEntry].self, from: weightData.data)) ?? []
+        let weightEntries: [WeightEntry]
+        do { weightEntries = try decoder.decode([WeightEntry].self, from: weightData.data) }
+        catch { logger.error("Failed to decode weight entries: \(error.localizedDescription)"); weightEntries = [] }
         try await AppDatabase.shared.dbPool.write { db in
             for entry in weightEntries where !pendingIds.contains(entry.id) {
                 try entry.save(db)

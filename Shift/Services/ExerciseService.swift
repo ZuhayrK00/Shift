@@ -29,11 +29,13 @@ struct ExerciseService {
 
     /// Exercise ids ordered by how recently they were used in a completed session.
     static func getRecentlyUsedExerciseIds() async throws -> [String] {
-        try await SessionSetRepository.findRecentlyUsedExerciseIds()
+        let userId = try authManager.requireUserId()
+        return try await SessionSetRepository.findRecentlyUsedExerciseIds(userId: userId)
     }
 
     /// Top-N personal bests: heaviest weight per exercise across all completed sessions.
     static func getPersonalBests(limit: Int = 10) async throws -> [PersonalBest] {
-        try await SessionSetRepository.findPersonalBests(limit: limit)
+        let userId = try authManager.requireUserId()
+        return try await SessionSetRepository.findPersonalBests(userId: userId, limit: limit)
     }
 }

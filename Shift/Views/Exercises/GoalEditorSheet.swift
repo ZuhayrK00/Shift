@@ -62,7 +62,7 @@ struct GoalEditorSheet: View {
                             Text("Target weight")
                                 .foregroundStyle(colors.text)
                             Spacer()
-                            let baseline = isEditing ? existingGoal!.baselineWeight : (currentMax ?? 0)
+                            let baseline = isEditing ? (existingGoal?.baselineWeight ?? 0) : (currentMax ?? 0)
                             let target = baseline + targetIncrease
                             Text(formatWeight(target, unit: weightUnit))
                                 .font(.system(size: 15, weight: .bold))

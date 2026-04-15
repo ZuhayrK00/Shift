@@ -96,9 +96,9 @@ struct ExercisePicker: View {
                 // Filter pills row
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        FilterPill(label: "Muscle", selected: $muscleFilter, options: muscles, colors: colors)
-                        FilterPill(label: "Equipment", selected: $equipFilter, options: equipment, colors: colors)
-                        FilterPill(label: "Level", selected: $levelFilter, options: levels, colors: colors)
+                        FilterPill(label: "Muscle", icon: "figure.strengthtraining.traditional", selected: $muscleFilter, options: muscles, colors: colors)
+                        FilterPill(label: "Equipment", icon: "dumbbell.fill", selected: $equipFilter, options: equipment, colors: colors)
+                        FilterPill(label: "Level", icon: "chart.bar.fill", selected: $levelFilter, options: levels, colors: colors)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -325,6 +325,7 @@ struct ExercisePicker: View {
 
 private struct FilterPill: View {
     let label: String
+    let icon: String
     @Binding var selected: String
     let options: [String]
     let colors: ShiftColors
@@ -337,16 +338,30 @@ private struct FilterPill: View {
         Button {
             showPicker = true
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
                 Text(isActive ? selected : label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .bold))
             }
-            .foregroundStyle(isActive ? .white : colors.muted)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(isActive ? colors.accent : colors.surface2)
+            .foregroundStyle(isActive ? .white : colors.text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                isActive
+                    ? AnyShapeStyle(LinearGradient(
+                        colors: [colors.accent, colors.accent.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                      ))
+                    : AnyShapeStyle(colors.surface2)
+            )
+            .overlay(
+                Capsule()
+                    .stroke(isActive ? .clear : colors.border.opacity(0.6), lineWidth: 1)
+            )
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)

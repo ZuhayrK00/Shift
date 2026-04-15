@@ -26,7 +26,7 @@ struct SettingsView: View {
                             icon: "person.fill",
                             iconColor: colors.accent,
                             title: "Profile",
-                            subtitle: "Name, age, photo"
+                            subtitle: "Name, email, age, photo"
                         )
                     }
                 }
@@ -148,12 +148,14 @@ private struct ProfileSettingsPage: View {
 
     var onSaved: (() -> Void)?
 
+    @State private var email = ""
     @State private var name = ""
     @State private var ageText = ""
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarData: Data?
     @State private var isSaving = false
     @State private var saveError: String?
+    @State private var emailSuccess: String?
 
     var body: some View {
         ZStack {
@@ -203,6 +205,14 @@ private struct ProfileSettingsPage: View {
                 .listRowBackground(colors.surface)
 
                 Section("Details") {
+                    LabeledContent("Email") {
+                        TextField("your@email.com", text: $email)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .foregroundStyle(colors.text)
+                    }
                     LabeledContent("Name") {
                         TextField("Your name", text: $name)
                             .multilineTextAlignment(.trailing)
@@ -217,6 +227,15 @@ private struct ProfileSettingsPage: View {
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
+
+                if let emailSuccess {
+                    Section {
+                        Text(emailSuccess)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.success)
+                    }
+                    .listRowBackground(colors.surface)
+                }
 
                 if let saveError {
                     Section {
@@ -244,7 +263,7 @@ private struct ProfileSettingsPage: View {
                             .foregroundStyle(colors.accent)
                     }
                 }
-                .disabled(isSaving)
+                .disabled(isSaving || !isValidEmail)
             }
         }
         .onAppear { populateFields() }
@@ -253,8 +272,21 @@ private struct ProfileSettingsPage: View {
         }
     }
 
+    private var isValidEmail: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let parts = trimmed.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              !parts[0].isEmpty,
+              parts[1].contains("."),
+              !parts[1].hasPrefix("."),
+              !parts[1].hasSuffix(".") else { return false }
+        return true
+    }
+
     private func populateFields() {
         guard let user = authManager.user else { return }
+        email = user.email ?? ""
         name = user.name ?? ""
         ageText = user.age.map { "\($0)" } ?? ""
     }
@@ -262,10 +294,33 @@ private struct ProfileSettingsPage: View {
     private func save() async {
         isSaving = true
         saveError = nil
+        emailSuccess = nil
 
+        // Handle email change if different from current
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let currentEmail = (authManager.user?.email ?? "").lowercased()
+        if !trimmedEmail.isEmpty && trimmedEmail != currentEmail {
+            do {
+                try await authManager.updateEmail(trimmedEmail)
+                emailSuccess = "A confirmation link has been sent to \(trimmedEmail). Check your inbox to verify the change."
+            } catch {
+                let message = error.localizedDescription
+                if message.localizedCaseInsensitiveContains("already registered")
+                    || message.localizedCaseInsensitiveContains("already been registered")
+                    || message.localizedCaseInsensitiveContains("email address is already") {
+                    saveError = "An account with that email already exists. Please use a different email."
+                } else {
+                    saveError = "Failed to update email: \(message)"
+                }
+                isSaving = false
+                return
+            }
+        }
+
+        let parsedAge = Int(ageText)
         var patch = ProfilePatch(
-            name: name.isEmpty ? nil : name,
-            age: Int(ageText)
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines),
+            age: parsedAge.flatMap { (1...120).contains($0) ? $0 : nil }
         )
 
         if let data = avatarData, let userId = authManager.currentUserId {
@@ -279,9 +334,20 @@ private struct ProfileSettingsPage: View {
             }
         }
 
-        _ = try? await ProfileService.updateProfile(patch)
+        do {
+            _ = try await ProfileService.updateProfile(patch)
+        } catch {
+            saveError = "Failed to save profile: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         isSaving = false
+
+        // If email was changed, stay on the page to show the confirmation message
+        if emailSuccess != nil {
+            return
+        }
         onSaved?()
         dismiss()
     }
@@ -310,6 +376,7 @@ private struct PreferencesSettingsPage: View {
     @State private var weekStartsOn = "monday"
     @State private var theme = "dark"
     @State private var isSaving = false
+    @State private var saveError: String?
 
     private let weightUnits = ["kg", "lbs"]
     private let distanceUnits = ["km", "mi"]
@@ -387,6 +454,15 @@ private struct PreferencesSettingsPage: View {
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
+
+                if let saveError {
+                    Section {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+                    .listRowBackground(colors.surface)
+                }
             }
             .scrollContentBackground(.hidden)
         }
@@ -426,7 +502,13 @@ private struct PreferencesSettingsPage: View {
         settings.distanceUnit = distanceUnit
         settings.weekStartsOn = weekStartsOn
         settings.theme = theme
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
@@ -446,6 +528,7 @@ private struct WorkoutSettingsPage: View {
     @State private var restTimerEnabled = true
     @State private var restTimerDuration = 90
     @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         ZStack {
@@ -472,6 +555,15 @@ private struct WorkoutSettingsPage: View {
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
+
+                if let saveError {
+                    Section {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+                    .listRowBackground(colors.surface)
+                }
             }
             .scrollContentBackground(.hidden)
         }
@@ -502,12 +594,19 @@ private struct WorkoutSettingsPage: View {
 
     private func save() async {
         isSaving = true
+        saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.restTimer = RestTimerSettings(
             enabled: restTimerEnabled,
             durationSeconds: restTimerDuration
         )
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         isSaving = false
         onSaved?()
@@ -533,7 +632,9 @@ private struct NotificationSettingsPage: View {
 
     @State private var exerciseGoalReminders = true
     @State private var frequencyReminders = true
+    @State private var stepGoalReminders = true
     @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         ZStack {
@@ -546,16 +647,28 @@ private struct NotificationSettingsPage: View {
 
                     Toggle("Frequency reminders", isOn: $frequencyReminders)
                         .tint(colors.accent)
+
+                    Toggle("Step goal reminders", isOn: $stepGoalReminders)
+                        .tint(colors.accent)
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
 
                 Section {
-                    Text("When enabled, you'll receive notifications to help you stay on track with your exercise weight goals and weekly gym frequency targets.")
+                    Text("When enabled, you'll receive notifications to help you stay on track with your exercise weight goals, weekly gym frequency targets, and daily step goals.")
                         .font(.system(size: 13))
                         .foregroundStyle(colors.muted)
                 }
                 .listRowBackground(colors.surface)
+
+                if let saveError {
+                    Section {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+                    .listRowBackground(colors.surface)
+                }
             }
             .scrollContentBackground(.hidden)
         }
@@ -581,17 +694,26 @@ private struct NotificationSettingsPage: View {
             let s = authManager.user?.settings ?? .default
             exerciseGoalReminders = s.notifications.exerciseGoalReminders
             frequencyReminders = s.notifications.frequencyReminders
+            stepGoalReminders = s.notifications.stepGoalReminders
         }
     }
 
     private func save() async {
         isSaving = true
+        saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.notifications = NotificationSettings(
             exerciseGoalReminders: exerciseGoalReminders,
-            frequencyReminders: frequencyReminders
+            frequencyReminders: frequencyReminders,
+            stepGoalReminders: stepGoalReminders
         )
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
         isSaving = false
@@ -614,6 +736,7 @@ private struct HealthSettingsPage: View {
     @State private var countExternal = false
     @State private var isSaving = false
     @State private var showAuthAlert = false
+    @State private var saveError: String?
 
     var body: some View {
         ZStack {
@@ -667,6 +790,15 @@ private struct HealthSettingsPage: View {
                     Text("Goals")
                 }
                 .listRowBackground(colors.surface)
+
+                if let saveError {
+                    Section {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+                    .listRowBackground(colors.surface)
+                }
             }
             .scrollContentBackground(.hidden)
         }
@@ -727,7 +859,13 @@ private struct HealthSettingsPage: View {
         settings.healthKit.syncBodyWeight = syncBodyWeight
         settings.healthKit.countExternalWorkouts = countExternal
 
-        _ = try? await ProfileService.updateSettings(settings)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
 
         // Auto-read weight from HealthKit when body weight sync is newly enabled
         if !wasEnabled.syncBodyWeight && syncBodyWeight {

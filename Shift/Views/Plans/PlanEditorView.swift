@@ -15,6 +15,7 @@ struct PlanEditorView: View {
     @State private var showDeleteAlert = false
     @State private var configuring: PlanExercise?
     @State private var showSavedToast = false
+    @State private var errorMessage: String?
 
     init(plan: WorkoutPlan, onDismiss: @escaping (_ deleted: Bool) -> Void) {
         self.plan = plan
@@ -122,6 +123,14 @@ struct PlanEditorView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently delete \"\(plan.name)\" and all its exercises.")
+        }
+        .alert("Error", isPresented: .init(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -251,19 +260,28 @@ struct PlanEditorView: View {
     private func saveName() async {
         let trimmed = planName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        try? await PlanService.updatePlan(plan.id, name: trimmed, notes: nil)
+        do {
+            try await PlanService.updatePlan(plan.id, name: trimmed, notes: nil)
+        } catch {
+            errorMessage = "Failed to save plan name: \(error.localizedDescription)"
+            return
+        }
         onDismiss(false)
     }
 
     private func addExercises(_ selected: [Exercise], asGroup: Bool) async {
         let ids = selected.map { $0.id }
-        guard let added = try? await PlanService.addExercises(
-            planId: plan.id,
-            exerciseIds: ids,
-            asGroup: asGroup
-        ) else { return }
-        exercises.append(contentsOf: added)
-        for ex in selected { exerciseMap[ex.id] = ex }
+        do {
+            let added = try await PlanService.addExercises(
+                planId: plan.id,
+                exerciseIds: ids,
+                asGroup: asGroup
+            )
+            exercises.append(contentsOf: added)
+            for ex in selected { exerciseMap[ex.id] = ex }
+        } catch {
+            errorMessage = "Failed to add exercises: \(error.localizedDescription)"
+        }
     }
 
     private func updateExercise(_ updated: PlanExercise) async {
@@ -274,21 +292,33 @@ struct PlanEditorView: View {
             targetWeight: updated.targetWeight,
             restSeconds: updated.restSeconds
         )
-        try? await PlanService.updateExercise(updated.id, patch: patch)
-        if let idx = exercises.firstIndex(where: { $0.id == updated.id }) {
-            exercises[idx] = updated
+        do {
+            try await PlanService.updateExercise(updated.id, patch: patch)
+            if let idx = exercises.firstIndex(where: { $0.id == updated.id }) {
+                exercises[idx] = updated
+            }
+        } catch {
+            errorMessage = "Failed to update exercise: \(error.localizedDescription)"
         }
     }
 
     private func removeExercise(_ pe: PlanExercise) async {
-        try? await PlanService.removeExercise(pe.id)
-        exercises.removeAll { $0.id == pe.id }
+        do {
+            try await PlanService.removeExercise(pe.id)
+            exercises.removeAll { $0.id == pe.id }
+        } catch {
+            errorMessage = "Failed to remove exercise: \(error.localizedDescription)"
+        }
     }
 
     private func deletePlan() async {
-        try? await PlanService.deletePlan(plan.id)
-        onDismiss(true)
-        dismiss()
+        do {
+            try await PlanService.deletePlan(plan.id)
+            onDismiss(true)
+            dismiss()
+        } catch {
+            errorMessage = "Failed to delete plan: \(error.localizedDescription)"
+        }
     }
 }
 

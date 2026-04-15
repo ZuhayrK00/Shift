@@ -86,16 +86,19 @@ struct ExercisesView: View {
                     HStack(spacing: 8) {
                         FilterChip(
                             label: activeMuscleId.flatMap { id in muscles.first { $0.id == id }?.name } ?? "Muscle",
+                            icon: "figure.strengthtraining.traditional",
                             isActive: activeMuscleId != nil
                         ) { showMuscleFilter = true }
 
                         FilterChip(
                             label: activeEquipment ?? "Equipment",
+                            icon: "dumbbell.fill",
                             isActive: activeEquipment != nil
                         ) { showEquipmentFilter = true }
 
                         FilterChip(
                             label: activeLevel.map { $0.capitalized } ?? "Level",
+                            icon: "chart.bar.fill",
                             isActive: activeLevel != nil
                         ) { showLevelFilter = true }
 
@@ -106,13 +109,18 @@ struct ExercisesView: View {
                                 activeLevel = nil
                             } label: {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 12))
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 10, weight: .bold))
                                     Text("Clear")
-                                        .font(.system(size: 13))
+                                        .font(.system(size: 13, weight: .semibold))
                                 }
-                                .foregroundStyle(colors.danger)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .background(colors.danger.opacity(0.85))
+                                .clipShape(Capsule())
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -318,27 +326,39 @@ struct ExerciseRow: View {
 private struct FilterChip: View {
     @Environment(\.shiftColors) private var colors
     let label: String
+    let icon: String
     let isActive: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
                 Text(label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .bold))
             }
             .foregroundStyle(isActive ? .white : colors.text)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(isActive ? colors.accent : colors.surface)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                isActive
+                    ? AnyShapeStyle(LinearGradient(
+                        colors: [colors.accent, colors.accent.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                      ))
+                    : AnyShapeStyle(colors.surface)
+            )
             .overlay(
                 Capsule()
-                    .stroke(isActive ? colors.accent : colors.border, lineWidth: 1)
+                    .stroke(isActive ? .clear : colors.border.opacity(0.6), lineWidth: 1)
             )
             .clipShape(Capsule())
         }
+        .buttonStyle(.plain)
     }
 }
 

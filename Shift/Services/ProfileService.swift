@@ -1,5 +1,8 @@
 import Foundation
+import os.log
 import Supabase
+
+private let logger = Logger(subsystem: "com.shift.app", category: "ProfileService")
 
 // MARK: - ProfilePatch
 
@@ -49,8 +52,14 @@ struct ProfileService {
         try await ProfileRepository.upsert(profile)
 
         // Build remote payload
-        let settingsData = (try? JSONEncoder().encode(profile.settings)) ?? Data()
-        let settingsDict = (try? JSONSerialization.jsonObject(with: settingsData)) as? [String: Any]
+        var settingsDict: [String: Any]?
+        do {
+            let settingsData = try JSONEncoder().encode(profile.settings)
+            settingsDict = try JSONSerialization.jsonObject(with: settingsData) as? [String: Any]
+        } catch {
+            logger.error("Failed to encode profile settings: \(error.localizedDescription)")
+            settingsDict = nil
+        }
 
         var payload: [String: Any] = [
             "id": userId,
@@ -113,12 +122,22 @@ struct ProfileService {
             return nil
         }
 
-        let createdAt = ISO8601DateFormatter.shared.date(from: remote.createdAt)
-            ?? ISO8601DateFormatter.sharedWithFractional.date(from: remote.createdAt)
-            ?? Date()
-        let updatedAt = ISO8601DateFormatter.shared.date(from: remote.updatedAt)
-            ?? ISO8601DateFormatter.sharedWithFractional.date(from: remote.updatedAt)
-            ?? Date()
+        let createdAt: Date
+        if let d = ISO8601DateFormatter.shared.date(from: remote.createdAt)
+            ?? ISO8601DateFormatter.sharedWithFractional.date(from: remote.createdAt) {
+            createdAt = d
+        } else {
+            logger.warning("Failed to parse profile createdAt '\(remote.createdAt)', falling back to now")
+            createdAt = Date()
+        }
+        let updatedAt: Date
+        if let d = ISO8601DateFormatter.shared.date(from: remote.updatedAt)
+            ?? ISO8601DateFormatter.sharedWithFractional.date(from: remote.updatedAt) {
+            updatedAt = d
+        } else {
+            logger.warning("Failed to parse profile updatedAt '\(remote.updatedAt)', falling back to now")
+            updatedAt = Date()
+        }
 
         let profile = Profile(
             id: remote.id,

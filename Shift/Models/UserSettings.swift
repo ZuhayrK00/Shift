@@ -31,10 +31,12 @@ struct HealthKitSettings: Codable, Hashable {
 struct NotificationSettings: Codable, Hashable {
     var exerciseGoalReminders: Bool = true
     var frequencyReminders: Bool = true
+    var stepGoalReminders: Bool = true
 
     enum CodingKeys: String, CodingKey {
         case exerciseGoalReminders = "exercise_goal_reminders"
         case frequencyReminders = "frequency_reminders"
+        case stepGoalReminders = "step_goal_reminders"
     }
 }
 

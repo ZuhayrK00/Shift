@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.shift.app", category: "WorkoutService")
 
 // MARK: - WorkoutService
 
@@ -47,22 +50,24 @@ struct WorkoutService {
     }
 
     static func getLatestInProgress() async throws -> WorkoutSession? {
-        try await SessionRepository.findLatestInProgress()
+        guard let userId = try? authManager.requireUserId() else { return nil }
+        return try await SessionRepository.findLatestInProgress(userId: userId)
     }
 
     static func finishSession(_ sessionId: String) async throws {
         NotificationManager.cancelIdleWorkoutNotification()
 
-        // Determine ended-at: use "now" for today's sessions, but for past-dated sessions
-        // use the latest set completion time (or startedAt + a small offset)
+        // Determine ended-at: use "now" for live sessions, but for past-dated (backfill)
+        // sessions estimate a reasonable duration based on sets logged.
         let endedAt: Date
         if let session = try await SessionRepository.findById(sessionId) {
             let now = Date()
             let sessionAge = now.timeIntervalSince(session.startedAt)
             if sessionAge > 12 * 3600 {
-                // Past-dated session — use the latest completed set time, or startedAt + 1 hour
-                let latestSet = try await SessionSetRepository.findLatestCompletedAt(sessionId: sessionId)
-                endedAt = latestSet ?? session.startedAt.addingTimeInterval(3600)
+                // Backfill — estimate duration from set count (≈3 min per set, minimum 15 min)
+                let setCount = try await SessionSetRepository.countCompleted(sessionId: sessionId)
+                let estimatedMinutes = max(15, setCount * 3)
+                endedAt = session.startedAt.addingTimeInterval(Double(estimatedMinutes * 60))
             } else {
                 endedAt = now
             }
@@ -77,35 +82,47 @@ struct WorkoutService {
         ])
 
         // Check exercise goals for completion and reschedule notifications
-        Task {
-            let exerciseIds = (try? await SessionSetRepository.findExerciseIds(sessionId: sessionId)) ?? []
+        do {
+            let exerciseIds = try await SessionSetRepository.findExerciseIds(sessionId: sessionId)
             for exerciseId in exerciseIds {
                 let goals = (try? await ExerciseGoalRepository.findByExercise(exerciseId)) ?? []
                 for goal in goals where !goal.isCompleted {
                     _ = try? await GoalService.checkGoalCompletion(goal.id)
                 }
             }
-            await GoalNotificationService.scheduleAllNotifications()
+        } catch {
+            logger.error("Failed to check goal completion after finishing session: \(error.localizedDescription)")
+        }
+        await GoalNotificationService.scheduleAllNotifications()
 
-            // Save workout to HealthKit if enabled
-            if authManager.user?.settings.healthKit.syncWorkouts == true {
-                if let session = try? await SessionRepository.findById(sessionId),
+        // Save workout to HealthKit if enabled
+        if authManager.user?.settings.healthKit.syncWorkouts == true {
+            do {
+                if let session = try await SessionRepository.findById(sessionId),
                    session.endedAt != nil {
-                    let eIds = (try? await SessionSetRepository.findExerciseIds(sessionId: sessionId)) ?? []
-                    let exerciseMap = (try? await ExerciseRepository.findByIds(eIds)) ?? [:]
+                    let eIds = try await SessionSetRepository.findExerciseIds(sessionId: sessionId)
+                    let exerciseMap = try await ExerciseRepository.findByIds(eIds)
                     let nameMap = exerciseMap.mapValues(\.name)
-                    try? await HealthKitService.saveWorkout(session: session, exerciseNames: nameMap)
+                    try await HealthKitService.saveWorkout(session: session, exerciseNames: nameMap)
                 }
+            } catch {
+                logger.error("Failed to save workout to HealthKit: \(error.localizedDescription)")
             }
         }
     }
 
     static func resumeSession(_ sessionId: String) async throws {
+        // Clear ended_at locally first - if this fails, don't enqueue or schedule
         try await SessionRepository.setEndedAt(sessionId, nil)
-        try await enqueue(table: "workout_sessions", op: "update", payload: [
-            "id": sessionId,
-            "ended_at": NSNull() as Any
-        ])
+        do {
+            try await enqueue(table: "workout_sessions", op: "update", payload: [
+                "id": sessionId,
+                "ended_at": NSNull() as Any
+            ])
+        } catch {
+            logger.error("Failed to enqueue session resume: \(error.localizedDescription)")
+            throw error
+        }
         NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
     }
 
@@ -259,12 +276,19 @@ struct WorkoutService {
     }
 
     static func updateSet(_ setId: String, patch: SetPatch) async throws {
-        try await SessionSetRepository.update(setId, patch: patch)
+        let completedAt = try await SessionSetRepository.update(setId, patch: patch)
 
         var remote: [String: Any] = ["id": setId]
         if let reps = patch.reps { remote["reps"] = reps }
         if let weight = patch.weight { remote["weight"] = weight }
-        if let isCompleted = patch.isCompleted { remote["is_completed"] = isCompleted }
+        if let isCompleted = patch.isCompleted {
+            remote["is_completed"] = isCompleted
+            if isCompleted, let completedAt {
+                remote["completed_at"] = ISO8601DateFormatter.shared.string(from: completedAt)
+            } else if !isCompleted {
+                remote["completed_at"] = NSNull()
+            }
+        }
         if let setNumber = patch.setNumber { remote["set_number"] = setNumber }
         if let setType = patch.setType { remote["set_type"] = setType.rawValue }
 
@@ -287,32 +311,37 @@ struct WorkoutService {
     // MARK: - Calendar summaries
 
     static func getCompletedSessionDates() async throws -> Set<String> {
-        let sessions = try await SessionRepository.findCompleted()
+        guard let userId = try? authManager.requireUserId() else { return [] }
+        let sessions = try await SessionRepository.findCompleted(userId: userId)
         return Set(sessions.map { toLocalDateKey($0.startedAt) })
     }
 
     static func getInProgressSessionDates() async throws -> Set<String> {
-        let sessions = try await SessionRepository.findInProgress()
+        guard let userId = try? authManager.requireUserId() else { return [] }
+        let sessions = try await SessionRepository.findInProgress(userId: userId)
         return Set(sessions.map { toLocalDateKey($0.startedAt) })
     }
 
     static func getCompletedSessions(for date: Date) async throws -> [SessionSummary] {
+        guard let userId = try? authManager.requireUserId() else { return [] }
         let key = toLocalDateKey(date)
-        let sessions = try await SessionRepository.findCompleted()
+        let sessions = try await SessionRepository.findCompleted(userId: userId)
         let onDate = sessions.filter { toLocalDateKey($0.startedAt) == key }
         return try await onDate.asyncMap { try await buildSummary($0) }
     }
 
     static func getInProgressSessions(for date: Date) async throws -> [SessionSummary] {
+        guard let userId = try? authManager.requireUserId() else { return [] }
         let key = toLocalDateKey(date)
-        let sessions = try await SessionRepository.findInProgress()
+        let sessions = try await SessionRepository.findInProgress(userId: userId)
         let onDate = sessions.filter { toLocalDateKey($0.startedAt) == key }
         return try await onDate.asyncMap { try await buildSummary($0) }
     }
 
     static func getInProgressSessionId(for date: Date) async throws -> String? {
+        guard let userId = try? authManager.requireUserId() else { return nil }
         let key = toLocalDateKey(date)
-        let sessions = try await SessionRepository.findInProgress()
+        let sessions = try await SessionRepository.findInProgress(userId: userId)
         return sessions.first(where: { toLocalDateKey($0.startedAt) == key })?.id
     }
 
@@ -407,11 +436,16 @@ enum WorkoutServiceError: LocalizedError {
 /// To avoid a hard coupling, the file exposes a module-level `authManager` that
 /// views bind before calling service functions. Alternatively, callers can pass
 /// a `userId` parameter directly — both patterns are supported.
+/// Thread-safe storage for the shared AuthManager reference.
+/// Uses a lock to prevent data races from concurrent async contexts.
+private let _authManagerLock = NSLock()
 private var _authManager: AuthManager?
 
 /// Set this once during app startup so WorkoutService can resolve the current user.
 var authManager: AuthManager {
     get {
+        _authManagerLock.lock()
+        defer { _authManagerLock.unlock() }
         guard let m = _authManager else {
             fatalError("authManager has not been set. Call setAuthManager(_:) on app launch.")
         }
@@ -420,7 +454,9 @@ var authManager: AuthManager {
 }
 
 func setAuthManager(_ manager: AuthManager) {
+    _authManagerLock.lock()
     _authManager = manager
+    _authManagerLock.unlock()
 }
 
 // MARK: - Sequence async helpers

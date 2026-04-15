@@ -1,5 +1,17 @@
 import Foundation
 
+enum WeightEntryError: LocalizedError {
+    case invalidWeight
+    case futureDate
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidWeight: return "Weight must be a positive number under 1000 kg."
+        case .futureDate: return "Recorded date cannot be in the future."
+        }
+    }
+}
+
 struct WeightEntryService {
 
     private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
@@ -8,6 +20,9 @@ struct WeightEntryService {
     }
 
     static func insert(_ entry: WeightEntry) async throws {
+        guard entry.weight > 0 && entry.weight < 1000 else { throw WeightEntryError.invalidWeight }
+        guard entry.recordedAt <= Date().addingTimeInterval(60) else { throw WeightEntryError.futureDate }
+
         try await WeightEntryRepository.insert(entry)
         try await enqueue(table: "weight_entries", op: "insert", payload: entryPayload(entry))
     }

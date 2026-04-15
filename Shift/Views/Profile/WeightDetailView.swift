@@ -416,7 +416,7 @@ struct WeightEntrySheet: View {
         guard authManager.user?.settings.healthKit.syncBodyWeight == true else { return }
         Task {
             guard let hkWeightKg = await HealthKitService.readLatestBodyWeight() else { return }
-            let displayWeight = weightUnit == "lbs" ? hkWeightKg * 2.20462 : hkWeightKg
+            let displayWeight = convertWeight(hkWeightKg, to: weightUnit)
             healthKitWeight = (displayWeight * 10).rounded() / 10
         }
     }
