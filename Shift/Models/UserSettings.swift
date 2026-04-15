@@ -70,4 +70,21 @@ struct UserSettings: Codable, Hashable {
         case notifications
         case healthKit = "health_kit"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        weightUnit = (try? container.decode(String.self, forKey: .weightUnit)) ?? "kg"
+        defaultWeightIncrement = (try? container.decode(Double.self, forKey: .defaultWeightIncrement)) ?? 2.5
+        distanceUnit = (try? container.decode(String.self, forKey: .distanceUnit)) ?? "km"
+        measurementUnit = (try? container.decode(String.self, forKey: .measurementUnit)) ?? "cm"
+        weekStartsOn = (try? container.decode(String.self, forKey: .weekStartsOn)) ?? "monday"
+        theme = (try? container.decode(String.self, forKey: .theme)) ?? "dark"
+        restTimer = (try? container.decode(RestTimerSettings.self, forKey: .restTimer)) ?? .init()
+        weeklyFrequencyGoal = try? container.decode(Int.self, forKey: .weeklyFrequencyGoal)
+        dailyStepGoal = try? container.decode(Int.self, forKey: .dailyStepGoal)
+        notifications = (try? container.decode(NotificationSettings.self, forKey: .notifications)) ?? .init()
+        healthKit = (try? container.decode(HealthKitSettings.self, forKey: .healthKit)) ?? .init()
+    }
+
+    init() {}
 }
