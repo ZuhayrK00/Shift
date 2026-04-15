@@ -88,11 +88,10 @@ struct HealthKitService {
 
         try await builder.beginCollection(at: startDate)
 
-        var metadata: [String: Any] = [
+        let metadata: [String: Any] = [
             "ShiftSessionId": session.id,
             HKMetadataKeyWorkoutBrandName: "Shift"
         ]
-        _ = metadata // suppress unused warning
 
         try await builder.addMetadata(metadata)
         try await builder.endCollection(at: endDate)

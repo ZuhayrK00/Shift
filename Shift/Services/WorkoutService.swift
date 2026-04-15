@@ -155,7 +155,7 @@ struct WorkoutService {
 
         // Immediately flush so the delete reaches Supabase before the app
         // is killed — prevents pullUserData from re-inserting the session.
-        try? await SyncService.flushQueue()
+        _ = try? await SyncService.flushQueue()
     }
 
     // MARK: - Exercises in session

@@ -64,7 +64,7 @@ struct SettingsView: View {
                             icon: "bell.fill",
                             iconColor: colors.danger,
                             title: "Notifications",
-                            subtitle: "Goal & frequency reminders"
+                            subtitle: "Goals, steps, progress reminders"
                         )
                     }
 
@@ -75,7 +75,7 @@ struct SettingsView: View {
                             icon: "lock.fill",
                             iconColor: .green,
                             title: "Privacy",
-                            subtitle: "Photo lock"
+                            subtitle: "Photo lock, delete account"
                         )
                     }
                 }
@@ -518,6 +518,13 @@ private struct PreferencesSettingsPage: View {
             weekStartsOn = s.weekStartsOn
             theme = s.theme
         }
+        .onChange(of: theme) { _, newTheme in
+            // Apply theme instantly without waiting for save
+            if var user = authManager.user {
+                user.settings.theme = newTheme
+                authManager.user = user
+            }
+        }
     }
 
     private func save() async {
@@ -954,6 +961,10 @@ private struct PrivacySettingsPage: View {
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var showAuthFailedAlert = false
+    @State private var showDeleteConfirmation = false
+    @State private var showFinalDeleteConfirmation = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
 
     var body: some View {
         ZStack {
@@ -1005,6 +1016,40 @@ private struct PrivacySettingsPage: View {
                     }
                     .listRowBackground(colors.surface)
                 }
+
+                // Delete Account
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            if isDeleting {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 16))
+                            Text(isDeleting ? "Deleting..." : "Delete Account")
+                                .font(.system(size: 15))
+                        }
+                        .foregroundStyle(colors.danger)
+                    }
+                    .disabled(isDeleting)
+                } footer: {
+                    Text("Permanently deletes your account and all associated data including workouts, plans, progress photos, and measurements. This cannot be undone.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(colors.muted)
+                }
+                .listRowBackground(colors.surface)
+
+                if let deleteError {
+                    Section {
+                        Text(deleteError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+                    .listRowBackground(colors.surface)
+                }
             }
             .scrollContentBackground(.hidden)
         }
@@ -1034,6 +1079,33 @@ private struct PrivacySettingsPage: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Could not verify your identity. The photo lock will remain enabled.")
+        }
+        .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue", role: .destructive) {
+                showFinalDeleteConfirmation = true
+            }
+        } message: {
+            Text("This will permanently delete your account and all your data. This action cannot be undone.")
+        }
+        .alert("Are you sure?", isPresented: $showFinalDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Everything", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+        } message: {
+            Text("All your workouts, plans, progress photos, measurements, and profile data will be permanently deleted.")
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeleting = true
+        deleteError = nil
+        do {
+            try await AccountDeletionService.deleteAccount()
+        } catch {
+            deleteError = "Failed to delete account: \(error.localizedDescription)"
+            isDeleting = false
         }
     }
 

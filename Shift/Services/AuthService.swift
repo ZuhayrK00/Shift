@@ -115,7 +115,10 @@ class AuthManager {
     }
 
     func signInWithGoogle() async throws {
-        try await supabase.auth.signInWithOAuth(provider: .google)
+        try await supabase.auth.signInWithOAuth(
+            provider: .google,
+            redirectTo: URL(string: "com.zuhayrk.shift://callback")
+        )
     }
 
     func updateEmail(_ newEmail: String) async throws {

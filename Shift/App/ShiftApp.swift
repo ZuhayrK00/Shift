@@ -1,6 +1,7 @@
 import SwiftUI
 import GRDB
 import UserNotifications
+import Supabase
 
 // MARK: - Notification Delegate
 
@@ -60,6 +61,9 @@ struct ShiftApp: App {
                 .environment(authManager)
                 .preferredColorScheme(preferredScheme)
                 .shiftTheme()
+                .onOpenURL { url in
+                    supabase.auth.handle(url)
+                }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {

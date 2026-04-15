@@ -7,5 +7,8 @@ import Supabase
 let supabase = SupabaseClient(
     supabaseURL: URL(string: "https://dtzlfvuazdrgyyutjysm.supabase.co")!,
     supabaseKey: "sb_publishable_-rxave3eqYlrkEwuOisRFg_IjgA135r",
-    options: .init(auth: .init(redirectToURL: URL(string: "com.zuhayrk.shift://callback")))
+    options: .init(auth: .init(
+        redirectToURL: URL(string: "com.zuhayrk.shift://callback"),
+        emitLocalSessionAsInitialSession: true
+    ))
 )

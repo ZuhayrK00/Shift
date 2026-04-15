@@ -67,6 +67,7 @@ struct UserSettings: Codable, Hashable {
     var notifications: NotificationSettings = .init()
     var healthKit: HealthKitSettings = .init()
     var lockPhotos: Bool = false
+    var hasCompletedOnboarding: Bool = false
 
     static let `default` = UserSettings()
 
@@ -83,6 +84,7 @@ struct UserSettings: Codable, Hashable {
         case notifications
         case healthKit = "health_kit"
         case lockPhotos = "lock_photos"
+        case hasCompletedOnboarding = "has_completed_onboarding"
     }
 
     init(from decoder: Decoder) throws {
@@ -99,6 +101,7 @@ struct UserSettings: Codable, Hashable {
         notifications = (try? container.decode(NotificationSettings.self, forKey: .notifications)) ?? .init()
         healthKit = (try? container.decode(HealthKitSettings.self, forKey: .healthKit)) ?? .init()
         lockPhotos = (try? container.decode(Bool.self, forKey: .lockPhotos)) ?? false
+        hasCompletedOnboarding = (try? container.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
     }
 
     init() {}

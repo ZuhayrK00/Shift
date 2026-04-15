@@ -23,9 +23,10 @@ struct SignUpView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Header
                     VStack(alignment: .leading, spacing: 8) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundStyle(colors.accent)
+                        Image("ShiftLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 56, height: 56)
                             .padding(.bottom, 8)
 
                         Text("Create account")

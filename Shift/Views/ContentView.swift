@@ -4,12 +4,24 @@ struct ContentView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
 
+    @State private var onboardingCheckDone = false
+    @State private var showOnboarding = false
+
     var body: some View {
         Group {
             if authManager.isLoading {
                 loadingView
             } else if authManager.session == nil {
                 SignInView()
+            } else if !onboardingCheckDone {
+                loadingView
+                    .task { await checkOnboardingNeeded() }
+            } else if showOnboarding {
+                OnboardingView()
+                    .task {
+                        // Pull reference data so exercise picker works during onboarding
+                        _ = try? await SyncService.pullReferenceData()
+                    }
             } else {
                 MainTabView()
                     .task {
@@ -26,6 +38,49 @@ struct ContentView: View {
                     }
             }
         }
+        .onChange(of: authManager.currentUserId) { _, _ in
+            // Reset onboarding state when user changes (sign out → sign in, or account deletion)
+            onboardingCheckDone = false
+            showOnboarding = false
+        }
+        .onChange(of: authManager.user?.settings.hasCompletedOnboarding) { _, newValue in
+            if newValue == true {
+                showOnboarding = false
+            }
+        }
+    }
+
+    private func checkOnboardingNeeded() async {
+        guard let user = authManager.user else {
+            onboardingCheckDone = true
+            return
+        }
+
+        // Already completed — skip
+        if user.settings.hasCompletedOnboarding {
+            onboardingCheckDone = true
+            return
+        }
+
+        // Check if this is an existing user with data (sessions or plans)
+        if let userId = try? authManager.requireUserId() {
+            let sessions = (try? await SessionRepository.findCompleted(userId: userId)) ?? []
+            let plans = (try? await PlanService.listPlans()) ?? []
+
+            if !sessions.isEmpty || !plans.isEmpty {
+                // Existing user — auto-mark onboarding complete, skip it
+                var settings = user.settings
+                settings.hasCompletedOnboarding = true
+                _ = try? await ProfileService.updateSettings(settings)
+                await authManager.refreshUser()
+                onboardingCheckDone = true
+                return
+            }
+        }
+
+        // New user — show onboarding
+        showOnboarding = true
+        onboardingCheckDone = true
     }
 
     private func autoReadHealthKitWeightIfNeeded() async {
@@ -60,9 +115,10 @@ struct ContentView: View {
         ZStack {
             colors.accent.ignoresSafeArea()
             VStack(spacing: 16) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 48, weight: .bold))
-                    .foregroundStyle(.white)
+                Image("ShiftLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 80, height: 80)
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.2)
