@@ -4,7 +4,7 @@ import SwiftUI
 //
 // Full-screen story-style card (9:16) rendered as an image for sharing.
 // Designed to look great on Instagram Stories, iMessage, etc.
-// Uses hard-coded dark colours so it renders consistently.
+// Adapts to light/dark mode for consistent branding.
 
 struct WorkoutShareCard: View {
     let workoutName: String
@@ -32,13 +32,15 @@ struct WorkoutShareCard: View {
         var setType: SetType
     }
 
-    // Hard-coded palette
-    private let bg       = Color(hex: "#0b0b0f")
-    private let surface  = Color(hex: "#16161d")
-    private let surface2 = Color(hex: "#1f1f29")
-    private let border   = Color(hex: "#2a2a36")
-    private let text     = Color(hex: "#f5f5f7")
-    private let muted    = Color(hex: "#9a9aae")
+    @Environment(\.colorScheme) private var colorScheme
+
+    // Dynamic palette
+    private var bg: Color       { colorScheme == .dark ? Color(hex: "#0b0b0f") : Color(hex: "#f5f5f7") }
+    private var surface: Color  { colorScheme == .dark ? Color(hex: "#16161d") : Color(hex: "#e8e8ed") }
+    private var surface2: Color { colorScheme == .dark ? Color(hex: "#1f1f29") : Color(hex: "#dddde3") }
+    private var border: Color   { colorScheme == .dark ? Color(hex: "#2a2a36") : Color(hex: "#d0d0d8") }
+    private var text: Color     { colorScheme == .dark ? Color(hex: "#f5f5f7") : Color(hex: "#1a1a1f") }
+    private var muted: Color    { colorScheme == .dark ? Color(hex: "#9a9aae") : Color(hex: "#6e6e80") }
     private let accent   = Color(hex: "#7c5cff")
     private let accent2  = Color(hex: "#22d3ee")
     private let success  = Color(hex: "#22c55e")
@@ -125,8 +127,8 @@ struct WorkoutShareCard: View {
                 .frame(width: 360, height: 360)
                 .offset(x: -140, y: 260)
 
-            // Noise overlay for texture
-            bg.opacity(0.3)
+            // Overlay for texture
+            bg.opacity(colorScheme == .dark ? 0.3 : 0.1)
         }
     }
 

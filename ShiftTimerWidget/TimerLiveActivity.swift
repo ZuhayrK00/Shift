@@ -9,7 +9,7 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-struct ShiftTimerWidget: Widget {
+struct RestTimerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RestTimerAttributes.self) { context in
             // ── Lock Screen / Notification Banner ────────────────────────────

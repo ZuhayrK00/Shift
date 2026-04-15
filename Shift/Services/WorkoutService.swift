@@ -116,6 +116,9 @@ struct WorkoutService {
                 logger.error("Failed to save workout to HealthKit: \(error.localizedDescription)")
             }
         }
+
+        // Update widget data
+        Task { await WidgetDataService.updateSnapshot() }
     }
 
     static func resumeSession(_ sessionId: String) async throws {

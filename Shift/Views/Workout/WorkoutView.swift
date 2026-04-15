@@ -19,8 +19,9 @@ struct ExerciseBlock: Identifiable {
 struct WorkoutView: View {
     let sessionId: String
 
-    @Environment(\.shiftColors) private var colors
-    @Environment(\.dismiss)    private var dismiss
+    @Environment(\.shiftColors)  private var colors
+    @Environment(\.dismiss)      private var dismiss
+    @Environment(\.colorScheme)  private var colorScheme
     @Environment(AuthManager.self) private var authManager
 
     private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
@@ -553,7 +554,7 @@ struct WorkoutView: View {
             avgHeartRate: sessionAvgHeartRate
         )
 
-        let renderer = ImageRenderer(content: card)
+        let renderer = ImageRenderer(content: card.environment(\.colorScheme, colorScheme))
         renderer.scale = 2.0
         if let image = renderer.uiImage {
             shareImage = image

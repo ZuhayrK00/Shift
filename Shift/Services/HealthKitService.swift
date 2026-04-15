@@ -259,6 +259,12 @@ struct HealthKitService {
         }
     }
 
+    /// Public accessor for today's step count (used by WidgetDataService).
+    static func fetchStepsForWidget() async -> Int {
+        guard isAvailable else { return 0 }
+        return await fetchSteps(for: Date())
+    }
+
     /// Reads total step count for a given date.
     private static func fetchSteps(for date: Date) async -> Int {
         let cal = Calendar.current

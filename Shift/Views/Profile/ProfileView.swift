@@ -57,13 +57,7 @@ struct ProfileView: View {
                     personalBestsCard
                         .padding(.horizontal, 16)
 
-                    // Attribution
-                    Text("Shift · Built with SwiftUI")
-                        .font(.system(size: 11))
-                        .foregroundStyle(colors.muted.opacity(0.4))
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-                        .padding(.bottom, 32)
+                    Spacer().frame(height: 32)
                 }
             }
         }
@@ -777,42 +771,107 @@ struct FrequencyGoalEditorSheet: View {
     @State private var isSaving = false
     @State private var saveError: String?
 
+    private let weekdays = ["M", "T", "W", "T", "F", "S", "S"]
+
     var body: some View {
         NavigationStack {
             ZStack {
                 colors.bg.ignoresSafeArea()
 
-                Form {
-                    Section("Sessions per week") {
-                        Stepper(
-                            "\(target) day\(target == 1 ? "" : "s")",
-                            value: $target,
-                            in: 1...7
-                        )
-                        .foregroundStyle(colors.text)
-                    }
-                    .listRowBackground(colors.surface)
+                VStack(spacing: 32) {
+                    Spacer()
 
-                    Section {
-                        Button(role: .destructive) {
-                            Task { await clearGoal() }
+                    // Icon
+                    ZStack {
+                        Circle()
+                            .fill(Color.purple.opacity(0.15))
+                            .frame(width: 80, height: 80)
+                        Image(systemName: "calendar")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundStyle(.purple)
+                    }
+
+                    // Value display
+                    VStack(spacing: 6) {
+                        Text("\(target)")
+                            .font(.system(size: 64, weight: .bold, design: .rounded))
+                            .foregroundStyle(colors.text)
+                            .contentTransition(.numericText())
+                            .animation(.snappy(duration: 0.2), value: target)
+
+                        Text(target == 1 ? "session per week" : "sessions per week")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(colors.muted)
+                    }
+
+                    // +/- controls
+                    HStack(spacing: 20) {
+                        Button {
+                            if target > 1 { target -= 1 }
                         } label: {
-                            Text("Remove Goal")
-                                .frame(maxWidth: .infinity)
+                            Image(systemName: "minus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(target > 1 ? colors.text : colors.muted.opacity(0.4))
+                                .frame(width: 56, height: 56)
+                                .background(colors.surface, in: Circle())
                         }
-                    }
-                    .listRowBackground(colors.surface)
+                        .disabled(target <= 1)
 
-                    if let saveError {
-                        Section {
-                            Text(saveError)
-                                .font(.system(size: 13))
-                                .foregroundStyle(colors.danger)
+                        Button {
+                            if target < 7 { target += 1 }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(target < 7 ? colors.text : colors.muted.opacity(0.4))
+                                .frame(width: 56, height: 56)
+                                .background(colors.surface, in: Circle())
                         }
-                        .listRowBackground(colors.surface)
+                        .disabled(target >= 7)
                     }
+
+                    // Day dots
+                    HStack(spacing: 10) {
+                        ForEach(0..<7, id: \.self) { index in
+                            VStack(spacing: 6) {
+                                Circle()
+                                    .fill(index < target ? Color.purple : colors.surface)
+                                    .frame(width: 32, height: 32)
+                                    .overlay {
+                                        if index < target {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(.white)
+                                        }
+                                    }
+                                Text(weekdays[index])
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(index < target ? colors.text : colors.muted)
+                            }
+                        }
+                    }
+                    .animation(.snappy(duration: 0.2), value: target)
+
+                    Spacer()
+
+                    // Error
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+
+                    // Remove goal
+                    Button {
+                        Task { await clearGoal() }
+                    } label: {
+                        Text("Remove Goal")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(colors.danger.opacity(0.8))
+                    }
+
+                    Spacer().frame(height: 8)
                 }
-                .scrollContentBackground(.hidden)
+                .padding(.horizontal, 24)
             }
             .navigationTitle("Weekly Goal")
             .navigationBarTitleDisplayMode(.inline)
@@ -894,43 +953,112 @@ struct StepGoalEditorSheet: View {
     @State private var isSaving = false
     @State private var saveError: String?
 
+    private var progress: Double {
+        min(Double(stepGoal) / 50000.0, 1.0)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 colors.bg.ignoresSafeArea()
 
-                Form {
-                    Section("Daily Step Goal") {
-                        Stepper(
-                            formatSteps(stepGoal) + " steps",
-                            value: $stepGoal,
-                            in: 1000...50000,
-                            step: 1000
-                        )
-                        .foregroundStyle(colors.text)
-                    }
-                    .listRowBackground(colors.surface)
+                VStack(spacing: 32) {
+                    Spacer()
 
-                    Section {
-                        Button(role: .destructive) {
-                            Task { await clearGoal() }
+                    // Icon in ring
+                    ZStack {
+                        Circle()
+                            .stroke(Color.green.opacity(0.15), lineWidth: 6)
+                            .frame(width: 100, height: 100)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(Color.green, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                            .frame(width: 100, height: 100)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.snappy(duration: 0.3), value: stepGoal)
+                        Image(systemName: "shoeprints.fill")
+                            .font(.system(size: 32, weight: .semibold))
+                            .foregroundStyle(.green)
+                    }
+
+                    // Value display
+                    VStack(spacing: 6) {
+                        Text(formatSteps(stepGoal))
+                            .font(.system(size: 56, weight: .bold, design: .rounded))
+                            .foregroundStyle(colors.text)
+                            .contentTransition(.numericText())
+                            .animation(.snappy(duration: 0.2), value: stepGoal)
+
+                        Text("steps per day")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(colors.muted)
+                    }
+
+                    // +/- controls
+                    HStack(spacing: 20) {
+                        Button {
+                            if stepGoal > 1000 { stepGoal -= 1000 }
                         } label: {
-                            Text("Remove Goal")
-                                .frame(maxWidth: .infinity)
+                            Image(systemName: "minus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(stepGoal > 1000 ? colors.text : colors.muted.opacity(0.4))
+                                .frame(width: 56, height: 56)
+                                .background(colors.surface, in: Circle())
                         }
-                    }
-                    .listRowBackground(colors.surface)
+                        .disabled(stepGoal <= 1000)
 
-                    if let saveError {
-                        Section {
-                            Text(saveError)
-                                .font(.system(size: 13))
-                                .foregroundStyle(colors.danger)
+                        Button {
+                            if stepGoal < 50000 { stepGoal += 1000 }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(stepGoal < 50000 ? colors.text : colors.muted.opacity(0.4))
+                                .frame(width: 56, height: 56)
+                                .background(colors.surface, in: Circle())
                         }
-                        .listRowBackground(colors.surface)
+                        .disabled(stepGoal >= 50000)
                     }
+
+                    // Quick presets
+                    HStack(spacing: 10) {
+                        ForEach([5000, 8000, 10000, 12000, 15000], id: \.self) { preset in
+                            Button {
+                                stepGoal = preset
+                            } label: {
+                                Text(preset >= 10000 ? "\(preset / 1000)k" : "\(preset / 1000)k")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(stepGoal == preset ? .white : colors.text)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        stepGoal == preset ? Color.green : colors.surface,
+                                        in: Capsule()
+                                    )
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    // Error
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+
+                    // Remove goal
+                    Button {
+                        Task { await clearGoal() }
+                    } label: {
+                        Text("Remove Goal")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(colors.danger.opacity(0.8))
+                    }
+
+                    Spacer().frame(height: 8)
                 }
-                .scrollContentBackground(.hidden)
+                .padding(.horizontal, 24)
             }
             .navigationTitle("Step Goal")
             .navigationBarTitleDisplayMode(.inline)

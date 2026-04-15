@@ -16,6 +16,7 @@ struct TodayView: View {
     @State private var navigationPath = NavigationPath()
     @State private var activityData: ActivityData?
     @State private var showActivityDetail = false
+    @State private var currentStreak: Int = 0
 
     private var todayKey: String { toLocalDateKey(Date()) }
     private var selectedKey: String { toLocalDateKey(selectedDate) }
@@ -61,6 +62,13 @@ struct TodayView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 16)
+
+                        // Streak card (only on today)
+                        if isToday && currentStreak > 0 {
+                            streakCard
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 16)
+                        }
 
                         // Content
                         if isLoading {
@@ -238,6 +246,41 @@ struct TodayView: View {
         .padding(.top, 60)
     }
 
+    // MARK: - Streak card
+
+    private var streakCard: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(currentStreak) day streak")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(colors.text)
+                Text(currentStreak >= 7
+                     ? "You're on fire! Keep it up."
+                     : "Don't break the chain!")
+                    .font(.system(size: 13))
+                    .foregroundStyle(colors.muted)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(colors.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
     // MARK: - Activity card
 
     private func activityCard(_ activity: ActivityData) -> some View {
@@ -386,6 +429,7 @@ struct TodayView: View {
         isLoading = false
 
         await loadSessionsForDate()
+        await loadStreak()
 
         // Load HealthKit activity in background
         if HealthKitService.isAvailable {
@@ -419,6 +463,19 @@ struct TodayView: View {
         if HealthKitService.isAvailable {
             activityData = await HealthKitService.fetchActivity(for: selectedDate)
         }
+
+        await loadStreak()
+    }
+
+    private func loadStreak() async {
+        guard let userId = authManager.currentUserId else { return }
+        let allCompleted = (try? await SessionRepository.findCompleted(userId: userId)) ?? []
+        let settings = authManager.user?.settings ?? .default
+        let result = WidgetDataService.calculateStreak(
+            sessions: allCompleted,
+            weekStartsOn: settings.weekStartsOn
+        )
+        currentStreak = result.count
     }
 
     private func startWorkout(plan: WorkoutPlan?) async {

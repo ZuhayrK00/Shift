@@ -25,6 +25,7 @@ struct WeightEntryService {
 
         try await WeightEntryRepository.insert(entry)
         try await enqueue(table: "weight_entries", op: "insert", payload: entryPayload(entry))
+        Task { await WidgetDataService.updateSnapshot() }
     }
 
     static func delete(_ id: String) async throws {

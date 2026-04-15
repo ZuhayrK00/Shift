@@ -3,6 +3,10 @@ import GRDB
 import UserNotifications
 import Supabase
 
+extension Notification.Name {
+    static let shiftDeepLinkStartWorkout = Notification.Name("shiftDeepLinkStartWorkout")
+}
+
 // MARK: - Notification Delegate
 
 class ShiftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
@@ -62,12 +66,17 @@ struct ShiftApp: App {
                 .preferredColorScheme(preferredScheme)
                 .shiftTheme()
                 .onOpenURL { url in
-                    supabase.auth.handle(url)
+                    if url.host == "start-workout" {
+                        NotificationCenter.default.post(name: .shiftDeepLinkStartWorkout, object: nil)
+                    } else {
+                        supabase.auth.handle(url)
+                    }
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await GoalNotificationService.checkAndNotifyGoalCompletion() }
+                Task { await WidgetDataService.updateSnapshot() }
             }
         }
     }
