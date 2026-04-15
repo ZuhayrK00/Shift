@@ -49,6 +49,7 @@ struct SupersetContainerView: View {
                             sets: block.sets,
                             planExercise: planExerciseMap[block.exercise.id],
                             weightUnit: weightUnit,
+                            note: block.note,
                             readOnly: true,
                             onRemove: {},
                             onChangeSetType: { _, _ in }

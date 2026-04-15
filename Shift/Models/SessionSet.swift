@@ -24,6 +24,7 @@ struct SessionSet: Identifiable, Hashable, Codable {
     var completedAt: Date?
     var setType: SetType
     var groupId: String?
+    var notes: String?
 
     /// Badge label shown on the set row: "W", "D", "F" for special types, or the set number for normal.
     var badgeLabel: String {
@@ -46,12 +47,14 @@ struct SessionSet: Identifiable, Hashable, Codable {
         case completedAt = "completed_at"
         case setType = "set_type"
         case groupId = "group_id"
+        case notes
     }
 
     init(id: String, sessionId: String, exerciseId: String, setNumber: Int,
          reps: Int = 0, weight: Double? = nil, rpe: Double? = nil,
          isCompleted: Bool = false, completedAt: Date? = nil,
-         setType: SetType = .normal, groupId: String? = nil) {
+         setType: SetType = .normal, groupId: String? = nil,
+         notes: String? = nil) {
         self.id = id
         self.sessionId = sessionId
         self.exerciseId = exerciseId
@@ -63,6 +66,7 @@ struct SessionSet: Identifiable, Hashable, Codable {
         self.completedAt = completedAt
         self.setType = setType
         self.groupId = groupId
+        self.notes = notes
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +80,7 @@ struct SessionSet: Identifiable, Hashable, Codable {
         rpe = try container.decodeIfPresent(Double.self, forKey: .rpe)
         isCompleted = try container.decode(Bool.self, forKey: .isCompleted)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
         setType = (try? container.decode(SetType.self, forKey: .setType)) ?? .normal
 
         if let completedAtString = try container.decodeIfPresent(String.self, forKey: .completedAt) {
@@ -97,6 +102,7 @@ struct SessionSet: Identifiable, Hashable, Codable {
         try container.encodeIfPresent(rpe, forKey: .rpe)
         try container.encode(isCompleted, forKey: .isCompleted)
         try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(notes, forKey: .notes)
         try container.encode(setType, forKey: .setType)
         if let completedAt {
             try container.encode(ISO8601DateFormatter.shared.string(from: completedAt), forKey: .completedAt)
@@ -116,6 +122,7 @@ extension SessionSet: FetchableRecord {
         weight = row["weight"]
         rpe = row["rpe"]
         groupId = row["group_id"]
+        notes = row["notes"]
 
         let isCompletedInt: Int = row["is_completed"] ?? 0
         isCompleted = isCompletedInt != 0
@@ -147,6 +154,7 @@ extension SessionSet: PersistableRecord {
         container["completed_at"] = completedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
         container["set_type"] = setType.rawValue
         container["group_id"] = groupId
+        container["notes"] = notes
     }
 }
 

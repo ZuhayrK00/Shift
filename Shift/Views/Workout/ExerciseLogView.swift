@@ -24,6 +24,7 @@ struct ExerciseLogView: View {
     @State private var sessionDate: Date        = Date()
     @State private var isBackfill               = false
     @State private var loading                  = true
+    @State private var exerciseNote: String     = ""
 
     // MARK: - Tab enum
 
@@ -112,6 +113,7 @@ struct ExerciseLogView: View {
                 weightIncrement: weightIncrement,
                 selectedSetId: selectedSetId,
                 isBackfill: isBackfill,
+                exerciseNote: $exerciseNote,
                 weight: $weight,
                 reps: $reps,
                 onAdd:    { Task { await addSet() } },
@@ -128,7 +130,8 @@ struct ExerciseLogView: View {
                     } else {
                         selectedSetId = nil
                     }
-                }
+                },
+                onSaveNote: { Task { await saveNote() } }
             )
         case .info:
             if let ex = exercise { ExerciseDetailView(exercise: ex) }
@@ -167,6 +170,10 @@ struct ExerciseLogView: View {
                 .first { $0.exercise.id == exerciseId }?
                 .planExercise
         }
+
+        // Load exercise note
+        exerciseNote = (try? await WorkoutService.getExerciseNote(
+            sessionId: sessionId, exerciseId: exerciseId)) ?? ""
 
         seedStepperValues(from: allSets)
 
@@ -266,6 +273,13 @@ struct ExerciseLogView: View {
 
         selectedSetId = nil
         await reloadSets()
+    }
+
+    private func saveNote() async {
+        let trimmed = exerciseNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        try? await WorkoutService.setExerciseNote(
+            sessionId: sessionId, exerciseId: exerciseId, note: trimmed.isEmpty ? nil : trimmed
+        )
     }
 
     private func reloadSets() async {

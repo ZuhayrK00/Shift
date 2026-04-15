@@ -14,6 +14,7 @@ struct ExerciseLogTabView: View {
     let selectedSetId: String?
     var isBackfill: Bool = false
 
+    @Binding var exerciseNote: String
     @Binding var weight: Double
     @Binding var reps: Double
 
@@ -22,8 +23,11 @@ struct ExerciseLogTabView: View {
     var onDelete: () -> Void        = {}
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
     var onSelectSet: (SessionSet?) -> Void = { _ in }
+    var onSaveNote: () -> Void      = {}
 
     @Environment(\.shiftColors) private var colors
+    @FocusState private var noteIsFocused: Bool
+    @State private var showNoteField = false
 
     private var timer: RestTimerManager { .shared }
 
@@ -40,6 +44,9 @@ struct ExerciseLogTabView: View {
                 }
 
                 actionButtons
+                    .padding(.horizontal, 16)
+
+                notesSection
                     .padding(.horizontal, 16)
 
                 if !sets.isEmpty {
@@ -99,6 +106,102 @@ struct ExerciseLogTabView: View {
                         .frame(width: 46, height: 46)
                         .background(colors.danger.opacity(0.12))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Notes section
+
+    private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if showNoteField || !exerciseNote.isEmpty {
+                // Expanded note editor
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 12))
+                            .foregroundStyle(colors.muted)
+                        Text("Note")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(colors.muted)
+                            .textCase(.uppercase)
+                            .tracking(0.5)
+                        Spacer()
+
+                        // Done button (dismiss keyboard)
+                        if noteIsFocused {
+                            Button {
+                                noteIsFocused = false
+                                onSaveNote()
+                            } label: {
+                                Text("Done")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(colors.accent)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // Delete note button
+                        if !exerciseNote.isEmpty {
+                            Button {
+                                exerciseNote = ""
+                                noteIsFocused = false
+                                showNoteField = false
+                                onSaveNote()
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(colors.danger)
+                                    .padding(6)
+                                    .background(colors.danger.opacity(0.1))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    TextField("How did this exercise feel?", text: $exerciseNote, axis: .vertical)
+                        .font(.system(size: 14))
+                        .foregroundStyle(colors.text)
+                        .lineLimit(1...4)
+                        .focused($noteIsFocused)
+                        .padding(10)
+                        .background(colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(noteIsFocused ? colors.accent : colors.border, lineWidth: 1)
+                        )
+                        .onChange(of: noteIsFocused) {
+                            if !noteIsFocused { onSaveNote() }
+                        }
+                        .onAppear {
+                            if showNoteField && exerciseNote.isEmpty {
+                                noteIsFocused = true
+                            }
+                        }
+                }
+            } else {
+                // Collapsed — small "Add note" button
+                Button {
+                    showNoteField = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Add note")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundStyle(colors.muted)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(colors.surface)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().stroke(colors.border, lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
             }

@@ -9,6 +9,7 @@ struct SetPatch: Sendable {
     var isCompleted: Bool?
     var setNumber: Int?
     var setType: SetType?
+    var notes: String?
 }
 
 struct PersonalBest: Identifiable {
@@ -237,6 +238,52 @@ struct SessionSetRepository {
         }
     }
 
+    /// Returns the exercise note for a given exercise in a session.
+    /// Notes are stored on the first set; this reads whichever set has a non-null note.
+    static func findExerciseNote(sessionId: String, exerciseId: String) async throws -> String? {
+        try await AppDatabase.shared.dbPool.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT notes FROM session_sets
+                    WHERE session_id = ? AND exercise_id = ? AND notes IS NOT NULL
+                    LIMIT 1
+                    """,
+                arguments: [sessionId, exerciseId]
+            )
+            return row?["notes"] as String?
+        }
+    }
+
+    /// Sets the exercise note on the first set for the given exercise in a session.
+    static func setExerciseNote(sessionId: String, exerciseId: String, note: String?) async throws -> String? {
+        try await AppDatabase.shared.dbPool.write { db in
+            // Clear any existing notes on all sets for this exercise
+            try db.execute(
+                sql: "UPDATE session_sets SET notes = NULL WHERE session_id = ? AND exercise_id = ?",
+                arguments: [sessionId, exerciseId]
+            )
+            // Set the note on the first set (by set_number)
+            guard let trimmed = note, !trimmed.isEmpty else { return nil }
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT id FROM session_sets
+                    WHERE session_id = ? AND exercise_id = ?
+                    ORDER BY set_number ASC
+                    LIMIT 1
+                    """,
+                arguments: [sessionId, exerciseId]
+            )
+            guard let setId: String = row?["id"] else { return nil }
+            try db.execute(
+                sql: "UPDATE session_sets SET notes = ? WHERE id = ?",
+                arguments: [trimmed, setId]
+            )
+            return setId
+        }
+    }
+
     // MARK: - Writes
 
     static func insert(_ set: SessionSet) async throws {
@@ -282,6 +329,14 @@ struct SessionSetRepository {
             if let setType = patch.setType {
                 setClauses.append("set_type = ?")
                 args.append(setType.rawValue.databaseValue)
+            }
+            if let notes = patch.notes {
+                if notes.isEmpty {
+                    setClauses.append("notes = NULL")
+                } else {
+                    setClauses.append("notes = ?")
+                    args.append(notes.databaseValue)
+                }
             }
 
             guard !setClauses.isEmpty else { return nil }

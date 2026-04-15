@@ -8,6 +8,7 @@ struct ExerciseCard: View {
     let sets: [SessionSet]
     var planExercise: PlanExercise?
     var weightUnit: String = "kg"
+    var note: String? = nil
     var readOnly: Bool = false
     var onRemove: () -> Void = {}
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
@@ -80,6 +81,21 @@ struct ExerciseCard: View {
                         setRow(set)
                     }
                 }
+            }
+
+            // Exercise note
+            if let note, !note.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 11))
+                        .foregroundStyle(colors.muted)
+                    Text(note)
+                        .font(.system(size: 13))
+                        .foregroundStyle(colors.muted)
+                        .lineLimit(3)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
             }
 
             Spacer().frame(height: 12)

@@ -255,6 +255,12 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addSessionSetNotes") { db in
+            try db.execute(sql: """
+                ALTER TABLE session_sets ADD COLUMN notes TEXT
+            """)
+        }
+
         return migrator
     }
 }

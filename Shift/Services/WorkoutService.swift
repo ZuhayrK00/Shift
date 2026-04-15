@@ -291,6 +291,9 @@ struct WorkoutService {
         }
         if let setNumber = patch.setNumber { remote["set_number"] = setNumber }
         if let setType = patch.setType { remote["set_type"] = setType.rawValue }
+        if let notes = patch.notes {
+            remote["notes"] = notes.isEmpty ? NSNull() : notes as Any
+        }
 
         try await enqueue(table: "session_sets", op: "update", payload: remote)
 
@@ -306,6 +309,25 @@ struct WorkoutService {
         try await SessionSetRepository.delete(setId)
         try await enqueue(table: "session_sets", op: "delete", payload: ["id": setId])
         try await renumberSets(sessionId: ownership.sessionId, exerciseId: ownership.exerciseId)
+    }
+
+    // MARK: - Exercise notes
+
+    static func getExerciseNote(sessionId: String, exerciseId: String) async throws -> String? {
+        try await SessionSetRepository.findExerciseNote(sessionId: sessionId, exerciseId: exerciseId)
+    }
+
+    static func setExerciseNote(sessionId: String, exerciseId: String, note: String?) async throws {
+        let setId = try await SessionSetRepository.setExerciseNote(
+            sessionId: sessionId, exerciseId: exerciseId, note: note
+        )
+        // Sync the note to Supabase on the set that holds it
+        if let setId {
+            try await enqueue(table: "session_sets", op: "update", payload: [
+                "id": setId,
+                "notes": (note ?? "") as Any
+            ])
+        }
     }
 
     // MARK: - Calendar summaries
@@ -403,6 +425,7 @@ struct WorkoutService {
         payload["weight"] = set.weight.map { $0 as Any } ?? NSNull()
         payload["rpe"] = set.rpe.map { $0 as Any } ?? NSNull()
         payload["group_id"] = set.groupId.map { $0 as Any } ?? NSNull()
+        payload["notes"] = set.notes.map { $0 as Any } ?? NSNull()
         if let completedAt = set.completedAt {
             payload["completed_at"] = ISO8601DateFormatter.shared.string(from: completedAt)
         } else {
