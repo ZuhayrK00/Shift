@@ -16,6 +16,7 @@ enum GoalNotificationService {
         NotificationManager.cancelNotifications(withPrefix: "shift.exercise-goal-")
         NotificationManager.cancelNotifications(withPrefix: "shift.frequency-")
         NotificationManager.cancelNotifications(withPrefix: "shift.steps-")
+        NotificationManager.cancelNotifications(withPrefix: "shift.progress-")
 
         guard let userId = try? authManager.requireUserId() else { return }
 
@@ -45,6 +46,15 @@ enum GoalNotificationService {
         if settings.notifications.stepGoalReminders, let stepGoal = settings.dailyStepGoal, stepGoal > 0 {
             scheduledCount += await scheduleStepGoalReminders(
                 stepGoal: stepGoal,
+                hour: notificationHour,
+                budget: maxNotifications - scheduledCount
+            )
+        }
+
+        // Progress tracking reminders (measurements & photos)
+        if settings.notifications.progressReminders {
+            scheduledCount += await scheduleProgressReminders(
+                userId: userId,
                 hour: notificationHour,
                 budget: maxNotifications - scheduledCount
             )
@@ -451,5 +461,73 @@ enum GoalNotificationService {
         ])
     }
 
+    // MARK: - Progress Tracking Reminders
+
+    /// Schedules a reminder if the user hasn't logged measurements or photos recently.
+    /// Checks the most recent measurement and photo date; if both are older than 7 days
+    /// (or never logged), schedules a nudge for 3 days from now to give them time.
+    private static func scheduleProgressReminders(
+        userId: String,
+        hour: Int,
+        budget: Int
+    ) async -> Int {
+        guard budget > 0 else { return 0 }
+
+        let lastMeasurement = try? await BodyMeasurementRepository.findMostRecentDate(userId: userId)
+        let lastPhoto = try? await ProgressPhotoRepository.findMostRecentDate(userId: userId)
+
+        // Use the more recent of the two as the "last progress update"
+        let lastUpdate: Date? = [lastMeasurement, lastPhoto].compactMap { $0 }.max()
+
+        let cal = Calendar.current
+        let now = Date()
+
+        // If they logged something within the last 7 days, no reminder needed
+        if let lastUpdate, cal.dateComponents([.day], from: lastUpdate, to: now).day ?? 0 < 7 {
+            return 0
+        }
+
+        // Schedule a reminder 3 days from now (gives breathing room, not immediately nagging)
+        // If they've never logged anything, remind in 3 days (gentle onboarding nudge)
+        let daysOut = 3
+        guard let notifDate = cal.date(byAdding: .day, value: daysOut, to: cal.startOfDay(for: now)) else {
+            return 0
+        }
+
+        var comps = cal.dateComponents([.year, .month, .day], from: notifDate)
+        comps.hour = hour
+        comps.minute = 0
+
+        let msg: Message
+        if lastUpdate == nil {
+            // Never logged — onboarding nudge
+            msg = pickVariant([
+                Message(title: "Track your progress", body: "Log a measurement or snap a progress photo to start tracking your transformation."),
+                Message(title: "Start tracking", body: "Measurements and photos help you see changes you can't feel day to day."),
+                Message(title: "See your progress", body: "Add your first body measurement or progress photo — future you will thank you.")
+            ])
+        } else {
+            // Haven't logged in a while
+            let daysSince = cal.dateComponents([.day], from: lastUpdate!, to: now).day ?? 7
+            msg = pickVariant([
+                Message(title: "Progress check-in", body: "It's been \(daysSince) days since your last update. Time to log a measurement or photo."),
+                Message(title: "Update your progress", body: "Your last measurement was \(daysSince) days ago. A quick update keeps you on track."),
+                Message(title: "How's the progress?", body: "Haven't logged in \(daysSince) days. Take a moment to track where you're at."),
+                Message(title: "Time for an update", body: "Regular tracking reveals trends you'd otherwise miss. Log a quick measurement today."),
+                Message(title: "Stay consistent", body: "\(daysSince) days since your last progress entry. Consistency is key to seeing results.")
+            ])
+        }
+
+        NotificationManager.scheduleGoalNotification(
+            identifier: "shift.progress-remind",
+            title: msg.title,
+            body: msg.body,
+            at: comps
+        )
+
+        return 1
+    }
+
+    // MARK: Progress messages (used by scheduleProgressReminders above)
 
 }

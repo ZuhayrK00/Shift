@@ -15,10 +15,8 @@ struct ProfileView: View {
     @State private var activeExerciseGoals: [(goal: ExerciseGoal, exercise: Exercise)] = []
     @State private var exerciseCurrentMaxes: [String: Double] = [:]  // exerciseId -> current max weight
     @State private var isLoadingGoals = false
-    @State private var latestWeight: WeightEntry?
-    @State private var previousWeight: WeightEntry?
-    @State private var showWeightDetail = false
     @State private var showProgress = false
+    @State private var latestWeight: WeightEntry?
     @State private var latestMeasurements: [BodyMeasurement] = []
     @State private var latestProgressPhoto: ProgressPhoto?
     @State private var showStepGoalEditor = false
@@ -37,11 +35,7 @@ struct ProfileView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
 
-                    // Body weight
-                    weightCard
-                        .padding(.horizontal, 16)
-
-                    // Progress
+                    // Progress (weight, measurements, photos)
                     progressCard
                         .padding(.horizontal, 16)
 
@@ -85,11 +79,8 @@ struct ProfileView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: $showWeightDetail) {
-            WeightDetailView()
-        }
         .navigationDestination(isPresented: $showProgress) {
-            ProgressView()
+            ProgressTrackingView()
         }
         .navigationDestination(isPresented: $showSettings) {
             SettingsView(onSaved: {
@@ -116,7 +107,6 @@ struct ProfileView: View {
         .task {
             await loadPersonalBests()
             await loadExerciseGoals()
-            await loadWeightEntries()
             await loadProgressData()
             await loadTodaySteps()
             frequencyProgress = try? await GoalService.getFrequencyProgress()
@@ -181,145 +171,60 @@ struct ProfileView: View {
         )
     }
 
-    // MARK: - Weight card
-
-    private var weightCard: some View {
-        let weightUnit = user?.settings.weightUnit ?? "kg"
-        let diff: Double? = {
-            guard let l = latestWeight, let p = previousWeight else { return nil }
-            return l.weight - p.weight
-        }()
-
-        return Button {
-            showWeightDetail = true
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(colors.accent.opacity(0.12))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "scalemass.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(colors.accent)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Body Weight")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(colors.muted)
-                        .textCase(.uppercase)
-                        .kerning(0.3)
-
-                    if let latest = latestWeight {
-                        HStack(spacing: 6) {
-                            Text(formatWeightValue(latest.weight) + " " + weightUnit)
-                                .font(.system(size: 22, weight: .bold, design: .rounded))
-                                .foregroundStyle(colors.text)
-
-                            if let diff, abs(diff) > 0.05 {
-                                HStack(spacing: 2) {
-                                    Image(systemName: diff > 0 ? "arrow.up.right" : "arrow.down.right")
-                                        .font(.system(size: 10, weight: .bold))
-                                    Text("\(diff > 0 ? "+" : "")\(formatWeightValue(diff))")
-                                        .font(.system(size: 12, weight: .semibold))
-                                }
-                                .foregroundStyle(colors.muted)
-                            }
-                        }
-                    } else if let profileWeight = user?.weight {
-                        Text(formatWeightValue(profileWeight) + " " + weightUnit)
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(colors.text)
-                    } else {
-                        Text("Tap to log")
-                            .font(.system(size: 15))
-                            .foregroundStyle(colors.muted)
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(colors.muted)
-            }
-            .padding(16)
-            .background(colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(colors.border, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func formatWeightValue(_ value: Double) -> String {
-        value == value.rounded() ? String(format: "%.0f", value) : String(format: "%.1f", value)
-    }
-
     // MARK: - Progress card
 
     private var progressCard: some View {
-        let measurementUnit = user?.settings.measurementUnit ?? "cm"
+        let weightUnit = user?.settings.weightUnit ?? "kg"
 
         return Button {
             showProgress = true
         } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(colors.accent2.opacity(0.12))
-                        .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
                     Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 18))
-                        .foregroundStyle(colors.accent2)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
+                        .font(.system(size: 14))
+                        .foregroundStyle(colors.accent)
                     Text("Progress")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(colors.muted)
                         .textCase(.uppercase)
                         .kerning(0.3)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(colors.muted)
+                }
 
-                    if !latestMeasurements.isEmpty {
-                        let count = latestMeasurements.count
-                        let photoCount = latestProgressPhoto != nil ? 1 : 0
-                        Text("\(count) measurement\(count == 1 ? "" : "s") · \(photoCount > 0 ? "Photos" : "No photos")")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(colors.text)
-                    } else if latestProgressPhoto != nil {
-                        Text("Photos logged")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(colors.text)
+                HStack(spacing: 8) {
+                    progressCell(
+                        icon: "scalemass.fill",
+                        title: "Weight",
+                        value: latestWeight.map { formatWeightValue($0.weight) + " " + weightUnit },
+                        hasData: latestWeight != nil
+                    )
+                    progressCell(
+                        icon: "ruler",
+                        title: "Body",
+                        value: latestMeasurements.isEmpty ? nil : "\(latestMeasurements.count) logged",
+                        hasData: !latestMeasurements.isEmpty
+                    )
+                    if user?.settings.lockPhotos == true {
+                        progressCell(
+                            icon: "lock.fill",
+                            title: "Photos",
+                            value: "Locked",
+                            hasData: false
+                        )
                     } else {
-                        Text("Track measurements & photos")
-                            .font(.system(size: 15))
-                            .foregroundStyle(colors.muted)
+                        progressCell(
+                            icon: "camera.fill",
+                            title: "Photos",
+                            value: latestProgressPhoto != nil ? "Logged" : nil,
+                            hasData: latestProgressPhoto != nil
+                        )
                     }
                 }
-
-                Spacer()
-
-                // Show latest photo thumbnail if available
-                if let photo = latestProgressPhoto, let url = URL(string: photo.imageUrl) {
-                    CachedAsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        default:
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(colors.surface2)
-                        }
-                    }
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(colors.muted)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .background(colors.surface)
@@ -330,6 +235,30 @@ struct ProfileView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func progressCell(icon: String, title: String, value: String?, hasData: Bool) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(hasData ? colors.accent : colors.muted)
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(colors.muted)
+            Text(value ?? "—")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(hasData ? colors.text : colors.muted.opacity(0.5))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 10)
+        .background(colors.surface2)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func formatWeightValue(_ value: Double) -> String {
+        value == value.rounded() ? String(format: "%.0f", value) : String(format: "%.1f", value)
     }
 
     // MARK: - Step goal card
@@ -745,14 +674,15 @@ struct ProfileView: View {
 
     private func loadProgressData() async {
         latestMeasurements = (try? await ProgressService.getLatestPerType()) ?? []
-        latestProgressPhoto = try? await ProgressService.getLatestPhoto()
-    }
-
-    private func loadWeightEntries() async {
-        guard let userId = try? authManager.requireUserId() else { return }
-        let entries = (try? await WeightEntryRepository.findAll(userId: userId)) ?? []
-        latestWeight = entries.first
-        previousWeight = entries.count > 1 ? entries[1] : nil
+        if user?.settings.lockPhotos != true {
+            latestProgressPhoto = try? await ProgressService.getLatestPhoto()
+        } else {
+            latestProgressPhoto = nil
+        }
+        if let userId = try? authManager.requireUserId() {
+            let entries = (try? await WeightEntryRepository.findAll(userId: userId)) ?? []
+            latestWeight = entries.first
+        }
     }
 
     private func loadExerciseGoals() async {

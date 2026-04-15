@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import LocalAuthentication
 
 // MARK: - Settings Hub
 
@@ -64,6 +65,17 @@ struct SettingsView: View {
                             iconColor: colors.danger,
                             title: "Notifications",
                             subtitle: "Goal & frequency reminders"
+                        )
+                    }
+
+                    NavigationLink {
+                        PrivacySettingsPage(onSaved: onSaved)
+                    } label: {
+                        settingsRow(
+                            icon: "lock.fill",
+                            iconColor: .green,
+                            title: "Privacy",
+                            subtitle: "Photo lock"
                         )
                     }
                 }
@@ -648,6 +660,7 @@ private struct NotificationSettingsPage: View {
     @State private var exerciseGoalReminders = true
     @State private var frequencyReminders = true
     @State private var stepGoalReminders = true
+    @State private var progressReminders = true
     @State private var isSaving = false
     @State private var saveError: String?
 
@@ -665,12 +678,15 @@ private struct NotificationSettingsPage: View {
 
                     Toggle("Step goal reminders", isOn: $stepGoalReminders)
                         .tint(colors.accent)
+
+                    Toggle("Progress reminders", isOn: $progressReminders)
+                        .tint(colors.accent)
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
 
                 Section {
-                    Text("When enabled, you'll receive notifications to help you stay on track with your exercise weight goals, weekly gym frequency targets, and daily step goals.")
+                    Text("When enabled, you'll receive notifications to help you stay on track with your exercise weight goals, weekly gym frequency targets, daily step goals, and progress tracking.")
                         .font(.system(size: 13))
                         .foregroundStyle(colors.muted)
                 }
@@ -710,6 +726,7 @@ private struct NotificationSettingsPage: View {
             exerciseGoalReminders = s.notifications.exerciseGoalReminders
             frequencyReminders = s.notifications.frequencyReminders
             stepGoalReminders = s.notifications.stepGoalReminders
+            progressReminders = s.notifications.progressReminders
         }
     }
 
@@ -717,11 +734,12 @@ private struct NotificationSettingsPage: View {
         isSaving = true
         saveError = nil
         var settings = authManager.user?.settings ?? .default
-        settings.notifications = NotificationSettings(
-            exerciseGoalReminders: exerciseGoalReminders,
-            frequencyReminders: frequencyReminders,
-            stepGoalReminders: stepGoalReminders
-        )
+        var notifs = NotificationSettings()
+        notifs.exerciseGoalReminders = exerciseGoalReminders
+        notifs.frequencyReminders = frequencyReminders
+        notifs.stepGoalReminders = stepGoalReminders
+        notifs.progressReminders = progressReminders
+        settings.notifications = notifs
         do {
             _ = try await ProfileService.updateSettings(settings)
         } catch {
@@ -920,6 +938,144 @@ private struct HealthSettingsPage: View {
             recordedAt: Date()
         )
         _ = try? await WeightEntryService.insert(entry)
+    }
+}
+
+// MARK: - Privacy Settings Page
+
+private struct PrivacySettingsPage: View {
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.shiftColors) private var colors
+    @Environment(\.dismiss) private var dismiss
+
+    var onSaved: (() -> Void)?
+
+    @State private var lockPhotos = false
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var showAuthFailedAlert = false
+
+    var body: some View {
+        ZStack {
+            colors.bg.ignoresSafeArea()
+
+            Form {
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { lockPhotos },
+                        set: { newValue in
+                            if !newValue && lockPhotos {
+                                // Turning off — require authentication first
+                                authenticateToUnlock()
+                            } else {
+                                lockPhotos = newValue
+                            }
+                        }
+                    )) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "faceid")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.green)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Lock Photos")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(colors.text)
+                                Text("Require Face ID to view photos")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(colors.muted)
+                            }
+                        }
+                    }
+                    .tint(colors.accent)
+                }
+                .listRowBackground(colors.surface)
+
+                Section {
+                    Text("When enabled, the Photos tab in Progress will require Face ID or your device passcode to access.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(colors.muted)
+                }
+                .listRowBackground(colors.surface)
+
+                if let saveError {
+                    Section {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+                    .listRowBackground(colors.surface)
+                }
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Privacy")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    Task { await save() }
+                } label: {
+                    if isSaving {
+                        ProgressView().scaleEffect(0.8)
+                    } else {
+                        Text("Save")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(colors.accent)
+                    }
+                }
+                .disabled(isSaving)
+            }
+        }
+        .onAppear {
+            let s = authManager.user?.settings ?? .default
+            lockPhotos = s.lockPhotos
+        }
+        .alert("Authentication Failed", isPresented: $showAuthFailedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Could not verify your identity. The photo lock will remain enabled.")
+        }
+    }
+
+    private func authenticateToUnlock() {
+        let context = LAContext()
+        var error: NSError?
+
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Authenticate to disable photo lock"
+            ) { success, _ in
+                DispatchQueue.main.async {
+                    if success {
+                        lockPhotos = false
+                    } else {
+                        showAuthFailedAlert = true
+                    }
+                }
+            }
+        } else {
+            // No biometrics or passcode available — allow toggle
+            lockPhotos = false
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        saveError = nil
+        var settings = authManager.user?.settings ?? .default
+        settings.lockPhotos = lockPhotos
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
+        await authManager.refreshUser()
+        isSaving = false
+        onSaved?()
+        dismiss()
     }
 }
 

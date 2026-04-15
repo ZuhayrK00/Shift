@@ -2,12 +2,15 @@ import SwiftUI
 import Charts
 
 struct MeasurementsTabView: View {
+    @Binding var triggerAdd: Bool
+
     @Environment(\.shiftColors) private var colors
     @Environment(AuthManager.self) private var authManager
 
     @State private var latestPerType: [BodyMeasurement] = []
     @State private var isLoading = true
     @State private var showAddSheet = false
+    @State private var preselectedType: MeasurementType?
 
     private var measurementUnit: String {
         authManager.user?.settings.measurementUnit ?? "cm"
@@ -26,20 +29,16 @@ struct MeasurementsTabView: View {
             }
         }
         .task { await loadData() }
-        .sheet(isPresented: $showAddSheet) {
-            AddMeasurementSheet(unit: measurementUnit) {
+        .sheet(isPresented: $showAddSheet, onDismiss: { preselectedType = nil }) {
+            AddMeasurementSheet(unit: measurementUnit, preselectedType: preselectedType) {
                 Task { await loadData() }
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(colors.accent)
-                }
+        .onChange(of: triggerAdd) { _, val in
+            if val {
+                triggerAdd = false
+                preselectedType = nil
+                showAddSheet = true
             }
         }
     }
@@ -53,9 +52,29 @@ struct MeasurementsTabView: View {
             Text("No measurements yet")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(colors.text)
-            Text("Tap + to log your first measurement")
+            Text("Track body measurements to see your progress over time")
                 .font(.system(size: 14))
                 .foregroundStyle(colors.muted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button {
+                preselectedType = nil
+                showAddSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("Add Measurement")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(colors.accent)
+                .clipShape(Capsule())
+            }
+            .padding(.top, 4)
             Spacer()
         }
     }
@@ -87,6 +106,7 @@ struct MeasurementsTabView: View {
                         FlowLayout(spacing: 8) {
                             ForEach(untrackedTypes, id: \.rawValue) { type in
                                 Button {
+                                    preselectedType = type
                                     showAddSheet = true
                                 } label: {
                                     HStack(spacing: 4) {
@@ -169,10 +189,12 @@ struct MeasurementsTabView: View {
 
 struct AddMeasurementSheet: View {
     let unit: String
+    var preselectedType: MeasurementType?
     var onSave: (() -> Void)?
 
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var valueIsFocused: Bool
 
     @State private var selectedType: MeasurementType = .chest
     @State private var value = ""
@@ -181,7 +203,8 @@ struct AddMeasurementSheet: View {
     @State private var saveError: String?
 
     private var canSave: Bool {
-        Double(value) != nil && Double(value)! > 0
+        guard let v = Double(value) else { return false }
+        return v > 0
     }
 
     var body: some View {
@@ -189,42 +212,130 @@ struct AddMeasurementSheet: View {
             ZStack {
                 colors.bg.ignoresSafeArea()
 
-                Form {
-                    Section("Measurement Type") {
-                        Picker("Type", selection: $selectedType) {
-                            ForEach(MeasurementType.allCases, id: \.rawValue) { type in
-                                Text(type.displayName).tag(type)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Type selector
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Type")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(colors.muted)
+                                    .textCase(.uppercase)
+                                    .kerning(0.3)
+
+                                LazyVGrid(columns: [
+                                    GridItem(.flexible(), spacing: 8),
+                                    GridItem(.flexible(), spacing: 8),
+                                    GridItem(.flexible(), spacing: 8)
+                                ], spacing: 8) {
+                                    ForEach(MeasurementType.allCases, id: \.rawValue) { type in
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.15)) { selectedType = type }
+                                        } label: {
+                                            VStack(spacing: 6) {
+                                                Image(systemName: type.icon)
+                                                    .font(.system(size: 16))
+                                                Text(type.displayName)
+                                                    .font(.system(size: 11, weight: .medium))
+                                                    .lineLimit(1)
+                                                    .minimumScaleFactor(0.8)
+                                            }
+                                            .foregroundStyle(selectedType == type ? .white : colors.text)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .background(selectedType == type ? colors.accent : colors.surface)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(selectedType == type ? colors.accent : colors.border, lineWidth: 1)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+
+                            // Value input
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("Value")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(colors.muted)
+                                        .textCase(.uppercase)
+                                        .kerning(0.3)
+                                    Spacer()
+                                    if valueIsFocused {
+                                        Button("Done") { valueIsFocused = false }
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(colors.accent)
+                                    }
+                                }
+
+                                HStack(spacing: 12) {
+                                    TextField("0.0", text: $value)
+                                        .keyboardType(.decimalPad)
+                                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                                        .foregroundStyle(colors.text)
+                                        .focused($valueIsFocused)
+                                        .multilineTextAlignment(.center)
+
+                                    Text(unit)
+                                        .font(.system(size: 18, weight: .medium))
+                                        .foregroundStyle(colors.muted)
+                                }
+                                .padding(16)
+                                .background(colors.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(valueIsFocused ? colors.accent : colors.border, lineWidth: 1)
+                                )
+                            }
+                            .id("valueField")
+
+                            // Date
+                            HStack {
+                                Text("Date")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(colors.muted)
+                                    .textCase(.uppercase)
+                                    .kerning(0.3)
+                                Spacer()
+                                DatePicker("", selection: $recordedAt, in: ...Date(), displayedComponents: .date)
+                                    .labelsHidden()
+                                    .tint(colors.accent)
+                            }
+                            .padding(14)
+                            .background(colors.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(colors.border, lineWidth: 1)
+                            )
+
+                            if let saveError {
+                                Text(saveError)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(colors.danger)
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(colors.danger.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+
+                            // Spacer so keyboard doesn't cover content
+                            Spacer().frame(height: 120)
+                        }
+                        .padding(16)
+                    }
+                    .onChange(of: valueIsFocused) { _, focused in
+                        if focused {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                withAnimation { proxy.scrollTo("valueField", anchor: .center) }
                             }
                         }
-                        .foregroundStyle(colors.text)
-                    }
-                    .listRowBackground(colors.surface)
-
-                    Section("Value (\(unit))") {
-                        TextField("0.0", text: $value)
-                            .keyboardType(.decimalPad)
-                            .font(.system(size: 15))
-                            .foregroundStyle(colors.text)
-                    }
-                    .listRowBackground(colors.surface)
-
-                    Section("Date") {
-                        DatePicker("", selection: $recordedAt, displayedComponents: .date)
-                            .datePickerStyle(.compact)
-                            .foregroundStyle(colors.text)
-                    }
-                    .listRowBackground(colors.surface)
-
-                    if let saveError {
-                        Section {
-                            Text(saveError)
-                                .font(.system(size: 13))
-                                .foregroundStyle(colors.danger)
-                        }
-                        .listRowBackground(colors.danger.opacity(0.1))
                     }
                 }
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Add Measurement")
             .navigationBarTitleDisplayMode(.inline)
@@ -241,6 +352,9 @@ struct AddMeasurementSheet: View {
                     .foregroundStyle(canSave ? colors.accent : colors.muted)
                     .disabled(!canSave || saving)
                 }
+            }
+            .onAppear {
+                if let preselectedType { selectedType = preselectedType }
             }
         }
     }
@@ -295,12 +409,7 @@ struct MeasurementDetailView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Chart
-                        if entries.count >= 2 {
-                            chartSection
-                        }
-
-                        // History
+                        if entries.count >= 2 { chartSection }
                         historySection
                     }
                     .padding(.horizontal, 16)
@@ -324,7 +433,7 @@ struct MeasurementDetailView: View {
         }
         .task { await loadData() }
         .sheet(isPresented: $showAddSheet) {
-            AddMeasurementSheet(unit: measurementUnit) {
+            AddMeasurementSheet(unit: measurementUnit, preselectedType: type) {
                 Task { await loadData() }
             }
         }
@@ -430,7 +539,6 @@ struct MeasurementDetailView: View {
 
                         Spacer()
 
-                        // Change from previous
                         if let idx = entries.firstIndex(where: { $0.id == entry.id }),
                            idx + 1 < entries.count {
                             let prev = entries[idx + 1]

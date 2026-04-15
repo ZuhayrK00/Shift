@@ -25,6 +25,17 @@ struct ProgressPhotoRepository {
         }
     }
 
+    /// Most recent photo date for a user.
+    static func findMostRecentDate(userId: String) async throws -> Date? {
+        try await AppDatabase.shared.dbPool.read { db in
+            try ProgressPhoto
+                .filter(Column("user_id") == userId)
+                .order(Column("recorded_at").desc)
+                .fetchOne(db)?
+                .recordedAt
+        }
+    }
+
     // MARK: - Writes
 
     static func upsert(_ photo: ProgressPhoto) async throws {

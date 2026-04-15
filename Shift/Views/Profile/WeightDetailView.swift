@@ -1,7 +1,9 @@
 import SwiftUI
 import Charts
 
-struct WeightDetailView: View {
+struct WeightTabView: View {
+    @Binding var triggerAdd: Bool
+
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
 
@@ -12,44 +14,21 @@ struct WeightDetailView: View {
     private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
 
     var body: some View {
-        ZStack {
-            colors.bg.ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if isLoading {
-                        ProgressView()
-                            .tint(colors.accent)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
-                    } else if entries.isEmpty {
-                        emptyState
-                    } else {
-                        // Current weight summary
+        Group {
+            if isLoading {
+                Spacer()
+                ProgressView().tint(colors.accent)
+                Spacer()
+            } else if entries.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                         currentWeightCard
-
-                        // Chart
-                        if entries.count >= 2 {
-                            chartCard
-                        }
-
-                        // History list
+                        if entries.count >= 2 { chartCard }
                         historyCard
                     }
-                }
-                .padding(20)
-            }
-        }
-        .navigationTitle("Body Weight")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(colors.accent)
+                    .padding(20)
                 }
             }
         }
@@ -59,40 +38,47 @@ struct WeightDetailView: View {
             }
         }
         .task { await loadEntries() }
+        .onChange(of: triggerAdd) { _, val in
+            if val {
+                triggerAdd = false
+                showAddSheet = true
+            }
+        }
     }
 
     // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
+            Spacer()
             Image(systemName: "scalemass")
-                .font(.system(size: 40))
-                .foregroundStyle(colors.muted.opacity(0.5))
-
-            Text("No weight entries")
+                .font(.system(size: 36))
+                .foregroundStyle(colors.muted)
+            Text("No weight entries yet")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(colors.text)
-
-            Text("Track your body weight over time to see your progress.")
+            Text("Track your body weight over time")
                 .font(.system(size: 14))
                 .foregroundStyle(colors.muted)
-                .multilineTextAlignment(.center)
 
             Button {
                 showAddSheet = true
             } label: {
-                Text("Log Weight")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                    .background(colors.accent)
-                    .clipShape(Capsule())
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("Log Weight")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(colors.accent)
+                .clipShape(Capsule())
             }
             .padding(.top, 4)
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
     }
 
     // MARK: - Current weight card
@@ -286,7 +272,6 @@ struct WeightDetailView: View {
 
         var fetched = (try? await WeightEntryRepository.findAll(userId: userId)) ?? []
 
-        // Seed an initial entry from profile weight if table is empty
         if fetched.isEmpty, let profileWeight = authManager.user?.weight, profileWeight > 0 {
             let seed = WeightEntry(
                 id: UUID().uuidString.lowercased(),
@@ -403,7 +388,6 @@ struct WeightEntrySheet: View {
                 }
             }
             .onAppear {
-                // Pre-fill with current weight
                 if let w = authManager.user?.weight {
                     weightText = formatWeightValue(w)
                 }
@@ -439,11 +423,8 @@ struct WeightEntrySheet: View {
         )
 
         _ = try? await WeightEntryService.insert(entry)
-
-        // Update profile weight too
         _ = try? await ProfileService.updateProfile(ProfilePatch(weight: w))
 
-        // Sync to HealthKit if enabled
         if authManager.user?.settings.healthKit.syncBodyWeight == true {
             let weightKg = weightUnit == "lbs" ? w / 2.20462 : w
             _ = try? await HealthKitService.writeBodyWeight(weightKg, date: date)

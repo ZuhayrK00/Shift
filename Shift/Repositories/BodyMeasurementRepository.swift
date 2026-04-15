@@ -43,6 +43,17 @@ struct BodyMeasurementRepository {
         }
     }
 
+    /// Most recent measurement date for a user (any type).
+    static func findMostRecentDate(userId: String) async throws -> Date? {
+        try await AppDatabase.shared.dbPool.read { db in
+            try BodyMeasurement
+                .filter(Column("user_id") == userId)
+                .order(Column("recorded_at").desc)
+                .fetchOne(db)?
+                .recordedAt
+        }
+    }
+
     // MARK: - Writes
 
     static func upsert(_ measurement: BodyMeasurement) async throws {

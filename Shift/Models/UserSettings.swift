@@ -32,12 +32,24 @@ struct NotificationSettings: Codable, Hashable {
     var exerciseGoalReminders: Bool = true
     var frequencyReminders: Bool = true
     var stepGoalReminders: Bool = true
+    var progressReminders: Bool = true
 
     enum CodingKeys: String, CodingKey {
         case exerciseGoalReminders = "exercise_goal_reminders"
         case frequencyReminders = "frequency_reminders"
         case stepGoalReminders = "step_goal_reminders"
+        case progressReminders = "progress_reminders"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        exerciseGoalReminders = (try? container.decode(Bool.self, forKey: .exerciseGoalReminders)) ?? true
+        frequencyReminders = (try? container.decode(Bool.self, forKey: .frequencyReminders)) ?? true
+        stepGoalReminders = (try? container.decode(Bool.self, forKey: .stepGoalReminders)) ?? true
+        progressReminders = (try? container.decode(Bool.self, forKey: .progressReminders)) ?? true
+    }
+
+    init() {}
 }
 
 // MARK: - UserSettings
@@ -54,6 +66,7 @@ struct UserSettings: Codable, Hashable {
     var dailyStepGoal: Int? = nil
     var notifications: NotificationSettings = .init()
     var healthKit: HealthKitSettings = .init()
+    var lockPhotos: Bool = false
 
     static let `default` = UserSettings()
 
@@ -69,6 +82,7 @@ struct UserSettings: Codable, Hashable {
         case dailyStepGoal = "daily_step_goal"
         case notifications
         case healthKit = "health_kit"
+        case lockPhotos = "lock_photos"
     }
 
     init(from decoder: Decoder) throws {
@@ -84,6 +98,7 @@ struct UserSettings: Codable, Hashable {
         dailyStepGoal = try? container.decode(Int.self, forKey: .dailyStepGoal)
         notifications = (try? container.decode(NotificationSettings.self, forKey: .notifications)) ?? .init()
         healthKit = (try? container.decode(HealthKitSettings.self, forKey: .healthKit)) ?? .init()
+        lockPhotos = (try? container.decode(Bool.self, forKey: .lockPhotos)) ?? false
     }
 
     init() {}
