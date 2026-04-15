@@ -46,6 +46,7 @@ struct UserSettings: Codable, Hashable {
     var weightUnit: String = "kg"
     var defaultWeightIncrement: Double = 2.5
     var distanceUnit: String = "km"
+    var measurementUnit: String = "cm"
     var weekStartsOn: String = "monday"
     var theme: String = "dark"
     var restTimer: RestTimerSettings = .init()
@@ -61,6 +62,7 @@ struct UserSettings: Codable, Hashable {
         case weightUnit = "weight_unit"
         case defaultWeightIncrement = "default_weight_increment"
         case distanceUnit = "distance_unit"
+        case measurementUnit = "measurement_unit"
         case weekStartsOn = "week_starts_on"
         case restTimer = "rest_timer"
         case weeklyFrequencyGoal = "weekly_frequency_goal"

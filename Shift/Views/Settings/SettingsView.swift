@@ -373,6 +373,7 @@ private struct PreferencesSettingsPage: View {
     @State private var weightUnit = "kg"
     @State private var defaultIncrement = 2.5
     @State private var distanceUnit = "km"
+    @State private var measurementUnit = "cm"
     @State private var weekStartsOn = "monday"
     @State private var theme = "dark"
     @State private var isSaving = false
@@ -380,6 +381,7 @@ private struct PreferencesSettingsPage: View {
 
     private let weightUnits = ["kg", "lbs"]
     private let distanceUnits = ["km", "mi"]
+    private let measurementUnits = ["cm", "in"]
     private let weekDays = ["monday", "sunday"]
     private let themes = ["dark", "light", "system"]
     private let increments = [1.0, 1.25, 2.5, 5.0, 10.0]
@@ -421,6 +423,17 @@ private struct PreferencesSettingsPage: View {
                             .foregroundStyle(colors.muted)
                         Picker("", selection: $distanceUnit) {
                             ForEach(distanceUnits, id: \.self) { Text($0) }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Measurement unit")
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.muted)
+                        Picker("", selection: $measurementUnit) {
+                            ForEach(measurementUnits, id: \.self) { Text($0) }
                         }
                         .pickerStyle(.segmented)
                     }
@@ -489,6 +502,7 @@ private struct PreferencesSettingsPage: View {
             weightUnit = s.weightUnit
             defaultIncrement = s.defaultWeightIncrement
             distanceUnit = s.distanceUnit
+            measurementUnit = s.measurementUnit
             weekStartsOn = s.weekStartsOn
             theme = s.theme
         }
@@ -500,6 +514,7 @@ private struct PreferencesSettingsPage: View {
         settings.weightUnit = weightUnit
         settings.defaultWeightIncrement = defaultIncrement
         settings.distanceUnit = distanceUnit
+        settings.measurementUnit = measurementUnit
         settings.weekStartsOn = weekStartsOn
         settings.theme = theme
         do {

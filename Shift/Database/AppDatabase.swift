@@ -267,6 +267,35 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addProgressTracking") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS body_measurements (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    user_id TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    value REAL NOT NULL,
+                    unit TEXT NOT NULL DEFAULT 'cm',
+                    recorded_at TEXT NOT NULL
+                )
+            """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_body_measurements_user_type
+                    ON body_measurements (user_id, type, recorded_at)
+            """)
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS progress_photos (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    user_id TEXT NOT NULL,
+                    image_url TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL
+                )
+            """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_progress_photos_user
+                    ON progress_photos (user_id, recorded_at)
+            """)
+        }
+
         return migrator
     }
 }

@@ -288,6 +288,34 @@ struct SyncService {
                 try entry.save(db)
             }
         }
+
+        // 8. Body measurements
+        let measurementsData = try await supabase
+            .from("body_measurements")
+            .select()
+            .execute()
+        let measurements: [BodyMeasurement]
+        do { measurements = try decoder.decode([BodyMeasurement].self, from: measurementsData.data) }
+        catch { logger.error("Failed to decode body measurements: \(error.localizedDescription)"); measurements = [] }
+        try await AppDatabase.shared.dbPool.write { db in
+            for m in measurements where !pendingIds.contains(m.id) {
+                try m.save(db)
+            }
+        }
+
+        // 9. Progress photos
+        let photosData = try await supabase
+            .from("progress_photos")
+            .select()
+            .execute()
+        let progressPhotos: [ProgressPhoto]
+        do { progressPhotos = try decoder.decode([ProgressPhoto].self, from: photosData.data) }
+        catch { logger.error("Failed to decode progress photos: \(error.localizedDescription)"); progressPhotos = [] }
+        try await AppDatabase.shared.dbPool.write { db in
+            for p in progressPhotos where !pendingIds.contains(p.id) {
+                try p.save(db)
+            }
+        }
     }
 
     // MARK: - Last synced

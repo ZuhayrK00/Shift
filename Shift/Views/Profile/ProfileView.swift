@@ -18,6 +18,9 @@ struct ProfileView: View {
     @State private var latestWeight: WeightEntry?
     @State private var previousWeight: WeightEntry?
     @State private var showWeightDetail = false
+    @State private var showProgress = false
+    @State private var latestMeasurements: [BodyMeasurement] = []
+    @State private var latestProgressPhoto: ProgressPhoto?
     @State private var showStepGoalEditor = false
     @State private var todaySteps: Int = 0
 
@@ -36,6 +39,10 @@ struct ProfileView: View {
 
                     // Body weight
                     weightCard
+                        .padding(.horizontal, 16)
+
+                    // Progress
+                    progressCard
                         .padding(.horizontal, 16)
 
                     // Step goal
@@ -81,6 +88,9 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $showWeightDetail) {
             WeightDetailView()
         }
+        .navigationDestination(isPresented: $showProgress) {
+            ProgressView()
+        }
         .navigationDestination(isPresented: $showSettings) {
             SettingsView(onSaved: {
                 toastMessage = "Settings saved"
@@ -107,6 +117,7 @@ struct ProfileView: View {
             await loadPersonalBests()
             await loadExerciseGoals()
             await loadWeightEntries()
+            await loadProgressData()
             await loadTodaySteps()
             frequencyProgress = try? await GoalService.getFrequencyProgress()
         }
@@ -245,6 +256,80 @@ struct ProfileView: View {
 
     private func formatWeightValue(_ value: Double) -> String {
         value == value.rounded() ? String(format: "%.0f", value) : String(format: "%.1f", value)
+    }
+
+    // MARK: - Progress card
+
+    private var progressCard: some View {
+        let measurementUnit = user?.settings.measurementUnit ?? "cm"
+
+        return Button {
+            showProgress = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(colors.accent2.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 18))
+                        .foregroundStyle(colors.accent2)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Progress")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(colors.muted)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+
+                    if !latestMeasurements.isEmpty {
+                        let count = latestMeasurements.count
+                        let photoCount = latestProgressPhoto != nil ? 1 : 0
+                        Text("\(count) measurement\(count == 1 ? "" : "s") · \(photoCount > 0 ? "Photos" : "No photos")")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(colors.text)
+                    } else if latestProgressPhoto != nil {
+                        Text("Photos logged")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(colors.text)
+                    } else {
+                        Text("Track measurements & photos")
+                            .font(.system(size: 15))
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+
+                Spacer()
+
+                // Show latest photo thumbnail if available
+                if let photo = latestProgressPhoto, let url = URL(string: photo.imageUrl) {
+                    CachedAsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        default:
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(colors.surface2)
+                        }
+                    }
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(colors.muted)
+            }
+            .padding(16)
+            .background(colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(colors.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Step goal card
@@ -656,6 +741,11 @@ struct ProfileView: View {
             let activity = await HealthKitService.fetchTodayActivity()
             todaySteps = activity?.steps ?? 0
         }
+    }
+
+    private func loadProgressData() async {
+        latestMeasurements = (try? await ProgressService.getLatestPerType()) ?? []
+        latestProgressPhoto = try? await ProgressService.getLatestPhoto()
     }
 
     private func loadWeightEntries() async {
