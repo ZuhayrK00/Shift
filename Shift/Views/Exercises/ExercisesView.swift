@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ExercisesView: View {
     @Environment(\.shiftColors) private var colors
+    @Environment(AuthManager.self) private var authManager
 
     @State private var exercises: [Exercise] = []
     @State private var muscles: [MuscleGroup] = []
@@ -10,10 +11,12 @@ struct ExercisesView: View {
     @State private var activeMuscleId: String?
     @State private var activeEquipment: String?
     @State private var activeLevel: String?
+    @State private var showMyExercises = false
     @State private var isLoading = false
     @State private var showMuscleFilter = false
     @State private var showEquipmentFilter = false
     @State private var showLevelFilter = false
+    @State private var showCreateSheet = false
 
     private let levels = ["beginner", "intermediate", "expert"]
 
@@ -23,7 +26,7 @@ struct ExercisesView: View {
     }
 
     private var hasActiveFilters: Bool {
-        !searchQuery.isEmpty || activeMuscleId != nil || activeEquipment != nil || activeLevel != nil
+        !searchQuery.isEmpty || activeMuscleId != nil || activeEquipment != nil || activeLevel != nil || showMyExercises
     }
 
     private func applyFilters(_ list: [Exercise]) -> [Exercise] {
@@ -36,7 +39,8 @@ struct ExercisesView: View {
                 || ex.equipment == activeEquipment
             let matchesLevel = activeLevel == nil
                 || ex.level == activeLevel
-            return matchesSearch && matchesMuscle && matchesEquipment && matchesLevel
+            let matchesMine = !showMyExercises || !ex.isBuiltIn
+            return matchesSearch && matchesMuscle && matchesEquipment && matchesLevel && matchesMine
         }
     }
 
@@ -85,6 +89,12 @@ struct ExercisesView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         FilterChip(
+                            label: "My Exercises",
+                            icon: "person.fill",
+                            isActive: showMyExercises
+                        ) { showMyExercises.toggle() }
+
+                        FilterChip(
                             label: activeMuscleId.flatMap { id in muscles.first { $0.id == id }?.name } ?? "Muscle",
                             icon: "figure.strengthtraining.traditional",
                             isActive: activeMuscleId != nil
@@ -102,11 +112,12 @@ struct ExercisesView: View {
                             isActive: activeLevel != nil
                         ) { showLevelFilter = true }
 
-                        if activeMuscleId != nil || activeEquipment != nil || activeLevel != nil {
+                        if activeMuscleId != nil || activeEquipment != nil || activeLevel != nil || showMyExercises {
                             Button {
                                 activeMuscleId = nil
                                 activeEquipment = nil
                                 activeLevel = nil
+                                showMyExercises = false
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "xmark")
@@ -221,10 +232,26 @@ struct ExercisesView: View {
         }
         .navigationTitle("Exercises")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showCreateSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(colors.accent)
+                }
+            }
+        }
         .navigationDestination(for: Exercise.self) { exercise in
             ExerciseDetailView(exercise: exercise)
         }
         .task { await loadData() }
+        .sheet(isPresented: $showCreateSheet) {
+            CreateExerciseView { _ in
+                Task { await loadData() }
+            }
+        }
         .sheet(isPresented: $showMuscleFilter) {
             FilterPickerSheet(
                 title: "Muscle Group",
@@ -289,10 +316,21 @@ struct ExerciseRow: View {
 
             // Labels
             VStack(alignment: .leading, spacing: 3) {
-                Text(exercise.name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(colors.text)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(exercise.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(colors.text)
+                        .lineLimit(1)
+                    if !exercise.isBuiltIn {
+                        Text("Custom")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(colors.accent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(colors.accent.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                }
                 Text(muscleName.uppercased())
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(colors.muted)

@@ -54,4 +54,10 @@ struct ExerciseRepository {
             try exercise.save(db)
         }
     }
+
+    static func delete(_ id: String) async throws {
+        try await AppDatabase.shared.dbPool.write { db in
+            try db.execute(sql: "DELETE FROM exercises WHERE id = ?", arguments: [id])
+        }
+    }
 }

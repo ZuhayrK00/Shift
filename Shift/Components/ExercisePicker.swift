@@ -21,7 +21,9 @@ struct ExercisePicker: View {
     @State private var allExercises: [Exercise] = []
     @State private var recentIds: [String]      = []
     @State private var selectedIds: [String]    = []  // ordered
+    @State private var showMyExercises = false
     @State private var loading = true
+    @State private var showCreateSheet = false
 
     // MARK: - Derived
 
@@ -53,7 +55,9 @@ struct ExercisePicker: View {
             // Search
             let searchOk = searchText.isEmpty
                 || ex.name.localizedCaseInsensitiveContains(searchText)
-            return muscleOk && equipOk && levelOk && searchOk
+            // My exercises
+            let mineOk = !showMyExercises || !ex.isBuiltIn
+            return muscleOk && equipOk && levelOk && searchOk && mineOk
         }
     }
 
@@ -96,6 +100,7 @@ struct ExercisePicker: View {
                 // Filter pills row
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
+                        TogglePill(label: "My Exercises", icon: "person.fill", isActive: $showMyExercises, colors: colors)
                         FilterPill(label: "Muscle", icon: "figure.strengthtraining.traditional", selected: $muscleFilter, options: muscles, colors: colors)
                         FilterPill(label: "Equipment", icon: "dumbbell.fill", selected: $equipFilter, options: equipment, colors: colors)
                         FilterPill(label: "Level", icon: "chart.bar.fill", selected: $levelFilter, options: levels, colors: colors)
@@ -127,6 +132,21 @@ struct ExercisePicker: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { isPresented = false }
                         .foregroundStyle(colors.accent)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(colors.accent)
+                    }
+                }
+            }
+            .sheet(isPresented: $showCreateSheet) {
+                CreateExerciseView { newExercise in
+                    allExercises.append(newExercise)
+                    selectedIds.append(newExercise.id)
                 }
             }
         }
@@ -199,9 +219,20 @@ struct ExercisePicker: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(ex.displayName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(isExcluded ? colors.muted : colors.text)
+                    HStack(spacing: 6) {
+                        Text(ex.displayName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(isExcluded ? colors.muted : colors.text)
+                        if !ex.isBuiltIn {
+                            Text("Custom")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(colors.accent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(colors.accent.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                    }
                     if let bp = ex.bodyPart ?? ex.category {
                         Text(bp)
                             .font(.system(size: 12))
@@ -318,6 +349,46 @@ struct ExercisePicker: View {
         if let recent = try? await ExerciseService.getRecentlyUsedExerciseIds() {
             recentIds = Array(recent.prefix(10))
         }
+    }
+}
+
+// MARK: - TogglePill
+
+private struct TogglePill: View {
+    let label: String
+    let icon: String
+    @Binding var isActive: Bool
+    let colors: ShiftColors
+
+    var body: some View {
+        Button {
+            isActive.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(isActive ? .white : colors.text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                isActive
+                    ? AnyShapeStyle(LinearGradient(
+                        colors: [colors.accent, colors.accent.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                      ))
+                    : AnyShapeStyle(colors.surface2)
+            )
+            .overlay(
+                Capsule()
+                    .stroke(isActive ? .clear : colors.border.opacity(0.6), lineWidth: 1)
+            )
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

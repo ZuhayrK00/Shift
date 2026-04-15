@@ -2,10 +2,13 @@ import SwiftUI
 
 struct ExerciseDetailView: View {
     @Environment(\.shiftColors) private var colors
-    let exercise: Exercise
+    @Environment(\.dismiss) private var dismiss
+    @State var exercise: Exercise
 
     var initialTab: Tab = .about
     @State private var activeTab: Tab = .about
+    @State private var showEditSheet = false
+    @State private var showDeleteAlert = false
 
     enum Tab: String, CaseIterable {
         case about    = "About"
@@ -40,6 +43,44 @@ struct ExerciseDetailView: View {
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { activeTab = initialTab }
+        .toolbar {
+            if !exercise.isBuiltIn {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showEditSheet = true
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            showDeleteAlert = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(colors.accent)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showEditSheet) {
+            CreateExerciseView(existingExercise: exercise) { updated in
+                exercise = updated
+            }
+        }
+        .alert("Delete Exercise", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                Task {
+                    try? await ExerciseService.deleteExercise(exercise.id)
+                    dismiss()
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete \"\(exercise.name)\"? This cannot be undone.")
+        }
     }
 
     // MARK: - Tab bar
