@@ -8,6 +8,7 @@ struct WorkoutSession: Identifiable, Hashable, Codable {
     var name: String
     var startedAt: Date
     var endedAt: Date?
+    var originalEndedAt: Date?
     var notes: String?
 
     var isInProgress: Bool { endedAt == nil }
@@ -20,16 +21,18 @@ struct WorkoutSession: Identifiable, Hashable, Codable {
         case planId = "plan_id"
         case startedAt = "started_at"
         case endedAt = "ended_at"
+        case originalEndedAt = "original_ended_at"
     }
 
     init(id: String, userId: String, planId: String? = nil, name: String,
-         startedAt: Date, endedAt: Date? = nil, notes: String? = nil) {
+         startedAt: Date, endedAt: Date? = nil, originalEndedAt: Date? = nil, notes: String? = nil) {
         self.id = id
         self.userId = userId
         self.planId = planId
         self.name = name
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.originalEndedAt = originalEndedAt
         self.notes = notes
     }
 
@@ -52,6 +55,13 @@ struct WorkoutSession: Identifiable, Hashable, Codable {
         } else {
             endedAt = nil
         }
+
+        if let originalEndedAtString = try container.decodeIfPresent(String.self, forKey: .originalEndedAt) {
+            originalEndedAt = ISO8601DateFormatter.shared.date(from: originalEndedAtString)
+                ?? ISO8601DateFormatter.sharedWithFractional.date(from: originalEndedAtString)
+        } else {
+            originalEndedAt = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -64,6 +74,9 @@ struct WorkoutSession: Identifiable, Hashable, Codable {
         try container.encode(ISO8601DateFormatter.shared.string(from: startedAt), forKey: .startedAt)
         if let endedAt {
             try container.encode(ISO8601DateFormatter.shared.string(from: endedAt), forKey: .endedAt)
+        }
+        if let originalEndedAt {
+            try container.encode(ISO8601DateFormatter.shared.string(from: originalEndedAt), forKey: .originalEndedAt)
         }
     }
 }
@@ -92,6 +105,13 @@ extension WorkoutSession: FetchableRecord {
         } else {
             endedAt = nil
         }
+
+        if let originalEndedAtString: String = row["original_ended_at"] {
+            originalEndedAt = ISO8601DateFormatter.shared.date(from: originalEndedAtString)
+                ?? ISO8601DateFormatter.sharedWithFractional.date(from: originalEndedAtString)
+        } else {
+            originalEndedAt = nil
+        }
     }
 }
 
@@ -105,6 +125,7 @@ extension WorkoutSession: PersistableRecord {
         container["name"] = name
         container["started_at"] = ISO8601DateFormatter.shared.string(from: startedAt)
         container["ended_at"] = endedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
+        container["original_ended_at"] = originalEndedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
         container["notes"] = notes
     }
 }

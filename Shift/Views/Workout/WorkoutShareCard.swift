@@ -297,7 +297,7 @@ struct WorkoutShareCard: View {
 
     private var footer: some View {
         HStack(alignment: .center) {
-            Text(timeRange)
+            Text(formattedDate)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(muted)
             Spacer()
@@ -310,13 +310,5 @@ struct WorkoutShareCard: View {
         let f = DateFormatter()
         f.dateFormat = "MMM d, yyyy"
         return f.string(from: date)
-    }
-
-    private var timeRange: String {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        let start = f.string(from: date)
-        let end = f.string(from: date.addingTimeInterval(Double(durationMinutes * 60)))
-        return "\(start) – \(end)"
     }
 }

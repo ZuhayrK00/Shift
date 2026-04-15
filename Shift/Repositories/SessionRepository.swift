@@ -121,6 +121,16 @@ struct SessionRepository {
         }
     }
 
+    static func setOriginalEndedAt(_ sessionId: String, _ originalEndedAt: Date?) async throws {
+        try await AppDatabase.shared.dbPool.write { db in
+            let str = originalEndedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
+            try db.execute(
+                sql: "UPDATE workout_sessions SET original_ended_at = ? WHERE id = ?",
+                arguments: [str, sessionId]
+            )
+        }
+    }
+
     static func delete(_ sessionId: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
             // Delete child session_sets first to avoid orphans

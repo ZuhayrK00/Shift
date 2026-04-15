@@ -261,6 +261,12 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addOriginalEndedAt") { db in
+            try db.execute(sql: """
+                ALTER TABLE workout_sessions ADD COLUMN original_ended_at TEXT
+            """)
+        }
+
         return migrator
     }
 }

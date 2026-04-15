@@ -57,19 +57,26 @@ struct WorkoutService {
     static func finishSession(_ sessionId: String) async throws {
         NotificationManager.cancelIdleWorkoutNotification()
 
-        // Determine ended-at: use "now" for live sessions, but for past-dated (backfill)
-        // sessions estimate a reasonable duration based on sets logged.
+        // Determine ended-at:
+        // 1. If this session was previously completed (has originalEndedAt), restore it.
+        // 2. For live sessions (< 12h old), use current time.
+        // 3. For backfill sessions (> 12h old), estimate from set count.
         let endedAt: Date
         if let session = try await SessionRepository.findById(sessionId) {
-            let now = Date()
-            let sessionAge = now.timeIntervalSince(session.startedAt)
-            if sessionAge > 12 * 3600 {
-                // Backfill — estimate duration from set count (≈3 min per set, minimum 15 min)
-                let setCount = try await SessionSetRepository.countCompleted(sessionId: sessionId)
-                let estimatedMinutes = max(15, setCount * 3)
-                endedAt = session.startedAt.addingTimeInterval(Double(estimatedMinutes * 60))
+            if let originalEndedAt = session.originalEndedAt {
+                // Previously completed — restore original end time
+                endedAt = originalEndedAt
             } else {
-                endedAt = now
+                let now = Date()
+                let sessionAge = now.timeIntervalSince(session.startedAt)
+                if sessionAge > 12 * 3600 {
+                    // Backfill — estimate duration from set count (≈3 min per set, minimum 15 min)
+                    let setCount = try await SessionSetRepository.countCompleted(sessionId: sessionId)
+                    let estimatedMinutes = max(15, setCount * 3)
+                    endedAt = session.startedAt.addingTimeInterval(Double(estimatedMinutes * 60))
+                } else {
+                    endedAt = now
+                }
             }
         } else {
             endedAt = Date()
@@ -112,6 +119,14 @@ struct WorkoutService {
     }
 
     static func resumeSession(_ sessionId: String) async throws {
+        // Save the current endedAt as originalEndedAt before clearing,
+        // so we can restore it when re-finishing instead of recalculating.
+        if let session = try await SessionRepository.findById(sessionId),
+           let endedAt = session.endedAt {
+            let preserve = session.originalEndedAt ?? endedAt
+            try await SessionRepository.setOriginalEndedAt(sessionId, preserve)
+        }
+
         // Clear ended_at locally first - if this fails, don't enqueue or schedule
         try await SessionRepository.setEndedAt(sessionId, nil)
         do {

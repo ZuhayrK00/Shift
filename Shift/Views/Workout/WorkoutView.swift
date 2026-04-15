@@ -216,13 +216,6 @@ struct WorkoutView: View {
                 }
             }
 
-            // Time range
-            if let start = session?.startedAt, let end = session?.endedAt {
-                Text("\(timeString(start)) – \(timeString(end))")
-                    .font(.system(size: 12))
-                    .foregroundStyle(colors.muted)
-            }
-
             // Action buttons
             HStack(spacing: 12) {
                 Button {
@@ -294,12 +287,6 @@ struct WorkoutView: View {
             return String(format: "%.1fk", total / 1000)
         }
         return "\(Int(total))"
-    }
-
-    private func timeString(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        return f.string(from: date)
     }
 
     private func formatDuration(_ minutes: Int) -> String {
