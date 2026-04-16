@@ -92,6 +92,12 @@ struct WatchHomeView: View {
                     navigateToWorkout = false
                 }
             }
+            .onChange(of: session.context?.activeSession) { _, activeSession in
+                // Phone finished the workout — clear watch state
+                if activeSession == nil && workout.isActive {
+                    workout.clear()
+                }
+            }
             .alert("Delete workout?", isPresented: $showDeleteAlert) {
                 Button("Delete", role: .destructive) {
                     if let sid = ctx?.lastCompletedSession?.sessionId {

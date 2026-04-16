@@ -52,7 +52,7 @@ struct WatchSettings: Codable {
     var restTimerDurationSeconds: Int
 }
 
-struct WatchActiveSession: Codable {
+struct WatchActiveSession: Codable, Equatable {
     var sessionId: String
     var planId: String?
     var name: String

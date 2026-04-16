@@ -243,11 +243,13 @@ struct ExerciseLogView: View {
             }
         }
         await reloadSets()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func changeSetType(set: SessionSet, newType: SetType) async {
         try? await WorkoutService.updateSet(set.id, patch: SetPatch(setType: newType))
         await reloadSets()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func updateSelectedSet() async {
@@ -258,6 +260,7 @@ struct ExerciseLogView: View {
         ))
         selectedSetId = nil
         await reloadSets()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func deleteSelectedSet() async {
@@ -276,6 +279,7 @@ struct ExerciseLogView: View {
 
         selectedSetId = nil
         await reloadSets()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func saveNote() async {

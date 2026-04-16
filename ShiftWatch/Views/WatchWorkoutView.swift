@@ -7,17 +7,10 @@ struct WatchWorkoutView: View {
     @State private var showFinishAlert = false
     @State private var isFinishing = false
     @State private var showSummary = false
-    @State private var elapsedTimer: Timer?
-    @State private var elapsed: String = "0:00"
 
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
-                // Timer
-                Text(elapsed)
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
-
                 // Exercise list
                 if workout.exercises.isEmpty {
                     VStack(spacing: 8) {
@@ -63,8 +56,6 @@ struct WatchWorkoutView: View {
         .navigationDestination(isPresented: $showSummary) {
             WatchSummaryView()
         }
-        .onAppear { startTimer() }
-        .onDisappear { elapsedTimer?.invalidate() }
         .onChange(of: session.context?.activeSession?.exercises) { _, newExercises in
             if let exercises = newExercises {
                 let active = WatchActiveSession(
@@ -126,15 +117,6 @@ struct WatchWorkoutView: View {
             Task { @MainActor in
                 isFinishing = false
                 showSummary = true
-            }
-        }
-    }
-
-    private func startTimer() {
-        elapsed = workout.elapsedText
-        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            Task { @MainActor in
-                elapsed = workout.elapsedText
             }
         }
     }

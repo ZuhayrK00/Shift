@@ -93,6 +93,9 @@ struct WorkoutView: View {
             ExerciseLogView(sessionId: route.sessionId, exerciseId: route.exerciseId)
         }
         .task { await loadData() }
+        .onReceive(NotificationCenter.default.publisher(for: .watchDidUpdateWorkout)) { _ in
+            Task { await loadData() }
+        }
         .onDisappear { Task { await autoDeleteIfEmpty() } }
     }
 
@@ -515,10 +518,12 @@ struct WorkoutView: View {
     private func finishWorkout() async {
         try? await WorkoutService.finishSession(sessionId)
         await loadData()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func discardWorkout() async {
         try? await WorkoutService.deleteSession(sessionId)
+        PhoneSessionManager.shared.sendContextToWatch()
         dismiss()
     }
 

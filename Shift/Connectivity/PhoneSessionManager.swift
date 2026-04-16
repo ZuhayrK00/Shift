@@ -1,6 +1,11 @@
 import Foundation
 import WatchConnectivity
 
+extension Notification.Name {
+    /// Posted when the Watch modifies workout data so phone views can refresh.
+    static let watchDidUpdateWorkout = Notification.Name("watchDidUpdateWorkout")
+}
+
 /// iPhone-side WatchConnectivity manager.
 /// Receives workout actions from the Watch and sends context updates.
 @Observable
@@ -22,19 +27,27 @@ final class PhoneSessionManager: NSObject {
     // MARK: - Send context to Watch
 
     func sendContextToWatch() {
-        guard WCSession.default.activationState == .activated,
-              WCSession.default.isPaired else { return }
+        guard WCSession.default.activationState == .activated else { return }
 
         Task {
             let context = await buildContext()
             guard let data = try? JSONEncoder().encode(context),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                print("[PhoneSession] Failed to encode context")
+                return
+            }
 
-            try? WCSession.default.updateApplicationContext(dict)
+            do {
+                try WCSession.default.updateApplicationContext(dict)
+            } catch {
+                print("[PhoneSession] updateApplicationContext error: \(error.localizedDescription)")
+            }
 
             // Also send via message for immediate delivery when watch app is open
             if WCSession.default.isReachable {
-                WCSession.default.sendMessage(["contextUpdate": dict], replyHandler: nil, errorHandler: nil)
+                WCSession.default.sendMessage(["contextUpdate": dict], replyHandler: nil) { error in
+                    print("[PhoneSession] sendMessage error: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -168,6 +181,7 @@ final class PhoneSessionManager: NSObject {
                     replyHandler?(["sessionId": session.id, "name": session.name,
                                    "startedAt": ISO8601DateFormatter.shared.string(from: session.startedAt)])
                     sendContextToWatch()
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
                     replyHandler?(["error": error.localizedDescription])
                 }
@@ -182,6 +196,7 @@ final class PhoneSessionManager: NSObject {
                     replyHandler?(["sessionId": session.id, "name": session.name,
                                    "startedAt": ISO8601DateFormatter.shared.string(from: session.startedAt)])
                     sendContextToWatch()
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
                     replyHandler?(["error": error.localizedDescription])
                 }
@@ -195,6 +210,7 @@ final class PhoneSessionManager: NSObject {
                     try await WorkoutService.finishSession(sessionId)
                     replyHandler?(["success": true])
                     sendContextToWatch()
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
                     replyHandler?(["error": error.localizedDescription])
                 }
@@ -217,6 +233,7 @@ final class PhoneSessionManager: NSObject {
                         setType: SetType(rawValue: setType ?? "normal")
                     ))
                     replyHandler?(["success": true, "setId": newSet.id])
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
                     replyHandler?(["error": error.localizedDescription])
                 }
@@ -231,6 +248,7 @@ final class PhoneSessionManager: NSObject {
                     try await WorkoutService.addExercisesToSession(sessionId, exerciseIds: [exerciseId])
                     replyHandler?(["success": true])
                     sendContextToWatch()
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
                     replyHandler?(["error": error.localizedDescription])
                 }
@@ -244,6 +262,7 @@ final class PhoneSessionManager: NSObject {
                     try await WorkoutService.deleteSession(sessionId)
                     replyHandler?(["success": true])
                     sendContextToWatch()
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
                     replyHandler?(["error": error.localizedDescription])
                 }
