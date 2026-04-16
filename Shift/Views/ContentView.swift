@@ -12,7 +12,9 @@ struct ContentView: View {
             if authManager.isLoading {
                 loadingView
             } else if authManager.session == nil {
-                SignInView()
+                NavigationStack {
+                    SignInView()
+                }
             } else if !onboardingCheckDone {
                 loadingView
                     .task { await checkOnboardingNeeded() }
