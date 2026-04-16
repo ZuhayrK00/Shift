@@ -15,6 +15,9 @@ struct ContentView: View {
                 NavigationStack {
                     SignInView()
                 }
+            } else if authManager.user == nil {
+                // Wait for loadUser to finish before checking onboarding
+                loadingView
             } else if !onboardingCheckDone {
                 loadingView
                     .task { await checkOnboardingNeeded() }
