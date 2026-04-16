@@ -11,6 +11,8 @@ struct SignInView: View {
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showSignUp = false
+    @State private var showForgotPassword = false
+    @State private var resetEmailSent = false
 
     var body: some View {
         ZStack {
@@ -86,6 +88,17 @@ struct SignInView: View {
                     .opacity((isLoading || email.isEmpty || password.isEmpty) ? 0.6 : 1)
                     .padding(.top, 8)
 
+                    // Forgot password
+                    Button {
+                        showForgotPassword = true
+                    } label: {
+                        Text("Forgot password?")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(colors.accent)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 8)
+
                     // Divider
                     dividerWithLabel("or")
                         .padding(.vertical, 20)
@@ -145,6 +158,9 @@ struct SignInView: View {
         .navigationDestination(isPresented: $showSignUp) {
             SignUpView()
         }
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordSheet()
+        }
     }
 
     // MARK: - Helpers
@@ -165,6 +181,10 @@ struct SignInView: View {
 
     private func signIn() async {
         guard !email.isEmpty, !password.isEmpty else { return }
+        guard email.isValidEmail else {
+            errorMessage = "Please enter a valid email address."
+            return
+        }
         isLoading = true
         errorMessage = nil
         do {
@@ -248,5 +268,126 @@ struct ShiftSecureField: View {
                     .stroke(colors.border, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Email Validation
+
+extension String {
+    var isValidEmail: Bool {
+        let pattern = #"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"#
+        return range(of: pattern, options: .regularExpression) != nil
+    }
+}
+
+// MARK: - ForgotPasswordSheet
+
+struct ForgotPasswordSheet: View {
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.shiftColors) private var colors
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var email = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var sent = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                colors.bg.ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Reset password")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(colors.text)
+                        .padding(.bottom, 8)
+
+                    Text("Enter your email and we'll send you a link to reset your password.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(colors.muted)
+                        .padding(.bottom, 28)
+
+                    if sent {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(colors.success)
+                            Text("Reset link sent! Check your email.")
+                                .font(.system(size: 14))
+                                .foregroundStyle(colors.success)
+                        }
+                        .padding(.bottom, 12)
+                    } else {
+                        ShiftTextField(
+                            placeholder: "Email",
+                            text: $email,
+                            keyboardType: .emailAddress,
+                            autocapitalization: .never
+                        )
+                        .padding(.bottom, 8)
+
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 13))
+                                .foregroundStyle(colors.danger)
+                                .padding(.bottom, 8)
+                        }
+
+                        Button {
+                            Task { await sendReset() }
+                        } label: {
+                            HStack {
+                                if isLoading {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(0.9)
+                                } else {
+                                    Text("Send reset link")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(colors.accent)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .disabled(email.isEmpty || isLoading)
+                        .opacity((email.isEmpty || isLoading) ? 0.6 : 1)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func sendReset() async {
+        guard !email.isEmpty else { return }
+        guard email.isValidEmail else {
+            errorMessage = "Please enter a valid email address."
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+        do {
+            try await authManager.resetPassword(email: email)
+            sent = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
     }
 }

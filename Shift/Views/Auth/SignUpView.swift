@@ -123,6 +123,10 @@ struct SignUpView: View {
 
     private func signUp() async {
         guard canSubmit else { return }
+        guard email.isValidEmail else {
+            errorMessage = "Please enter a valid email address."
+            return
+        }
         isLoading = true
         errorMessage = nil
         successMessage = nil

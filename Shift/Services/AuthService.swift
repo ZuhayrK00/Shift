@@ -125,6 +125,10 @@ class AuthManager {
         try await supabase.auth.update(user: UserAttributes(email: newEmail))
     }
 
+    func resetPassword(email: String) async throws {
+        try await supabase.auth.resetPasswordForEmail(email)
+    }
+
     func signOut() async throws {
         try await supabase.auth.signOut()
     }
