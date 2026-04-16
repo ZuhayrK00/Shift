@@ -575,7 +575,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.6;
+				MARKETING_VERSION = 2.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -617,7 +617,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.6;
+				MARKETING_VERSION = 2.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -747,6 +747,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads your workout data to show your activity on your watch.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift logs your workouts to Apple Health.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.zuhayrk.shift;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -779,6 +781,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads your workout data to show your activity on your watch.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift logs your workouts to Apple Health.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.zuhayrk.shift;
 				LD_RUNPATH_SEARCH_PATHS = (
