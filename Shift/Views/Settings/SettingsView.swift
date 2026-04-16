@@ -544,6 +544,7 @@ private struct PreferencesSettingsPage: View {
             return
         }
         await authManager.refreshUser()
+        PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
         dismiss()
@@ -642,6 +643,7 @@ private struct WorkoutSettingsPage: View {
             return
         }
         await authManager.refreshUser()
+        PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
         dismiss()

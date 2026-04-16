@@ -915,6 +915,7 @@ struct FrequencyGoalEditorSheet: View {
         }
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
+        PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
         dismiss()
@@ -934,6 +935,7 @@ struct FrequencyGoalEditorSheet: View {
         }
         await authManager.refreshUser()
         Task { await GoalNotificationService.scheduleAllNotifications() }
+        PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
         dismiss()
@@ -1101,6 +1103,7 @@ struct StepGoalEditorSheet: View {
             return
         }
         await authManager.refreshUser()
+        PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
         dismiss()
@@ -1119,6 +1122,7 @@ struct StepGoalEditorSheet: View {
             return
         }
         await authManager.refreshUser()
+        PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
         dismiss()
