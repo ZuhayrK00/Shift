@@ -31,6 +31,7 @@ struct WatchHomeView: View {
                             workout.start(
                                 sessionId: active.sessionId,
                                 name: active.name,
+                                planId: active.planId,
                                 startedAt: active.startedAt,
                                 exercises: active.exercises
                             )

@@ -92,6 +92,23 @@ struct WatchCompletedSession: Codable {
     var endedAt: Date
     var exerciseCount: Int
     var setCount: Int
+    var exercises: [WatchCompletedExercise]
+
+    init(sessionId: String, name: String, startedAt: Date, endedAt: Date, exerciseCount: Int, setCount: Int, exercises: [WatchCompletedExercise] = []) {
+        self.sessionId = sessionId
+        self.name = name
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.exerciseCount = exerciseCount
+        self.setCount = setCount
+        self.exercises = exercises
+    }
+}
+
+struct WatchCompletedExercise: Codable, Identifiable {
+    var id: String
+    var name: String
+    var setCount: Int
 }
 
 // MARK: - Context payload that iPhone sends to Watch

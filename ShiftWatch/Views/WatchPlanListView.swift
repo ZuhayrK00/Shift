@@ -29,7 +29,7 @@ struct WatchPlanListView: View {
                                             totalSets: pe.targetSets
                                         )
                                     }
-                                    workout.start(sessionId: id, name: name ?? plan.name, startedAt: date, exercises: exercises)
+                                    workout.start(sessionId: id, name: name ?? plan.name, planId: plan.id, startedAt: date, exercises: exercises)
                                     onStarted()
                                 }
                             }

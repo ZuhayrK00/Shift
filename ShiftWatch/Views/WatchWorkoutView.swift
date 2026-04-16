@@ -95,12 +95,19 @@ struct WatchWorkoutView: View {
 
             Spacer()
 
-            // Set count badge
+            // Set count badge — only show target when from a plan
             let completed = workout.localSetCounts[exercise.exerciseId] ?? exercise.completedSets
             let total = exercise.totalSets
-            Text("\(completed)/\(total)")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(completed >= total && total > 0 ? WatchColors.success : .primary)
+            let hasPlan = workout.planId != nil
+            if hasPlan && total > 0 {
+                Text("\(completed)/\(total)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(completed >= total ? WatchColors.success : .primary)
+            } else if completed > 0 {
+                Text("\(completed)")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(WatchColors.success)
+            }
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 10)

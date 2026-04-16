@@ -6,6 +6,7 @@ import SwiftUI
 final class WatchWorkoutState {
     var sessionId: String?
     var sessionName: String = "Workout"
+    var planId: String?
     var startedAt: Date?
     var exercises: [WatchSessionExercise] = []
     var isActive: Bool { sessionId != nil }
@@ -21,9 +22,10 @@ final class WatchWorkoutState {
         var reps: Int
     }
 
-    func start(sessionId: String, name: String, startedAt: Date, exercises: [WatchSessionExercise] = []) {
+    func start(sessionId: String, name: String, planId: String? = nil, startedAt: Date, exercises: [WatchSessionExercise] = []) {
         self.sessionId = sessionId
         self.sessionName = name
+        self.planId = planId
         self.startedAt = startedAt
         self.exercises = exercises
         self.localSetCounts = [:]
@@ -60,6 +62,7 @@ final class WatchWorkoutState {
     func clear() {
         sessionId = nil
         sessionName = "Workout"
+        planId = nil
         startedAt = nil
         exercises = []
         localSetCounts = [:]

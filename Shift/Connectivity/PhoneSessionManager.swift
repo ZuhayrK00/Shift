@@ -127,13 +127,17 @@ final class PhoneSessionManager: NSObject {
             guard let sessions = try? await WorkoutService.getCompletedSessions(for: Date()),
                   let last = sessions.last else { return nil }
             let setCount = last.exercises.reduce(0) { $0 + $1.setCount }
+            let exercises = last.exercises.map { ex in
+                WatchCompletedExercise(id: ex.id, name: ex.name, setCount: ex.setCount)
+            }
             return WatchCompletedSession(
                 sessionId: last.id,
                 name: last.name,
                 startedAt: last.startedAt,
                 endedAt: last.endedAt ?? Date(),
                 exerciseCount: last.exercises.count,
-                setCount: setCount
+                setCount: setCount,
+                exercises: exercises
             )
         }()
 
