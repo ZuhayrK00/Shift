@@ -107,6 +107,9 @@ struct TodayView: View {
             }
         }
         .task { await loadData() }
+        .onReceive(NotificationCenter.default.publisher(for: .watchDidUpdateWorkout)) { _ in
+            Task { await loadData() }
+        }
         .onChange(of: navigationPath) {
             // Fires when popping back from a workout — refresh sessions + calendar
             if navigationPath.isEmpty {

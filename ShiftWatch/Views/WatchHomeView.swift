@@ -7,8 +7,7 @@ struct WatchHomeView: View {
     @State private var navigateToWorkout = false
     @State private var navigateToStart = false
 
-    @State private var showDeleteAlert = false
-    @State private var isDeleting = false
+    @State private var showCompletedDetail = false
 
     private var ctx: WatchContext? { session.context }
     private var workedOutToday: Bool { ctx?.snapshot.workedOutToday ?? false }
@@ -47,7 +46,12 @@ struct WatchHomeView: View {
                     }
                     // Show last completed workout today
                     else if workedOutToday, let completed = ctx?.lastCompletedSession {
-                        lastWorkoutCard(completed)
+                        Button {
+                            showCompletedDetail = true
+                        } label: {
+                            lastWorkoutCard(completed)
+                        }
+                        .buttonStyle(.plain)
                     }
                     // Start workout (only if not already worked out today)
                     else {
@@ -87,6 +91,11 @@ struct WatchHomeView: View {
             .navigationDestination(isPresented: $navigateToStart) {
                 WatchStartWorkoutView(navigateToWorkout: $navigateToWorkout)
             }
+            .navigationDestination(isPresented: $showCompletedDetail) {
+                if let completed = ctx?.lastCompletedSession {
+                    WatchCompletedDetailView(completed: completed)
+                }
+            }
             .onChange(of: workout.isActive) { _, isActive in
                 if !isActive && navigateToWorkout {
                     navigateToWorkout = false
@@ -97,19 +106,6 @@ struct WatchHomeView: View {
                 if activeSession == nil && workout.isActive {
                     workout.clear()
                 }
-            }
-            .alert("Delete workout?", isPresented: $showDeleteAlert) {
-                Button("Delete", role: .destructive) {
-                    if let sid = ctx?.lastCompletedSession?.sessionId {
-                        isDeleting = true
-                        session.deleteSession(sessionId: sid) { _ in
-                            Task { @MainActor in
-                                isDeleting = false
-                            }
-                        }
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
             }
         }
     }
@@ -135,15 +131,15 @@ struct WatchHomeView: View {
                 miniStat(value: "\(completed.setCount)", label: "Sets")
             }
 
-            Button(role: .destructive) {
-                showDeleteAlert = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-                    .font(.system(size: 12, weight: .medium))
+            HStack(spacing: 4) {
+                Spacer()
+                Text("View details")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.bordered)
-            .tint(.red)
-            .disabled(isDeleting)
         }
         .padding(10)
         .background(Color.white.opacity(0.06))
