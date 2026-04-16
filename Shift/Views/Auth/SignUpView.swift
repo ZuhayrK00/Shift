@@ -128,6 +128,15 @@ struct SignUpView: View {
         successMessage = nil
         do {
             try await authManager.signUpWithEmail(email, password)
+            // If Supabase auto-confirms, the auth listener will pick up the
+            // session and navigate to onboarding automatically.
+            // Give it a moment to process the auth state change.
+            try? await Task.sleep(for: .milliseconds(500))
+            if authManager.session != nil {
+                // User is signed in — auth flow will handle navigation
+                return
+            }
+            // Email confirmation required
             successMessage = "Account created! Check your email to confirm, then sign in."
         } catch {
             errorMessage = error.localizedDescription
