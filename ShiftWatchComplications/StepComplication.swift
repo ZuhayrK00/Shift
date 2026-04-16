@@ -47,6 +47,7 @@ struct StepComplicationView: View {
         case .accessoryCircular: circularView
         case .accessoryInline: inlineView
         case .accessoryCorner: cornerView
+        case .accessoryRectangular: rectangularView
         default: circularView
         }
     }
@@ -56,6 +57,9 @@ struct StepComplicationView: View {
             if entry.goal != nil {
                 Gauge(value: progress) {
                     Image(systemName: "shoeprints.fill")
+                } currentValueLabel: {
+                    Text(formatCompact(entry.steps))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
                 .tint(.green)
@@ -97,6 +101,41 @@ struct StepComplicationView: View {
         }
     }
 
+    private var rectangularView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "shoeprints.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                Text("Steps")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let goal = entry.goal, goal > 0 {
+                HStack(spacing: 6) {
+                    Text(formatCompact(entry.steps))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text("/ \(formatCompact(goal))")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Gauge(value: progress) { EmptyView() }
+                    .gaugeStyle(.accessoryLinearCapacity)
+                    .tint(.green)
+            } else {
+                HStack(spacing: 6) {
+                    Text(formatCompact(entry.steps))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text("steps")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     private func formatCompact(_ n: Int) -> String {
         if n >= 10000 {
             return String(format: "%.1fk", Double(n) / 1000.0)
@@ -116,6 +155,6 @@ struct StepComplication: Widget {
         }
         .configurationDisplayName("Steps")
         .description("Today's step count.")
-        .supportedFamilies([.accessoryCircular, .accessoryInline, .accessoryCorner])
+        .supportedFamilies([.accessoryCircular, .accessoryInline, .accessoryCorner, .accessoryRectangular])
     }
 }

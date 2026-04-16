@@ -13,19 +13,29 @@ final class WatchWorkoutState {
     // Per-exercise logged set counts (tracked locally on Watch)
     var localSetCounts: [String: Int] = [:]
 
+    // Per-exercise logged set details
+    var loggedSetDetails: [String: [LoggedSetDetail]] = [:]
+
+    struct LoggedSetDetail {
+        var weight: Double?
+        var reps: Int
+    }
+
     func start(sessionId: String, name: String, startedAt: Date, exercises: [WatchSessionExercise] = []) {
         self.sessionId = sessionId
         self.sessionName = name
         self.startedAt = startedAt
         self.exercises = exercises
         self.localSetCounts = [:]
+        self.loggedSetDetails = [:]
         for ex in exercises {
             localSetCounts[ex.exerciseId] = ex.completedSets
         }
     }
 
-    func loggedSet(for exerciseId: String) {
+    func loggedSet(for exerciseId: String, weight: Double?, reps: Int) {
         localSetCounts[exerciseId, default: 0] += 1
+        loggedSetDetails[exerciseId, default: []].append(LoggedSetDetail(weight: weight, reps: reps))
         if let idx = exercises.firstIndex(where: { $0.exerciseId == exerciseId }) {
             exercises[idx].completedSets = localSetCounts[exerciseId] ?? exercises[idx].completedSets
         }
@@ -36,12 +46,24 @@ final class WatchWorkoutState {
         localSetCounts[exercise.exerciseId] = 0
     }
 
+    func syncExercises(from active: WatchActiveSession) {
+        for ex in active.exercises {
+            if !exercises.contains(where: { $0.exerciseId == ex.exerciseId }) {
+                exercises.append(ex)
+                if localSetCounts[ex.exerciseId] == nil {
+                    localSetCounts[ex.exerciseId] = ex.completedSets
+                }
+            }
+        }
+    }
+
     func clear() {
         sessionId = nil
         sessionName = "Workout"
         startedAt = nil
         exercises = []
         localSetCounts = [:]
+        loggedSetDetails = [:]
     }
 
     var elapsedText: String {

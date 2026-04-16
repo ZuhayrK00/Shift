@@ -3,9 +3,7 @@ import SwiftUI
 struct WatchWorkoutView: View {
     @Environment(WatchSessionManager.self) private var session
     @Environment(WatchWorkoutState.self) private var workout
-    @Environment(\.dismiss) private var dismiss
 
-    @State private var showAddExercise = false
     @State private var showFinishAlert = false
     @State private var isFinishing = false
     @State private var showSummary = false
@@ -22,10 +20,16 @@ struct WatchWorkoutView: View {
 
                 // Exercise list
                 if workout.exercises.isEmpty {
-                    Text("No exercises yet")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 20)
+                    VStack(spacing: 8) {
+                        Image(systemName: "iphone")
+                            .font(.system(size: 24))
+                            .foregroundStyle(.secondary)
+                        Text("Add exercises on your iPhone")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 20)
                 } else {
                     ForEach(workout.exercises) { exercise in
                         NavigationLink {
@@ -35,17 +39,6 @@ struct WatchWorkoutView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                }
-
-                // Add exercise
-                if let recent = session.context?.recentExercises, !recent.isEmpty {
-                    Button {
-                        showAddExercise = true
-                    } label: {
-                        Label("Add Exercise", systemImage: "plus")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .buttonStyle(.bordered)
                 }
 
                 // Finish
@@ -63,21 +56,26 @@ struct WatchWorkoutView: View {
             .padding(.horizontal, 4)
         }
         .navigationTitle(workout.sessionName)
-        .navigationBarBackButtonHidden(true)
         .alert("Finish workout?", isPresented: $showFinishAlert) {
             Button("Finish", role: .destructive) { finishWorkout() }
             Button("Cancel", role: .cancel) {}
         }
-        .sheet(isPresented: $showAddExercise) {
-            addExerciseSheet
-        }
         .navigationDestination(isPresented: $showSummary) {
-            WatchSummaryView(onDone: {
-                dismiss()
-            })
+            WatchSummaryView()
         }
         .onAppear { startTimer() }
         .onDisappear { elapsedTimer?.invalidate() }
+        .onChange(of: session.context?.activeSession?.exercises) { _, newExercises in
+            if let exercises = newExercises {
+                let active = WatchActiveSession(
+                    sessionId: workout.sessionId ?? "",
+                    name: workout.sessionName,
+                    startedAt: workout.startedAt ?? Date(),
+                    exercises: exercises
+                )
+                workout.syncExercises(from: active)
+            }
+        }
     }
 
     // MARK: - Exercise row
@@ -88,7 +86,15 @@ struct WatchWorkoutView: View {
                 Text(exercise.exerciseName)
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
-                if let equip = exercise.equipment {
+
+                // Show last logged set detail
+                if let sets = workout.loggedSetDetails[exercise.exerciseId], let last = sets.last {
+                    let weightStr = last.weight.map { formatWeight($0) } ?? "BW"
+                    Text("\(weightStr) \u{00d7} \(last.reps)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if let equip = exercise.equipment {
                     Text(equip)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -111,47 +117,6 @@ struct WatchWorkoutView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Add exercise sheet
-
-    private var addExerciseSheet: some View {
-        NavigationStack {
-            List {
-                if let recent = session.context?.recentExercises {
-                    ForEach(recent) { exercise in
-                        Button {
-                            guard let sid = workout.sessionId else { return }
-                            session.addExercise(sessionId: sid, exerciseId: exercise.id) { success in
-                                if success {
-                                    Task { @MainActor in
-                                        workout.addExercise(WatchSessionExercise(
-                                            exerciseId: exercise.id,
-                                            exerciseName: exercise.name,
-                                            equipment: exercise.equipment,
-                                            completedSets: 0,
-                                            totalSets: 1
-                                        ))
-                                        showAddExercise = false
-                                    }
-                                }
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(exercise.name)
-                                    .font(.system(size: 14, weight: .medium))
-                                if let equip = exercise.equipment {
-                                    Text(equip)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Add Exercise")
-        }
-    }
-
     // MARK: - Actions
 
     private func finishWorkout() {
@@ -172,5 +137,12 @@ struct WatchWorkoutView: View {
                 elapsed = workout.elapsedText
             }
         }
+    }
+
+    private func formatWeight(_ w: Double) -> String {
+        if w.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(w))"
+        }
+        return String(format: "%.1f", w)
     }
 }

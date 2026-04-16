@@ -58,6 +58,9 @@ struct WorkoutComplicationView: View {
             if entry.goal != nil {
                 Gauge(value: progress) {
                     Image(systemName: "dumbbell.fill")
+                } currentValueLabel: {
+                    Text("\(entry.workouts)")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
                 .tint(.purple)

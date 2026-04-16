@@ -4,21 +4,29 @@ struct WatchHomeView: View {
     @Environment(WatchSessionManager.self) private var session
     @Environment(WatchWorkoutState.self) private var workout
 
-    @State private var showPlanList = false
-    @State private var isStarting = false
     @State private var navigateToWorkout = false
+    @State private var navigateToStart = false
 
     private var ctx: WatchContext? { session.context }
+    private var workedOutToday: Bool { ctx?.snapshot.workedOutToday ?? false }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    // Today summary card
-                    todaySummary
-
-                    // Resume active workout
-                    if let active = ctx?.activeSession, !workout.isActive {
+                    // Continue active workout
+                    if workout.isActive {
+                        Button {
+                            navigateToWorkout = true
+                        } label: {
+                            Label("Continue Workout", systemImage: "arrow.counterclockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                    }
+                    // Resume session from phone (watch state cleared but session still active)
+                    else if let active = ctx?.activeSession {
                         Button {
                             workout.start(
                                 sessionId: active.sessionId,
@@ -34,101 +42,171 @@ struct WatchHomeView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.orange)
                     }
-
-                    // Start blank workout
-                    Button {
-                        guard !isStarting else { return }
-                        isStarting = true
-                        session.startSession { id, name, date in
-                            Task { @MainActor in
-                                isStarting = false
-                                if let id, let date {
-                                    workout.start(sessionId: id, name: name ?? "Workout", startedAt: date)
-                                    navigateToWorkout = true
-                                }
-                            }
-                        }
-                    } label: {
-                        Label(isStarting ? "Starting..." : "Start Workout", systemImage: "bolt.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(WatchColors.accent)
-                    .disabled(isStarting)
-
-                    // From plan
-                    if let plans = ctx?.plans, !plans.isEmpty {
+                    // Start workout (only if not already worked out today)
+                    else if !workedOutToday {
                         Button {
-                            showPlanList = true
+                            navigateToStart = true
                         } label: {
-                            Label("From Plan", systemImage: "doc.text")
+                            Label("Start Workout", systemImage: "bolt.fill")
                                 .font(.system(size: 14, weight: .semibold))
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.borderedProminent)
+                        .tint(WatchColors.accent)
                     }
+
+                    // Step counter
+                    stepCard
+
+                    // Weekly goal
+                    weeklyGoalCard
+
+                    // Streak
+                    streakCard
                 }
                 .padding(.horizontal, 4)
             }
-            .navigationTitle("Shift")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Image("ShiftLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22, height: 22)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+            }
             .navigationDestination(isPresented: $navigateToWorkout) {
                 WatchWorkoutView()
             }
-            .navigationDestination(isPresented: $showPlanList) {
-                WatchPlanListView(onStarted: { navigateToWorkout = true })
+            .navigationDestination(isPresented: $navigateToStart) {
+                WatchStartWorkoutView(navigateToWorkout: $navigateToWorkout)
+            }
+            .onChange(of: workout.isActive) { _, isActive in
+                if !isActive && navigateToWorkout {
+                    navigateToWorkout = false
+                }
             }
         }
     }
 
-    // MARK: - Today summary
+    // MARK: - Step counter card
 
-    private var todaySummary: some View {
-        VStack(spacing: 8) {
+    private var stepCard: some View {
+        Group {
             if let snap = ctx?.snapshot {
-                HStack(spacing: 16) {
-                    // Steps
-                    VStack(spacing: 2) {
+                VStack(spacing: 6) {
+                    HStack {
                         Image(systemName: "shoeprints.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(.green)
-                        Text(formatSteps(snap.stepsToday))
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                        if let goal = snap.stepGoal, goal > 0 {
-                            Text("/ \(formatSteps(goal))")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Steps")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
                     }
 
-                    // Workouts
-                    VStack(spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(formatSteps(snap.stepsToday))
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                        if let goal = snap.stepGoal, goal > 0 {
+                            Text("/ \(formatSteps(goal))")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    if let goal = snap.stepGoal, goal > 0 {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.white.opacity(0.1))
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(.green)
+                                    .frame(width: geo.size.width * min(Double(snap.stepsToday) / Double(goal), 1.0), height: 6)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    // MARK: - Weekly goal card
+
+    private var weeklyGoalCard: some View {
+        Group {
+            if let snap = ctx?.snapshot {
+                VStack(spacing: 6) {
+                    HStack {
                         Image(systemName: "dumbbell.fill")
                             .font(.system(size: 10))
                             .foregroundStyle(.purple)
-                        if let goal = snap.weeklyGoal, goal > 0 {
-                            Text("\(snap.workoutsThisWeek)/\(goal)")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                        } else {
-                            Text("\(snap.workoutsThisWeek)")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                        }
-                        Text("this week")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
+                        Text("This Week")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
                     }
 
-                    // Streak
-                    VStack(spacing: 2) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(snap.currentStreak > 0 ? .orange : .gray)
-                        Text("\(snap.currentStreak)")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                        Text("streak")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        if let goal = snap.weeklyGoal, goal > 0 {
+                            Text("\(snap.workoutsThisWeek)/\(goal)")
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                            Text("workouts")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("\(snap.workoutsThisWeek)")
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                            Text("workouts")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    if let goal = snap.weeklyGoal, goal > 0 {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.white.opacity(0.1))
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(.purple)
+                                    .frame(width: geo.size.width * min(Double(snap.workoutsThisWeek) / Double(goal), 1.0), height: 6)
+                            }
+                        }
+                        .frame(height: 6)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(10)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    // MARK: - Streak card
+
+    private var streakCard: some View {
+        Group {
+            if let snap = ctx?.snapshot {
+                HStack {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(snap.currentStreak > 0 ? .orange : .gray)
+                    Text("\(snap.currentStreak)")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text("day streak")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
                 Text("Open Shift on iPhone to sync")
                     .font(.system(size: 12))

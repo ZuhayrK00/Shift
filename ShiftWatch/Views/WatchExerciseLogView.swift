@@ -10,7 +10,6 @@ struct WatchExerciseLogView: View {
     @State private var weight: Double = 0
     @State private var reps: Double = 10
     @State private var crownOnWeight = true
-    @State private var setsLogged: Int = 0
     @State private var isLogging = false
     @State private var showRestTimer = false
 
@@ -53,12 +52,26 @@ struct WatchExerciseLogView: View {
                 .tint(WatchColors.accent)
                 .disabled(isLogging || Int(reps) < 1)
 
-                // Sets logged indicator
-                let completed = workout.localSetCounts[exercise.exerciseId] ?? exercise.completedSets
-                if completed > 0 {
-                    Text("\(completed) set\(completed == 1 ? "" : "s") logged")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                // Logged sets detail
+                if let sets = workout.loggedSetDetails[exercise.exerciseId], !sets.isEmpty {
+                    VStack(spacing: 4) {
+                        ForEach(Array(sets.enumerated()), id: \.offset) { index, loggedSet in
+                            HStack {
+                                Text("Set \(index + 1)")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                let weightStr = loggedSet.weight.map { formatWeight($0) } ?? "BW"
+                                Text("\(weightStr) \u{00d7} \(loggedSet.reps)")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
             .padding(.horizontal, 4)
@@ -131,12 +144,12 @@ struct WatchExerciseLogView: View {
         isLogging = true
 
         let w = weight > 0 ? weight : nil
-        session.logSet(sessionId: sid, exerciseId: exercise.exerciseId, reps: Int(reps), weight: w) { success in
+        let r = Int(reps)
+        session.logSet(sessionId: sid, exerciseId: exercise.exerciseId, reps: r, weight: w) { success in
             Task { @MainActor in
                 isLogging = false
                 if success {
-                    workout.loggedSet(for: exercise.exerciseId)
-                    setsLogged += 1
+                    workout.loggedSet(for: exercise.exerciseId, weight: w, reps: r)
                     WKInterfaceDevice.current().play(.success)
 
                     // Show rest timer if enabled
@@ -149,6 +162,13 @@ struct WatchExerciseLogView: View {
     }
 
     private func seedValues() {
+        // Seed from last logged set if available
+        if let sets = workout.loggedSetDetails[exercise.exerciseId], let last = sets.last {
+            if let w = last.weight { weight = w }
+            reps = Double(last.reps)
+            return
+        }
+
         // Try to use plan target weight/reps if available
         if let plans = session.context?.plans {
             for plan in plans {

@@ -31,6 +31,11 @@ final class PhoneSessionManager: NSObject {
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
             try? WCSession.default.updateApplicationContext(dict)
+
+            // Also send via message for immediate delivery when watch app is open
+            if WCSession.default.isReachable {
+                WCSession.default.sendMessage(["contextUpdate": dict], replyHandler: nil, errorHandler: nil)
+            }
         }
     }
 
