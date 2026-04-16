@@ -24,13 +24,18 @@ struct WatchWorkoutView: View {
                     }
                     .padding(.vertical, 20)
                 } else {
-                    ForEach(workout.exercises) { exercise in
-                        NavigationLink {
-                            WatchExerciseLogView(exercise: exercise)
-                        } label: {
-                            exerciseRow(exercise)
+                    ForEach(groupedExercises, id: \.id) { group in
+                        if group.exercises.count > 1 {
+                            // Superset / tri-set / giant set
+                            supersetBlock(group.exercises)
+                        } else if let exercise = group.exercises.first {
+                            NavigationLink {
+                                WatchExerciseLogView(exercise: exercise)
+                            } label: {
+                                exerciseRow(exercise)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 
@@ -65,6 +70,87 @@ struct WatchWorkoutView: View {
                     exercises: exercises
                 )
                 workout.syncExercises(from: active)
+            }
+        }
+    }
+
+    // MARK: - Grouped exercises
+
+    private struct ExerciseGroup: Identifiable {
+        var id: String
+        var exercises: [WatchSessionExercise]
+    }
+
+    private var groupedExercises: [ExerciseGroup] {
+        var result: [ExerciseGroup] = []
+        var currentGroupId: String?
+        var buffer: [WatchSessionExercise] = []
+
+        func flush() {
+            guard !buffer.isEmpty else { return }
+            let id = buffer.map { $0.exerciseId }.joined(separator: "+")
+            result.append(ExerciseGroup(id: id, exercises: buffer))
+        }
+
+        for exercise in workout.exercises {
+            if let gid = exercise.groupId {
+                if gid == currentGroupId {
+                    buffer.append(exercise)
+                } else {
+                    flush()
+                    currentGroupId = gid
+                    buffer = [exercise]
+                }
+            } else {
+                flush()
+                currentGroupId = nil
+                buffer = []
+                result.append(ExerciseGroup(id: exercise.exerciseId, exercises: [exercise]))
+            }
+        }
+        flush()
+        return result
+    }
+
+    private var groupLabel: (Int) -> String = { count in
+        switch count {
+        case 2: return "Superset"
+        case 3: return "Tri-set"
+        default: return "Giant set"
+        }
+    }
+
+    private func supersetBlock(_ exercises: [WatchSessionExercise]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Label
+            HStack(spacing: 4) {
+                Rectangle()
+                    .fill(.orange)
+                    .frame(width: 3, height: 14)
+                    .clipShape(Capsule())
+                Text(groupLabel(exercises.count).uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .tracking(0.5)
+            }
+            .padding(.bottom, 4)
+
+            VStack(spacing: 4) {
+                ForEach(exercises) { exercise in
+                    NavigationLink {
+                        WatchExerciseLogView(exercise: exercise)
+                    } label: {
+                        exerciseRow(exercise)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.leading, 8)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(.orange.opacity(0.4))
+                    .frame(width: 2)
+                    .padding(.vertical, 2)
             }
         }
     }

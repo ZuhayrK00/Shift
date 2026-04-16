@@ -109,7 +109,8 @@ final class PhoneSessionManager: NSObject {
                     exerciseName: exercise?.name ?? "Exercise",
                     equipment: exercise?.equipment,
                     completedSets: sets.filter { $0.isCompleted }.count,
-                    totalSets: sets.count
+                    totalSets: sets.count,
+                    groupId: sets.first?.groupId
                 ))
             }
 

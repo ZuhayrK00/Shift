@@ -66,6 +66,7 @@ struct WatchSessionExercise: Codable, Identifiable, Hashable {
     var equipment: String?
     var completedSets: Int
     var totalSets: Int
+    var groupId: String?
 
     var id: String { exerciseId }
 
