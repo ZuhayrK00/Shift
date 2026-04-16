@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WidgetKit
 
 /// Watch-side WatchConnectivity manager.
 /// Receives application context from iPhone and sends workout actions.
@@ -119,6 +120,7 @@ final class WatchSessionManager: NSObject {
             updatedAt: Date()
         )
         snapshot.write()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
 
