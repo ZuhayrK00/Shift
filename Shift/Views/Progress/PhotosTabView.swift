@@ -39,6 +39,7 @@ struct PhotosTabView: View {
             }
         }
         .task { await loadData() }
+        .onAppear { Task { await loadData() } }
         .onChange(of: selectedItem) { _, newItem in
             guard let newItem else { return }
             Task { await uploadPhoto(from: newItem) }
@@ -297,7 +298,7 @@ struct PhotosTabView: View {
     }
 
     private func loadData() async {
-        isLoading = true
+        if photos.isEmpty { isLoading = true }
         photos = (try? await ProgressService.getPhotos()) ?? []
         photoCount = photos.count
         isLoading = false

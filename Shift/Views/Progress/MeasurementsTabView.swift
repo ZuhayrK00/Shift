@@ -29,6 +29,7 @@ struct MeasurementsTabView: View {
             }
         }
         .task { await loadData() }
+        .onAppear { Task { await loadData() } }
         .sheet(isPresented: $showAddSheet, onDismiss: { preselectedType = nil }) {
             AddMeasurementSheet(unit: measurementUnit, preselectedType: preselectedType) {
                 Task { await loadData() }
@@ -179,7 +180,7 @@ struct MeasurementsTabView: View {
     }
 
     private func loadData() async {
-        isLoading = true
+        if latestPerType.isEmpty { isLoading = true }
         latestPerType = (try? await ProgressService.getLatestPerType()) ?? []
         isLoading = false
     }
@@ -432,6 +433,7 @@ struct MeasurementDetailView: View {
             }
         }
         .task { await loadData() }
+        .onAppear { Task { await loadData() } }
         .sheet(isPresented: $showAddSheet) {
             AddMeasurementSheet(unit: measurementUnit, preselectedType: type) {
                 Task { await loadData() }
@@ -587,7 +589,7 @@ struct MeasurementDetailView: View {
     }
 
     private func loadData() async {
-        isLoading = true
+        if entries.isEmpty { isLoading = true }
         entries = (try? await ProgressService.getMeasurements(type: measurementType)) ?? []
         isLoading = false
     }
