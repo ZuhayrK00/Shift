@@ -64,6 +64,9 @@ struct ExerciseLogView: View {
         .navigationTitle(exercise?.name ?? "Exercise")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadData() }
+        .onDisappear {
+            RestTimerManager.shared.stop()
+        }
     }
 
     // MARK: - Tab bar

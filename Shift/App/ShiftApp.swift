@@ -2,6 +2,7 @@ import SwiftUI
 import GRDB
 import UserNotifications
 import Supabase
+import WatchConnectivity
 
 extension Notification.Name {
     static let shiftDeepLinkStartWorkout = Notification.Name("shiftDeepLinkStartWorkout")
@@ -46,6 +47,7 @@ struct ShiftApp: App {
         NotificationManager.registerCategories()
         UNUserNotificationCenter.current().delegate = notificationDelegate
         HealthKitService.enableStepCountBackgroundDelivery()
+        PhoneSessionManager.shared.activate()
         Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
@@ -77,6 +79,7 @@ struct ShiftApp: App {
             if newPhase == .active {
                 Task { await GoalNotificationService.checkAndNotifyGoalCompletion() }
                 Task { await WidgetDataService.updateSnapshot() }
+                PhoneSessionManager.shared.sendContextToWatch()
             }
         }
     }

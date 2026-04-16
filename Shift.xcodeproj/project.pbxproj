@@ -12,6 +12,7 @@
 		3F824DDF2F8CEE74000009CB /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3F824DDE2F8CEE74000009CB /* WidgetKit.framework */; };
 		3F824DE12F8CEE74000009CB /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3F824DE02F8CEE74000009CB /* SwiftUI.framework */; };
 		3F824DEE2F8CEE75000009CB /* ShiftTimerWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3F824DDC2F8CEE74000009CB /* ShiftTimerWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BB000001BBBB000000000001 /* ShiftWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BB000002BBBB000000000002 /* ShiftWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,6 +30,13 @@
 			remoteGlobalIDString = 3F4C3C0B2F8CE0FC00A9EB58;
 			remoteInfo = Shift;
 		};
+		BB000003BBBB000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3F4C3C042F8CE0FC00A9EB58 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BB000010BBBB000000000010;
+			remoteInfo = ShiftWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -43,6 +51,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB000004BBBB000000000004 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				BB000001BBBB000000000001 /* ShiftWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +70,7 @@
 		3F824DDE2F8CEE74000009CB /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		3F824DE02F8CEE74000009CB /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		AA000001AAAA000000000001 /* ShiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB000002BBBB000000000002 /* ShiftWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShiftWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -92,6 +112,16 @@
 			path = ShiftTests;
 			sourceTree = "<group>";
 		};
+		BB000006BBBB000000000006 /* ShiftWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ShiftWatch;
+			sourceTree = "<group>";
+		};
+		BB000007BBBB000000000007 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -120,6 +150,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB000008BBBB000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -128,6 +165,8 @@
 			children = (
 				3F4C3C0E2F8CE0FC00A9EB58 /* Shift */,
 				3F824DE22F8CEE74000009CB /* ShiftTimerWidget */,
+				BB000006BBBB000000000006 /* ShiftWatch */,
+				BB000007BBBB000000000007 /* Shared */,
 				AA000002AAAA000000000002 /* ShiftTests */,
 				3F824DDD2F8CEE74000009CB /* Frameworks */,
 				3F4C3C0D2F8CE0FC00A9EB58 /* Products */,
@@ -139,6 +178,7 @@
 			children = (
 				3F4C3C0C2F8CE0FC00A9EB58 /* Shift.app */,
 				3F824DDC2F8CEE74000009CB /* ShiftTimerWidgetExtension.appex */,
+				BB000002BBBB000000000002 /* ShiftWatch.app */,
 				AA000001AAAA000000000001 /* ShiftTests.xctest */,
 			);
 			name = Products;
@@ -164,14 +204,17 @@
 				3F4C3C092F8CE0FC00A9EB58 /* Frameworks */,
 				3F4C3C0A2F8CE0FC00A9EB58 /* Resources */,
 				3F824DF32F8CEE75000009CB /* Embed Foundation Extensions */,
+				BB000004BBBB000000000004 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				3F824DED2F8CEE75000009CB /* PBXTargetDependency */,
+				BB000009BBBB000000000009 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3F4C3C0E2F8CE0FC00A9EB58 /* Shift */,
+				BB000007BBBB000000000007 /* Shared */,
 			);
 			name = Shift;
 			packageProductDependencies = (
@@ -227,6 +270,29 @@
 			productReference = AA000001AAAA000000000001 /* ShiftTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		BB000010BBBB000000000010 /* ShiftWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB000020BBBB000000000020 /* Build configuration list for PBXNativeTarget "ShiftWatch" */;
+			buildPhases = (
+				BB000011BBBB000000000011 /* Sources */,
+				BB000008BBBB000000000008 /* Frameworks */,
+				BB000012BBBB000000000012 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BB000006BBBB000000000006 /* ShiftWatch */,
+				BB000007BBBB000000000007 /* Shared */,
+			);
+			name = ShiftWatch;
+			packageProductDependencies = (
+			);
+			productName = ShiftWatch;
+			productReference = BB000002BBBB000000000002 /* ShiftWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -246,6 +312,9 @@
 					AA000008AAAA000000000008 = {
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 3F4C3C0B2F8CE0FC00A9EB58;
+					};
+					BB000010BBBB000000000010 = {
+						CreatedOnToolsVersion = 26.4;
 					};
 				};
 			};
@@ -269,6 +338,7 @@
 			targets = (
 				3F4C3C0B2F8CE0FC00A9EB58 /* Shift */,
 				3F824DDB2F8CEE74000009CB /* ShiftTimerWidgetExtension */,
+				BB000010BBBB000000000010 /* ShiftWatch */,
 				AA000008AAAA000000000008 /* ShiftTests */,
 			);
 		};
@@ -290,6 +360,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA000004AAAA000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB000012BBBB000000000012 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -320,6 +397,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BB000011BBBB000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -332,6 +416,11 @@
 			isa = PBXTargetDependency;
 			target = 3F4C3C0B2F8CE0FC00A9EB58 /* Shift */;
 			targetProxy = AA000006AAAA000000000006 /* PBXContainerItemProxy */;
+		};
+		BB000009BBBB000000000009 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BB000010BBBB000000000010 /* ShiftWatch */;
+			targetProxy = BB000003BBBB000000000003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -486,7 +575,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 2.0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -528,7 +617,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 2.0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -647,6 +736,70 @@
 			};
 			name = Release;
 		};
+		BB000021BBBB000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ShiftWatch/ShiftWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7NW33277C8;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Shift;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.zuhayrk.shift;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		BB000022BBBB000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = ShiftWatch/ShiftWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7NW33277C8;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Shift;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.zuhayrk.shift;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -682,6 +835,15 @@
 			buildConfigurations = (
 				AA00000BAAAA00000000000B /* Debug */,
 				AA00000CAAAA00000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB000020BBBB000000000020 /* Build configuration list for PBXNativeTarget "ShiftWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB000021BBBB000000000021 /* Debug */,
+				BB000022BBBB000000000022 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
