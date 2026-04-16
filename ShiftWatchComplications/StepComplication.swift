@@ -66,12 +66,16 @@ struct StepComplicationView: View {
                 .gaugeStyle(.accessoryCircularCapacity)
                 .tint(.green)
             } else {
-                VStack(spacing: 1) {
-                    Image(systemName: "shoeprints.fill")
-                        .font(.system(size: 10))
-                    Text(formatCompact(entry.steps))
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                Gauge(value: 0) {
+                    VStack(spacing: 0) {
+                        Image(systemName: "shoeprints.fill")
+                            .font(.system(size: 8))
+                        Text(formatCompact(entry.steps))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
                 }
+                .gaugeStyle(.accessoryCircularCapacity)
+                .tint(.green)
             }
         }
     }
@@ -97,8 +101,12 @@ struct StepComplicationView: View {
                 .gaugeStyle(.accessoryLinearCapacity)
                 .tint(.green)
             } else {
-                Text(formatCompact(entry.steps))
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                Gauge(value: 0) {
+                    Text(formatCompact(entry.steps))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                }
+                .gaugeStyle(.accessoryLinearCapacity)
+                .tint(.green)
             }
         }
     }
@@ -127,13 +135,17 @@ struct StepComplicationView: View {
                     .gaugeStyle(.accessoryLinearCapacity)
                     .tint(.green)
             } else {
-                HStack(spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(formatCompact(entry.steps))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                    Text("steps")
+                    Text("steps today")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+
+                Gauge(value: 0) { EmptyView() }
+                    .gaugeStyle(.accessoryLinearCapacity)
+                    .tint(.green)
             }
         }
     }

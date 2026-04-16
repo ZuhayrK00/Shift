@@ -67,12 +67,16 @@ struct WorkoutComplicationView: View {
                 .gaugeStyle(.accessoryCircularCapacity)
                 .tint(.purple)
             } else {
-                VStack(spacing: 1) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.system(size: 10))
-                    Text("\(entry.workouts)")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                Gauge(value: 0) {
+                    VStack(spacing: 0) {
+                        Image(systemName: "dumbbell.fill")
+                            .font(.system(size: 8))
+                        Text("\(entry.workouts)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
                 }
+                .gaugeStyle(.accessoryCircularCapacity)
+                .tint(.purple)
             }
         }
     }
@@ -112,13 +116,17 @@ struct WorkoutComplicationView: View {
                     .gaugeStyle(.accessoryLinearCapacity)
                     .tint(.purple)
             } else {
-                HStack(spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("\(entry.workouts)")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                     Text(entry.workouts == 1 ? "workout" : "workouts")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+
+                Gauge(value: 0) { EmptyView() }
+                    .gaugeStyle(.accessoryLinearCapacity)
+                    .tint(.purple)
             }
         }
     }
