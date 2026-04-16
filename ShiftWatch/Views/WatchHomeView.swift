@@ -10,8 +10,6 @@ struct WatchHomeView: View {
     @State private var showCompletedDetail = false
 
     private var ctx: WatchContext? { session.context }
-    private var workedOutToday: Bool { ctx?.snapshot.workedOutToday ?? false }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -45,7 +43,7 @@ struct WatchHomeView: View {
                         .tint(.orange)
                     }
                     // Show last completed workout today
-                    else if workedOutToday, let completed = ctx?.lastCompletedSession {
+                    else if let completed = ctx?.lastCompletedSession {
                         Button {
                             showCompletedDetail = true
                         } label: {
