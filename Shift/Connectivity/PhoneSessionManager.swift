@@ -30,6 +30,8 @@ final class PhoneSessionManager: NSObject {
         guard WCSession.default.activationState == .activated else { return }
 
         Task {
+            // Ensure snapshot is fresh before sending to watch
+            await WidgetDataService.updateSnapshot()
             let context = await buildContext()
             guard let data = try? JSONEncoder().encode(context),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
