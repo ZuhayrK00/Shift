@@ -95,6 +95,7 @@ struct NewPlanView: View {
             onCreate?(plan)
             createdPlan = plan
             navigateToPlan = true
+            PhoneSessionManager.shared.sendContextToWatch()
         } catch {
             self.error = error.localizedDescription
         }

@@ -266,6 +266,7 @@ struct PlanEditorView: View {
             errorMessage = "Failed to save plan name: \(error.localizedDescription)"
             return
         }
+        PhoneSessionManager.shared.sendContextToWatch()
         onDismiss(false)
     }
 
@@ -279,6 +280,7 @@ struct PlanEditorView: View {
             )
             exercises.append(contentsOf: added)
             for ex in selected { exerciseMap[ex.id] = ex }
+            PhoneSessionManager.shared.sendContextToWatch()
         } catch {
             errorMessage = "Failed to add exercises: \(error.localizedDescription)"
         }
@@ -297,6 +299,7 @@ struct PlanEditorView: View {
             if let idx = exercises.firstIndex(where: { $0.id == updated.id }) {
                 exercises[idx] = updated
             }
+            PhoneSessionManager.shared.sendContextToWatch()
         } catch {
             errorMessage = "Failed to update exercise: \(error.localizedDescription)"
         }
@@ -306,6 +309,7 @@ struct PlanEditorView: View {
         do {
             try await PlanService.removeExercise(pe.id)
             exercises.removeAll { $0.id == pe.id }
+            PhoneSessionManager.shared.sendContextToWatch()
         } catch {
             errorMessage = "Failed to remove exercise: \(error.localizedDescription)"
         }
@@ -314,6 +318,7 @@ struct PlanEditorView: View {
     private func deletePlan() async {
         do {
             try await PlanService.deletePlan(plan.id)
+            PhoneSessionManager.shared.sendContextToWatch()
             onDismiss(true)
             dismiss()
         } catch {
