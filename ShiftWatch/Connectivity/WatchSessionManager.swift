@@ -69,6 +69,12 @@ final class WatchSessionManager: NSObject {
         }
     }
 
+    func deleteSession(sessionId: String, completion: @escaping (Bool) -> Void) {
+        send(["action": WatchAction.deleteSession.rawValue, "sessionId": sessionId]) { reply in
+            completion(reply["success"] as? Bool ?? false)
+        }
+    }
+
     func requestSync() {
         send(["action": WatchAction.requestSync.rawValue]) { _ in }
     }

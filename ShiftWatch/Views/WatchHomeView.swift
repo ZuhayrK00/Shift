@@ -7,6 +7,9 @@ struct WatchHomeView: View {
     @State private var navigateToWorkout = false
     @State private var navigateToStart = false
 
+    @State private var showDeleteAlert = false
+    @State private var isDeleting = false
+
     private var ctx: WatchContext? { session.context }
     private var workedOutToday: Bool { ctx?.snapshot.workedOutToday ?? false }
 
@@ -42,8 +45,12 @@ struct WatchHomeView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.orange)
                     }
+                    // Show last completed workout today
+                    else if workedOutToday, let completed = ctx?.lastCompletedSession {
+                        lastWorkoutCard(completed)
+                    }
                     // Start workout (only if not already worked out today)
-                    else if !workedOutToday {
+                    else {
                         Button {
                             navigateToStart = true
                         } label: {
@@ -85,7 +92,77 @@ struct WatchHomeView: View {
                     navigateToWorkout = false
                 }
             }
+            .alert("Delete workout?", isPresented: $showDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    if let sid = ctx?.lastCompletedSession?.sessionId {
+                        isDeleting = true
+                        session.deleteSession(sessionId: sid) { _ in
+                            Task { @MainActor in
+                                isDeleting = false
+                            }
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
         }
+    }
+
+    // MARK: - Last workout card
+
+    private func lastWorkoutCard(_ completed: WatchCompletedSession) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(WatchColors.success)
+                Text(completed.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                let duration = formatDuration(from: completed.startedAt, to: completed.endedAt)
+                miniStat(value: duration, label: "Duration")
+                miniStat(value: "\(completed.exerciseCount)", label: "Exercises")
+                miniStat(value: "\(completed.setCount)", label: "Sets")
+            }
+
+            Button(role: .destructive) {
+                showDeleteAlert = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .disabled(isDeleting)
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func miniStat(value: String, label: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func formatDuration(from start: Date, to end: Date) -> String {
+        let mins = Int(end.timeIntervalSince(start)) / 60
+        if mins < 1 { return "<1m" }
+        if mins >= 60 {
+            let h = mins / 60
+            let m = mins % 60
+            return m > 0 ? "\(h)h \(m)m" : "\(h)h"
+        }
+        return "\(mins)m"
     }
 
     // MARK: - Step counter card

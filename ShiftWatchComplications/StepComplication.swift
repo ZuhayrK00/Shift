@@ -56,10 +56,12 @@ struct StepComplicationView: View {
         ZStack {
             if entry.goal != nil {
                 Gauge(value: progress) {
-                    Image(systemName: "shoeprints.fill")
-                } currentValueLabel: {
-                    Text(formatCompact(entry.steps))
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                    VStack(spacing: 0) {
+                        Image(systemName: "shoeprints.fill")
+                            .font(.system(size: 8))
+                        Text(formatCompact(entry.steps))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
                 .tint(.green)

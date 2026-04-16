@@ -85,12 +85,22 @@ struct WatchLoggedSet: Codable, Identifiable {
     var completedAt: Date
 }
 
+struct WatchCompletedSession: Codable {
+    var sessionId: String
+    var name: String
+    var startedAt: Date
+    var endedAt: Date
+    var exerciseCount: Int
+    var setCount: Int
+}
+
 // MARK: - Context payload that iPhone sends to Watch
 
 struct WatchContext: Codable {
     var plans: [WatchPlan]
     var recentExercises: [WatchExercise]
     var activeSession: WatchActiveSession?
+    var lastCompletedSession: WatchCompletedSession?
     var settings: WatchSettings
     var userId: String
     var snapshot: WatchSnapshotData
@@ -114,5 +124,6 @@ enum WatchAction: String, Codable {
     case finishSession
     case logSet
     case addExercise
+    case deleteSession
     case requestSync
 }

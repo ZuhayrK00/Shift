@@ -498,11 +498,13 @@ struct WorkoutView: View {
         let ids = exercises.map { $0.id }
         try? await WorkoutService.addExercisesToSession(sessionId, exerciseIds: ids, asGroup: asGroup)
         await loadData()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func removeExercise(exerciseId: String) async {
         try? await WorkoutService.removeExercise(sessionId: sessionId, exerciseId: exerciseId)
         await loadData()
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func changeSetType(set: SessionSet, newType: SetType) async {

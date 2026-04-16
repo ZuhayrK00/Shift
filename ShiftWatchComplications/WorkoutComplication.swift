@@ -57,10 +57,12 @@ struct WorkoutComplicationView: View {
         ZStack {
             if entry.goal != nil {
                 Gauge(value: progress) {
-                    Image(systemName: "dumbbell.fill")
-                } currentValueLabel: {
-                    Text("\(entry.workouts)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                    VStack(spacing: 0) {
+                        Image(systemName: "dumbbell.fill")
+                            .font(.system(size: 8))
+                        Text("\(entry.workouts)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
                 .tint(.purple)

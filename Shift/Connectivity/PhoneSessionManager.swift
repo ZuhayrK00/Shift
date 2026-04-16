@@ -107,6 +107,21 @@ final class PhoneSessionManager: NSObject {
             )
         }()
 
+        // Last completed session today
+        let lastCompleted: WatchCompletedSession? = await {
+            guard let sessions = try? await WorkoutService.getCompletedSessions(for: Date()),
+                  let last = sessions.last else { return nil }
+            let setCount = last.exercises.reduce(0) { $0 + $1.setCount }
+            return WatchCompletedSession(
+                sessionId: last.id,
+                name: last.name,
+                startedAt: last.startedAt,
+                endedAt: last.endedAt ?? Date(),
+                exerciseCount: last.exercises.count,
+                setCount: setCount
+            )
+        }()
+
         // Snapshot data
         let snapshot = WidgetSnapshot.read()
         let snapshotData = WatchContext.WatchSnapshotData(
@@ -123,6 +138,7 @@ final class PhoneSessionManager: NSObject {
             plans: plans,
             recentExercises: recentExercises,
             activeSession: activeSession,
+            lastCompletedSession: lastCompleted,
             settings: WatchSettings(
                 weightUnit: settings.weightUnit,
                 defaultWeightIncrement: settings.defaultWeightIncrement,
@@ -213,6 +229,19 @@ final class PhoneSessionManager: NSObject {
                 }
                 do {
                     try await WorkoutService.addExercisesToSession(sessionId, exerciseIds: [exerciseId])
+                    replyHandler?(["success": true])
+                    sendContextToWatch()
+                } catch {
+                    replyHandler?(["error": error.localizedDescription])
+                }
+
+            case .deleteSession:
+                guard let sessionId = message["sessionId"] as? String else {
+                    replyHandler?(["error": "Missing sessionId"])
+                    return
+                }
+                do {
+                    try await WorkoutService.deleteSession(sessionId)
                     replyHandler?(["success": true])
                     sendContextToWatch()
                 } catch {
