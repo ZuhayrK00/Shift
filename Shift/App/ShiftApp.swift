@@ -81,6 +81,9 @@ struct ShiftApp: App {
                 Task { await WidgetDataService.updateSnapshot() }
                 PhoneSessionManager.shared.sendContextToWatch()
             }
+            if newPhase == .background {
+                Task { await WidgetDataService.updateSnapshot() }
+            }
         }
     }
 }

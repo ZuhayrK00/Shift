@@ -57,8 +57,9 @@ struct HealthKitService {
         guard isAvailable else { return }
 
         let query = HKObserverQuery(sampleType: stepCountType, predicate: nil) { _, completionHandler, _ in
-            // HealthKit woke us — check if step goal is hit and fire notification
+            // HealthKit woke us — update widgets and check if step goal is hit
             Task {
+                await WidgetDataService.updateSnapshot()
                 await GoalNotificationService.checkAndNotifyGoalCompletion()
                 completionHandler()
             }
