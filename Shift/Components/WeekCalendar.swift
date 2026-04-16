@@ -26,16 +26,53 @@ struct WeekCalendar: View {
     }
 
     var body: some View {
-        TabView(selection: $pageIndex) {
-            // Render ±8 weeks for practical scrolling
-            ForEach(-8 ... 8, id: \.self) { offset in
-                weekRow(for: offset)
-                    .tag(offset)
+        VStack(spacing: 6) {
+            // Month label
+            HStack {
+                Text(monthLabel)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(colors.text)
+                Spacer()
             }
+            .padding(.horizontal, 16)
+
+            TabView(selection: $pageIndex) {
+                // Render ±8 weeks for practical scrolling
+                ForEach(-8 ... 8, id: \.self) { offset in
+                    weekRow(for: offset)
+                        .tag(offset)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 80)
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 80)
         .onAppear { pageIndex = initialPage }
+    }
+
+    /// Label showing the month(s) for the currently visible week page.
+    private var monthLabel: String {
+        let days = daysForWeek(offset: pageIndex)
+        guard let first = days.first, let last = days.last else { return "" }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM yyyy"
+        let firstLabel = fmt.string(from: first)
+        let lastLabel = fmt.string(from: last)
+        if firstLabel == lastLabel {
+            return firstLabel
+        }
+        // Week spans two months
+        let monthFmt = DateFormatter()
+        monthFmt.dateFormat = "MMM"
+        let yearFmt = DateFormatter()
+        yearFmt.dateFormat = "yyyy"
+        let firstMonth = monthFmt.string(from: first)
+        let lastMonth = monthFmt.string(from: last)
+        let year = yearFmt.string(from: last)
+        if yearFmt.string(from: first) == year {
+            return "\(firstMonth) – \(lastMonth) \(year)"
+        }
+        fmt.dateFormat = "MMM yyyy"
+        return "\(fmt.string(from: first)) – \(fmt.string(from: last))"
     }
 
     // MARK: - Week row
