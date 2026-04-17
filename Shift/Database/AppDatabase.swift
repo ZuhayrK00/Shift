@@ -312,6 +312,12 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addProfileHeight") { db in
+            try db.execute(sql: """
+                ALTER TABLE profiles ADD COLUMN height REAL
+            """)
+        }
+
         return migrator
     }
 }

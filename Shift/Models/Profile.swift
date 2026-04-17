@@ -6,6 +6,7 @@ struct Profile: Identifiable, Hashable, Codable {
     var name: String?
     var age: Int?
     var weight: Double?
+    var height: Double?            // stored in total inches
     var profilePictureUrl: String?
     var settings: UserSettings
     var createdAt: Date
@@ -14,19 +15,20 @@ struct Profile: Identifiable, Hashable, Codable {
     // MARK: Codable (Supabase JSON — settings is a JSONB object)
 
     enum CodingKeys: String, CodingKey {
-        case id, name, age, weight, settings
+        case id, name, age, weight, height, settings
         case profilePictureUrl = "profile_picture_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
 
     init(id: String, name: String? = nil, age: Int? = nil, weight: Double? = nil,
-         profilePictureUrl: String? = nil, settings: UserSettings = .default,
-         createdAt: Date, updatedAt: Date) {
+         height: Double? = nil, profilePictureUrl: String? = nil,
+         settings: UserSettings = .default, createdAt: Date, updatedAt: Date) {
         self.id = id
         self.name = name
         self.age = age
         self.weight = weight
+        self.height = height
         self.profilePictureUrl = profilePictureUrl
         self.settings = settings
         self.createdAt = createdAt
@@ -39,6 +41,7 @@ struct Profile: Identifiable, Hashable, Codable {
         name = try container.decodeIfPresent(String.self, forKey: .name)
         age = try container.decodeIfPresent(Int.self, forKey: .age)
         weight = try container.decodeIfPresent(Double.self, forKey: .weight)
+        height = try container.decodeIfPresent(Double.self, forKey: .height)
         profilePictureUrl = try container.decodeIfPresent(String.self, forKey: .profilePictureUrl)
         settings = (try? container.decode(UserSettings.self, forKey: .settings)) ?? .default
 
@@ -59,6 +62,7 @@ struct Profile: Identifiable, Hashable, Codable {
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(age, forKey: .age)
         try container.encodeIfPresent(weight, forKey: .weight)
+        try container.encodeIfPresent(height, forKey: .height)
         try container.encodeIfPresent(profilePictureUrl, forKey: .profilePictureUrl)
         try container.encode(settings, forKey: .settings)
         try container.encode(ISO8601DateFormatter.shared.string(from: createdAt), forKey: .createdAt)
@@ -74,6 +78,7 @@ extension Profile: FetchableRecord {
         name = row["name"]
         age = row["age"]
         weight = row["weight"]
+        height = row["height"]
         profilePictureUrl = row["profile_picture_url"]
 
         // settings is stored as a JSON-encoded TEXT column in SQLite
@@ -111,6 +116,7 @@ extension Profile: PersistableRecord {
         container["name"] = name
         container["age"] = age
         container["weight"] = weight
+        container["height"] = height
         container["profile_picture_url"] = profilePictureUrl
 
         // Encode settings back to JSON TEXT for SQLite

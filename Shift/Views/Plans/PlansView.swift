@@ -8,6 +8,8 @@ struct PlansView: View {
     @State private var isLoading = false
     @State private var showNewPlan = false
     @State private var showExplore = false
+    @State private var showAIGenerator = false
+    @State private var showQuickSession = false
     @State private var toastMessage: String?
     @State private var showToast = false
 
@@ -42,8 +44,29 @@ struct PlansView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showNewPlan = true
+                Menu {
+                    Button {
+                        showNewPlan = true
+                    } label: {
+                        Label("Blank Plan", systemImage: "doc")
+                    }
+
+                    #if canImport(FoundationModels)
+                    if #available(iOS 26, *) {
+                        Section("AI-Powered") {
+                            Button {
+                                showAIGenerator = true
+                            } label: {
+                                Label("Full Program", systemImage: "sparkles")
+                            }
+                            Button {
+                                showQuickSession = true
+                            } label: {
+                                Label("Quick Session", systemImage: "bolt.fill")
+                            }
+                        }
+                    }
+                    #endif
                 } label: {
                     Image(systemName: "plus")
                         .foregroundStyle(colors.accent)
@@ -55,6 +78,14 @@ struct PlansView: View {
             ExplorePlansView()
                 .onDisappear { Task { await loadPlans() } }
         }
+        #if canImport(FoundationModels)
+        .modifier(AIGeneratorDestination(isPresented: $showAIGenerator, quickSession: false, onDisappear: {
+            Task { await loadPlans() }
+        }))
+        .modifier(AIGeneratorDestination(isPresented: $showQuickSession, quickSession: true, onDisappear: {
+            Task { await loadPlans() }
+        }))
+        #endif
         .navigationDestination(isPresented: $showNewPlan) {
             NewPlanView(
                 onCreate: { newPlan in
@@ -149,8 +180,29 @@ struct PlansView: View {
                     .clipShape(Capsule())
                 }
 
-                Button {
-                    showNewPlan = true
+                Menu {
+                    Button {
+                        showNewPlan = true
+                    } label: {
+                        Label("Blank Plan", systemImage: "doc")
+                    }
+
+                    #if canImport(FoundationModels)
+                    if #available(iOS 26, *) {
+                        Section("AI-Powered") {
+                            Button {
+                                showAIGenerator = true
+                            } label: {
+                                Label("Full Program", systemImage: "sparkles")
+                            }
+                            Button {
+                                showQuickSession = true
+                            } label: {
+                                Label("Quick Session", systemImage: "bolt.fill")
+                            }
+                        }
+                    }
+                    #endif
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus")
@@ -303,3 +355,24 @@ private struct PlanToast: View {
         .overlay(Capsule().stroke(colors.border, lineWidth: 1))
     }
 }
+
+// MARK: - AI Generator Destination
+
+#if canImport(FoundationModels)
+private struct AIGeneratorDestination: ViewModifier {
+    @Binding var isPresented: Bool
+    var quickSession: Bool
+    var onDisappear: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.navigationDestination(isPresented: $isPresented) {
+                AIPlanGeneratorView(quickSession: quickSession)
+                    .onDisappear { onDisappear() }
+            }
+        } else {
+            content
+        }
+    }
+}
+#endif

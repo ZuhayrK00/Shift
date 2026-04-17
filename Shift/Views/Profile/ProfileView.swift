@@ -20,6 +20,7 @@ struct ProfileView: View {
     @State private var latestMeasurements: [BodyMeasurement] = []
     @State private var latestProgressPhoto: ProgressPhoto?
     @State private var showStepGoalEditor = false
+    @State private var showWeightGoalEditor = false
     @State private var todaySteps: Int = 0
 
     private var user: User? { authManager.user }
@@ -37,6 +38,10 @@ struct ProfileView: View {
 
                     // Progress (weight, measurements, photos)
                     progressCard
+                        .padding(.horizontal, 16)
+
+                    // Weight goal
+                    weightGoalCard
                         .padding(.horizontal, 16)
 
                     // Step goal
@@ -87,6 +92,11 @@ struct ProfileView: View {
         }
         .navigationDestination(for: Exercise.self) { exercise in
             ExerciseDetailView(exercise: exercise, initialTab: .goals)
+        }
+        .sheet(isPresented: $showWeightGoalEditor) {
+            WeightGoalEditorSheet {
+                Task { await loadProgressData() }
+            }
         }
         .sheet(isPresented: $showStepGoalEditor) {
             StepGoalEditorSheet {
@@ -253,6 +263,140 @@ struct ProfileView: View {
 
     private func formatWeightValue(_ value: Double) -> String {
         value == value.rounded() ? String(format: "%.0f", value) : String(format: "%.1f", value)
+    }
+
+    // MARK: - Weight goal card
+
+    private var weightGoalCard: some View {
+        let settings = user?.settings ?? .default
+        let targetWeight = settings.targetWeight
+        let weightUnit = settings.weightUnit
+        let currentWeight = latestWeight?.weight
+        let deadline: Date? = settings.targetWeightDeadline.flatMap {
+            ISO8601DateFormatter.shared.date(from: $0)
+            ?? ISO8601DateFormatter.sharedWithFractional.date(from: $0)
+        }
+        let daysRemaining: Int? = deadline.map { max(0, Calendar.current.dateComponents([.day], from: Date(), to: $0).day ?? 0) }
+
+        let progress: Double = {
+            guard let target = targetWeight, let current = currentWeight, target != current else { return 0 }
+            let startWeight = user?.weight ?? current
+            if target < startWeight {
+                // Losing weight
+                guard startWeight > target else { return 1.0 }
+                return min(1.0, max(0, (startWeight - current) / (startWeight - target)))
+            } else {
+                // Gaining weight
+                guard target > startWeight else { return 1.0 }
+                return min(1.0, max(0, (current - startWeight) / (target - startWeight)))
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "scalemass.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(colors.accent2)
+                    Text("Weight Goal")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(colors.text)
+                }
+                Spacer()
+                Button {
+                    showWeightGoalEditor = true
+                } label: {
+                    Image(systemName: targetWeight != nil ? "pencil" : "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(colors.accent)
+                        .frame(width: 32, height: 32)
+                        .background(colors.accent.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let target = targetWeight {
+                HStack(spacing: 20) {
+                    // Progress ring
+                    ZStack {
+                        Circle()
+                            .stroke(colors.border, lineWidth: 8)
+                            .frame(width: 72, height: 72)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(
+                                progress >= 1.0
+                                    ? AnyShapeStyle(colors.success)
+                                    : AnyShapeStyle(LinearGradient(
+                                        colors: [colors.accent2, colors.accent],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )),
+                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                            )
+                            .frame(width: 72, height: 72)
+                            .rotationEffect(.degrees(-90))
+
+                        Image(systemName: "scalemass.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(progress >= 1.0 ? colors.success : colors.accent2)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let current = currentWeight {
+                            Text("\(formatWeightValue(current)) \(weightUnit)")
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundStyle(colors.text)
+                        }
+                        Text("Target: \(formatWeightValue(target)) \(weightUnit)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.muted)
+
+                        if let days = daysRemaining {
+                            if days == 0 {
+                                Text("Deadline reached")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(colors.warning)
+                            } else {
+                                Text("\(days) day\(days == 1 ? "" : "s") remaining")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(colors.muted)
+                            }
+                        }
+
+                        if progress >= 1.0 {
+                            Text("Goal reached!")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(colors.success)
+                        }
+                    }
+
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "scalemass")
+                        .font(.system(size: 24))
+                        .foregroundStyle(colors.muted.opacity(0.5))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No weight goal set")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(colors.text)
+                        Text("Set a target weight and deadline to track progress.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(colors.border, lineWidth: 1)
+        )
     }
 
     // MARK: - Step goal card
@@ -1132,6 +1276,200 @@ struct StepGoalEditorSheet: View {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return formatter.string(from: NSNumber(value: steps)) ?? "\(steps)"
+    }
+}
+
+// MARK: - WeightGoalEditorSheet
+
+struct WeightGoalEditorSheet: View {
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.shiftColors) private var colors
+    @Environment(\.dismiss) private var dismiss
+
+    var onSaved: (() -> Void)?
+
+    @State private var targetWeight: Double = 70
+    @State private var deadline: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+    @State private var isSaving = false
+    @State private var saveError: String?
+
+    private var weightUnit: String {
+        authManager.user?.settings.weightUnit ?? "kg"
+    }
+
+    private var increment: Double {
+        authManager.user?.settings.defaultWeightIncrement ?? 2.5
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                colors.bg.ignoresSafeArea()
+
+                VStack(spacing: 32) {
+                    Spacer()
+
+                    // Icon in ring
+                    ZStack {
+                        Circle()
+                            .stroke(colors.accent2.opacity(0.15), lineWidth: 6)
+                            .frame(width: 100, height: 100)
+                        Image(systemName: "scalemass.fill")
+                            .font(.system(size: 32, weight: .semibold))
+                            .foregroundStyle(colors.accent2)
+                    }
+
+                    // Value display
+                    VStack(spacing: 6) {
+                        Text(formatWeight(targetWeight))
+                            .font(.system(size: 56, weight: .bold, design: .rounded))
+                            .foregroundStyle(colors.text)
+                            .contentTransition(.numericText())
+                            .animation(.snappy(duration: 0.2), value: targetWeight)
+
+                        Text(weightUnit)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(colors.muted)
+                    }
+
+                    // +/- controls
+                    HStack(spacing: 20) {
+                        Button {
+                            if targetWeight > increment { targetWeight -= increment }
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(targetWeight > increment ? colors.text : colors.muted.opacity(0.4))
+                                .frame(width: 56, height: 56)
+                                .background(colors.surface, in: Circle())
+                        }
+                        .disabled(targetWeight <= increment)
+
+                        Button {
+                            if targetWeight < 300 { targetWeight += increment }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(targetWeight < 300 ? colors.text : colors.muted.opacity(0.4))
+                                .frame(width: 56, height: 56)
+                                .background(colors.surface, in: Circle())
+                        }
+                        .disabled(targetWeight >= 300)
+                    }
+
+                    // Deadline picker
+                    VStack(spacing: 8) {
+                        Text("Target Date")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(colors.muted)
+                        DatePicker(
+                            "",
+                            selection: $deadline,
+                            in: Calendar.current.date(byAdding: .day, value: 1, to: Date())!...Calendar.current.date(byAdding: .year, value: 2, to: Date())!,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .tint(colors.accent)
+                    }
+                    .padding(.horizontal, 40)
+
+                    Spacer()
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.danger)
+                    }
+
+                    Button {
+                        Task { await clearGoal() }
+                    } label: {
+                        Text("Remove Goal")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(colors.danger.opacity(0.8))
+                    }
+
+                    Spacer().frame(height: 8)
+                }
+                .padding(.horizontal, 24)
+            }
+            .navigationTitle("Weight Goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(colors.muted)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().scaleEffect(0.8)
+                        } else {
+                            Text("Save")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(colors.accent)
+                        }
+                    }
+                    .disabled(isSaving)
+                }
+            }
+            .onAppear {
+                let settings = authManager.user?.settings ?? .default
+                targetWeight = settings.targetWeight ?? authManager.user?.weight ?? 70
+                if let deadlineStr = settings.targetWeightDeadline,
+                   let d = ISO8601DateFormatter.shared.date(from: deadlineStr)
+                       ?? ISO8601DateFormatter.sharedWithFractional.date(from: deadlineStr) {
+                    deadline = d
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        saveError = nil
+        var settings = authManager.user?.settings ?? .default
+        settings.targetWeight = targetWeight
+        settings.targetWeightDeadline = ISO8601DateFormatter.shared.string(from: deadline)
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to save: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
+        await authManager.refreshUser()
+        PhoneSessionManager.shared.sendContextToWatch()
+        isSaving = false
+        onSaved?()
+        dismiss()
+    }
+
+    private func clearGoal() async {
+        isSaving = true
+        saveError = nil
+        var settings = authManager.user?.settings ?? .default
+        settings.targetWeight = nil
+        settings.targetWeightDeadline = nil
+        do {
+            _ = try await ProfileService.updateSettings(settings)
+        } catch {
+            saveError = "Failed to remove goal: \(error.localizedDescription)"
+            isSaving = false
+            return
+        }
+        await authManager.refreshUser()
+        PhoneSessionManager.shared.sendContextToWatch()
+        isSaving = false
+        onSaved?()
+        dismiss()
+    }
+
+    private func formatWeight(_ w: Double) -> String {
+        w == w.rounded() ? String(format: "%.0f", w) : String(format: "%.1f", w)
     }
 }
 

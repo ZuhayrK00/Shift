@@ -163,6 +163,10 @@ private struct ProfileSettingsPage: View {
     @State private var email = ""
     @State private var name = ""
     @State private var ageText = ""
+    @State private var heightFeet = 5
+    @State private var heightInches = 10
+    @State private var heightCmText = ""
+    @State private var isSyncingFromCm = false
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarData: Data?
     @State private var isSaving = false
@@ -236,6 +240,37 @@ private struct ProfileSettingsPage: View {
                             .keyboardType(.numberPad)
                             .foregroundStyle(colors.text)
                     }
+                    LabeledContent("Height (ft)") {
+                        HStack(spacing: 4) {
+                            Picker("", selection: $heightFeet) {
+                                ForEach(3...8, id: \.self) { ft in
+                                    Text("\(ft) ft").tag(ft)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(colors.text)
+
+                            Picker("", selection: $heightInches) {
+                                ForEach(0...11, id: \.self) { inch in
+                                    Text("\(inch) in").tag(inch)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(colors.text)
+                        }
+                    }
+                    .onChange(of: heightFeet) { _, _ in syncCmFromFeetInches() }
+                    .onChange(of: heightInches) { _, _ in syncCmFromFeetInches() }
+
+                    LabeledContent("Height (cm)") {
+                        TextField("e.g. 178", text: $heightCmText)
+                            .multilineTextAlignment(.trailing)
+                            .keyboardType(.decimalPad)
+                            .foregroundStyle(colors.text)
+                            .onChange(of: heightCmText) { _, newValue in
+                                syncFeetInchesFromCm(newValue)
+                            }
+                    }
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
@@ -301,6 +336,29 @@ private struct ProfileSettingsPage: View {
         email = user.email ?? ""
         name = user.name ?? ""
         ageText = user.age.map { "\($0)" } ?? ""
+        if let totalInches = user.height {
+            heightFeet = Int(totalInches) / 12
+            heightInches = Int(totalInches) % 12
+            let cm = totalInches * 2.54
+            heightCmText = String(format: "%.1f", cm)
+        }
+    }
+
+    private func syncCmFromFeetInches() {
+        guard !isSyncingFromCm else { return }
+        let totalInches = Double(heightFeet * 12 + heightInches)
+        let cm = totalInches * 2.54
+        heightCmText = String(format: "%.1f", cm)
+    }
+
+    /// When the user types a cm value, update the ft/in pickers.
+    private func syncFeetInchesFromCm(_ cmString: String) {
+        guard let cm = Double(cmString), cm > 0 else { return }
+        let totalInches = cm / 2.54
+        isSyncingFromCm = true
+        heightFeet = Int(totalInches) / 12
+        heightInches = Int(totalInches.rounded()) % 12
+        isSyncingFromCm = false
     }
 
     private func save() async {
@@ -330,9 +388,11 @@ private struct ProfileSettingsPage: View {
         }
 
         let parsedAge = Int(ageText)
+        let totalInches = Double(heightFeet * 12 + heightInches)
         var patch = ProfilePatch(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines),
-            age: parsedAge.flatMap { (1...120).contains($0) ? $0 : nil }
+            age: parsedAge.flatMap { (1...120).contains($0) ? $0 : nil },
+            height: totalInches
         )
 
         if let data = avatarData, let userId = authManager.currentUserId {

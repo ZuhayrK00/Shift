@@ -8,6 +8,7 @@ struct User: Identifiable {
     var name: String?
     var age: Int?
     var weight: Double?
+    var height: Double?            // total inches
     var profilePictureUrl: String?
     var createdAt: Date?
     var settings: UserSettings

@@ -4,6 +4,10 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Shift uses your camera to take progress photos.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Shift uses speech recognition to let you describe your training preferences and goals to the AI plan generator.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Shift uses the microphone to listen to your training preferences for the AI plan generator.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Shift uses Face ID to protect your progress photos.</string>
 	<key>CFBundleURLTypes</key>

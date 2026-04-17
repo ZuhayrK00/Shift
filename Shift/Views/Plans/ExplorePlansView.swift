@@ -187,6 +187,7 @@ struct TemplateDetailView: View {
     @State private var addedDays: Set<String> = []
     @State private var addedPlanIds: [String: String] = [:]  // dayId → planId
     @State private var expandedDays: Set<String> = []
+    @State private var existingPlans: [WorkoutPlanWithCount] = []
 
     private var levelColor: Color {
         switch template.level {
@@ -302,6 +303,19 @@ struct TemplateDetailView: View {
     }
 
     private func loadExercises() async {
+        // Check which template days already exist in the user's library
+        existingPlans = (try? await PlanService.listPlans()) ?? []
+        let existingNames = Set(existingPlans.map { $0.plan.name })
+        for day in template.days {
+            if existingNames.contains(day.name) {
+                addedDays.insert(day.id)
+                // Find the matching plan ID so removal works
+                if let match = existingPlans.first(where: { $0.plan.name == day.name }) {
+                    addedPlanIds[day.id] = match.plan.id
+                }
+            }
+        }
+
         // Load all exercises and match using keyword scoring since
         // exercise names/slugs may differ between template definitions
         // and the current ExerciseDB-imported catalogue.

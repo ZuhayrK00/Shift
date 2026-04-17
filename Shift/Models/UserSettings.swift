@@ -64,6 +64,8 @@ struct UserSettings: Codable, Hashable {
     var restTimer: RestTimerSettings = .init()
     var weeklyFrequencyGoal: Int? = nil
     var dailyStepGoal: Int? = nil
+    var targetWeight: Double? = nil
+    var targetWeightDeadline: String? = nil
     var notifications: NotificationSettings = .init()
     var healthKit: HealthKitSettings = .init()
     var lockPhotos: Bool = false
@@ -81,6 +83,8 @@ struct UserSettings: Codable, Hashable {
         case restTimer = "rest_timer"
         case weeklyFrequencyGoal = "weekly_frequency_goal"
         case dailyStepGoal = "daily_step_goal"
+        case targetWeight = "target_weight"
+        case targetWeightDeadline = "target_weight_deadline"
         case notifications
         case healthKit = "health_kit"
         case lockPhotos = "lock_photos"
@@ -98,6 +102,8 @@ struct UserSettings: Codable, Hashable {
         restTimer = (try? container.decode(RestTimerSettings.self, forKey: .restTimer)) ?? .init()
         weeklyFrequencyGoal = try? container.decode(Int.self, forKey: .weeklyFrequencyGoal)
         dailyStepGoal = try? container.decode(Int.self, forKey: .dailyStepGoal)
+        targetWeight = try? container.decode(Double.self, forKey: .targetWeight)
+        targetWeightDeadline = try? container.decode(String.self, forKey: .targetWeightDeadline)
         notifications = (try? container.decode(NotificationSettings.self, forKey: .notifications)) ?? .init()
         healthKit = (try? container.decode(HealthKitSettings.self, forKey: .healthKit)) ?? .init()
         lockPhotos = (try? container.decode(Bool.self, forKey: .lockPhotos)) ?? false

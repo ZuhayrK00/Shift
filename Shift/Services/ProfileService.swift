@@ -10,6 +10,7 @@ struct ProfilePatch {
     var name: String?
     var age: Int?
     var weight: Double?
+    var height: Double?
     var profilePictureUrl: String?
     var settings: UserSettings?
 }
@@ -44,6 +45,7 @@ struct ProfileService {
         if let name = patch.name                         { profile.name               = name  }
         if let age  = patch.age                          { profile.age                = age   }
         if let weight = patch.weight                     { profile.weight             = weight }
+        if let height = patch.height                     { profile.height             = height }
         if let url  = patch.profilePictureUrl            { profile.profilePictureUrl  = url   }
         if let settings = patch.settings                 { profile.settings           = settings }
         profile.updatedAt = Date()
@@ -68,6 +70,7 @@ struct ProfileService {
         if let name = profile.name               { payload["name"]                = name  }
         if let age  = profile.age                { payload["age"]                 = age   }
         if let weight = profile.weight           { payload["weight"]              = weight }
+        if let height = profile.height           { payload["height"]              = height }
         if let url  = profile.profilePictureUrl  { payload["profile_picture_url"] = url   }
         if let s    = settingsDict               { payload["settings"]            = s     }
 
@@ -98,13 +101,14 @@ struct ProfileService {
             var name: String?
             var age: Int?
             var weight: Double?
+            var height: Double?
             var profilePictureUrl: String?
             var settings: UserSettings?
             var createdAt: String
             var updatedAt: String
 
             enum CodingKeys: String, CodingKey {
-                case id, name, age, weight, settings
+                case id, name, age, weight, height, settings
                 case profilePictureUrl = "profile_picture_url"
                 case createdAt = "created_at"
                 case updatedAt = "updated_at"
@@ -144,6 +148,7 @@ struct ProfileService {
             name: remote.name,
             age: remote.age,
             weight: remote.weight,
+            height: remote.height,
             profilePictureUrl: remote.profilePictureUrl,
             settings: remote.settings ?? .default,
             createdAt: createdAt,
