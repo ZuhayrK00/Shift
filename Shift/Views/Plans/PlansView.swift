@@ -7,6 +7,7 @@ struct PlansView: View {
     @State private var planItems: [WorkoutPlanWithCount] = []
     @State private var isLoading = false
     @State private var showNewPlan = false
+    @State private var showExplore = false
     @State private var toastMessage: String?
     @State private var showToast = false
 
@@ -28,6 +29,18 @@ struct PlansView: View {
         .navigationTitle("Plans")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showExplore = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "compass")
+                        Text("Explore")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(colors.accent)
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showNewPlan = true
@@ -37,6 +50,10 @@ struct PlansView: View {
                         .font(.system(size: 17, weight: .semibold))
                 }
             }
+        }
+        .navigationDestination(isPresented: $showExplore) {
+            ExplorePlansView()
+                .onDisappear { Task { await loadPlans() } }
         }
         .navigationDestination(isPresented: $showNewPlan) {
             NewPlanView(
@@ -115,16 +132,38 @@ struct PlansView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
-            Button {
-                showNewPlan = true
-            } label: {
-                Text("Create Plan")
-                    .font(.system(size: 15, weight: .semibold))
+            HStack(spacing: 12) {
+                Button {
+                    showExplore = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "compass")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Explore")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(colors.accent)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(colors.accent.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+
+                Button {
+                    showNewPlan = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Create")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 12)
                     .background(colors.accent)
                     .clipShape(Capsule())
+                }
             }
             .padding(.top, 4)
         }
@@ -146,97 +185,94 @@ private struct PlanCard: View {
     let item: WorkoutPlanWithCount
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Header: name + chevron
-            HStack {
-                Text(item.plan.name)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(colors.text)
-                    .lineLimit(1)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(colors.muted)
-            }
-
-            // Exercise thumbnails
+        VStack(alignment: .leading, spacing: 0) {
+            // Image strip at top
             if !item.exerciseImageUrls.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(item.exerciseImageUrls.prefix(4), id: \.self) { urlString in
+                HStack(spacing: 0) {
+                    ForEach(Array(item.exerciseImageUrls.prefix(5).enumerated()), id: \.offset) { _, urlString in
                         if let url = URL(string: urlString) {
                             CachedAsyncImage(url: url) { phase in
                                 switch phase {
                                 case .success(let image):
                                     image.resizable().scaledToFill()
                                 default:
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(colors.surface2)
+                                    Rectangle().fill(colors.surface2)
                                 }
                             }
-                            .frame(width: 52, height: 52)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(colors.border, lineWidth: 1)
-                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 70)
+                            .clipped()
                         }
-                    }
-                    if item.exerciseCount > 4 {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(colors.surface2)
-                            Text("+\(item.exerciseCount - 4)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(colors.muted)
-                        }
-                        .frame(width: 52, height: 52)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(colors.border, lineWidth: 1)
-                        )
                     }
                 }
+                .overlay(
+                    LinearGradient(
+                        colors: [.clear, colors.surface.opacity(0.8), colors.surface],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
 
-            // Footer: exercise count + duration + muscle groups
-            HStack(spacing: 8) {
-                Text(pluralise(item.exerciseCount, "exercise"))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(colors.muted)
-
-                if item.estimatedMinutes > 0 {
-                    Circle()
-                        .fill(colors.muted.opacity(0.4))
-                        .frame(width: 3, height: 3)
-
-                    HStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 10))
-                        Text(WorkoutDurationEstimator.formatDuration(minutes: item.estimatedMinutes))
-                    }
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(colors.muted)
-                }
-
-                if !item.muscleGroups.isEmpty {
-                    Circle()
-                        .fill(colors.muted.opacity(0.4))
-                        .frame(width: 3, height: 3)
-
-                    Text(item.muscleGroups.joined(separator: ", "))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(colors.accent)
+            // Content
+            VStack(alignment: .leading, spacing: 10) {
+                // Name + chevron
+                HStack(alignment: .center) {
+                    Text(item.plan.name)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(colors.text)
                         .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(colors.muted)
+                }
+
+                // Muscle group tags
+                if !item.muscleGroups.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(item.muscleGroups.prefix(3), id: \.self) { group in
+                            Text(group)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(colors.accent)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(colors.accent.opacity(0.1))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+
+                // Stats row
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "dumbbell")
+                            .font(.system(size: 10))
+                        Text(pluralise(item.exerciseCount, "exercise"))
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(colors.muted)
+
+                    if item.estimatedMinutes > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 10))
+                            Text(WorkoutDurationEstimator.formatDuration(minutes: item.estimatedMinutes))
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(colors.muted)
+                    }
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(16)
         .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(colors.border, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
         .contentShape(RoundedRectangle(cornerRadius: 14))
     }
 }

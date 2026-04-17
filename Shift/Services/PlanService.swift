@@ -49,7 +49,12 @@ struct PlanService {
     static func createPlan(name: String) async throws -> WorkoutPlan {
         let userId = try authManager.requireUserId()
         let id = UUID().uuidString.lowercased()
-        let plan = WorkoutPlan(id: id, userId: userId, name: name, createdAt: Date())
+
+        // Put new plans at the end
+        let existing = try await PlanRepository.findPlansWithCount(userId: userId)
+        let nextPosition = (existing.map { $0.plan.position }.max() ?? -1) + 1
+
+        let plan = WorkoutPlan(id: id, userId: userId, name: name, position: nextPosition, createdAt: Date())
 
         try await PlanRepository.insert(plan)
         try await enqueue(table: "workout_plans", op: "insert", payload: [
@@ -57,6 +62,7 @@ struct PlanService {
             "user_id": userId,
             "name": name,
             "notes": NSNull(),
+            "position": nextPosition,
             "created_at": ISO8601DateFormatter.shared.string(from: plan.createdAt)
         ])
         return plan
@@ -69,6 +75,19 @@ struct PlanService {
         if let name  { payload["name"]  = name }
         if let notes { payload["notes"] = notes }
         try await enqueue(table: "workout_plans", op: "update", payload: payload)
+    }
+
+    static func reorderPlans(_ planIds: [String]) async throws {
+        let positions = planIds.enumerated().map { (id: $1, position: $0) }
+        try await PlanRepository.reorder(positions)
+
+        // Enqueue a mutation for each plan's new position
+        for (index, planId) in planIds.enumerated() {
+            try await enqueue(table: "workout_plans", op: "update", payload: [
+                "id": planId,
+                "position": index,
+            ])
+        }
     }
 
     static func deletePlan(_ id: String) async throws {
@@ -134,6 +153,18 @@ struct PlanService {
         if let v = patch.restSeconds   { payload["rest_seconds"]    = v }
 
         try await enqueue(table: "plan_exercises", op: "update", payload: payload)
+    }
+
+    static func reorderExercises(planId: String, exerciseIds: [String]) async throws {
+        let positions = exerciseIds.enumerated().map { (id: $1, position: $0) }
+        try await PlanRepository.reorderExercises(positions)
+
+        for (index, id) in exerciseIds.enumerated() {
+            try await enqueue(table: "plan_exercises", op: "update", payload: [
+                "id": id,
+                "position": index,
+            ])
+        }
     }
 
     static func removeExercise(_ id: String) async throws {

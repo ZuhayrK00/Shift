@@ -35,13 +35,13 @@ struct PlanRepository {
                 LEFT JOIN plan_exercises pe ON pe.plan_id = wp.id
                 WHERE wp.user_id = ?
                 GROUP BY wp.id
-                ORDER BY wp.created_at ASC
+                ORDER BY wp.position ASC, wp.created_at ASC
                 """
             let planRows = try Row.fetchAll(db, sql: planSql, arguments: [userId])
 
             // For each plan, get muscle groups and image URLs
             let detailSql = """
-                SELECT DISTINCT mg.name AS muscle_group, e.image_url
+                SELECT mg.name AS muscle_group, e.image_url
                 FROM plan_exercises pe
                 JOIN exercises e ON e.id = pe.exercise_id
                 JOIN muscle_groups mg ON mg.id = e.primary_muscle_id
@@ -133,6 +133,18 @@ struct PlanRepository {
         }
     }
 
+    /// Updates the position of multiple plans in a single transaction.
+    static func reorder(_ planPositions: [(id: String, position: Int)]) async throws {
+        try await AppDatabase.shared.dbPool.write { db in
+            for item in planPositions {
+                try db.execute(
+                    sql: "UPDATE workout_plans SET position = ? WHERE id = ?",
+                    arguments: [item.position, item.id]
+                )
+            }
+        }
+    }
+
     // MARK: - Plan exercises
 
     static func findExercises(planId: String) async throws -> [PlanExercise] {
@@ -202,6 +214,17 @@ struct PlanRepository {
                 sql: "DELETE FROM plan_exercises WHERE id = ?",
                 arguments: [id]
             )
+        }
+    }
+
+    static func reorderExercises(_ positions: [(id: String, position: Int)]) async throws {
+        try await AppDatabase.shared.dbPool.write { db in
+            for item in positions {
+                try db.execute(
+                    sql: "UPDATE plan_exercises SET position = ? WHERE id = ?",
+                    arguments: [item.position, item.id]
+                )
+            }
         }
     }
 

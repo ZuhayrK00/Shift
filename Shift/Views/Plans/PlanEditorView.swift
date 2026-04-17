@@ -42,41 +42,40 @@ struct PlanEditorView: View {
                     Spacer()
                     ProgressView().tint(colors.accent)
                     Spacer()
-                } else {
+                } else if exercises.isEmpty {
                     ScrollView {
-                        VStack(spacing: 0) {
-                            if exercises.isEmpty {
-                                emptyExerciseState
-                            } else {
-                                exerciseList
-                            }
-
-                            // Add exercises button
-                            Button {
-                                showExercisePicker = true
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(colors.accent)
-                                    Text("Add exercises")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundStyle(colors.accent)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 52)
-                                .background(colors.accent.opacity(0.1))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(colors.accent.opacity(0.3), lineWidth: 1)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.top, 12)
-                            .padding(.bottom, 32)
-                        }
+                        emptyExerciseState
+                        addExercisesButton
                     }
+                } else {
+                    List {
+                        ForEach(exercises) { pe in
+                            PlanExerciseRow(
+                                planExercise: pe,
+                                exercise: exerciseMap[pe.exerciseId],
+                                position: exercises.firstIndex(where: { $0.id == pe.id }).map { $0 + 1 } ?? 0
+                            ) {
+                                configuring = pe
+                            } onDelete: {
+                                Task { await removeExercise(pe) }
+                            }
+                            .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        }
+                        .onMove { source, destination in
+                            exercises.move(fromOffsets: source, toOffset: destination)
+                            Task { await saveExerciseOrder() }
+                        }
+
+                        addExercisesButton
+                            .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 32, trailing: 20))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .environment(\.editMode, .constant(.active))
                 }
             }
         }
@@ -134,99 +133,28 @@ struct PlanEditorView: View {
         }
     }
 
-    // MARK: - Exercise list
+    // MARK: - Subviews
 
-    /// Group exercises: consecutive runs sharing the same groupId form a superset block.
-    private var groupedExercises: [[PlanExercise]] {
-        var groups: [[PlanExercise]] = []
-        for pe in exercises {
-            if let gid = pe.groupId,
-               let last = groups.last?.last,
-               last.groupId == gid {
-                groups[groups.count - 1].append(pe)
-            } else {
-                groups.append([pe])
+    private var addExercisesButton: some View {
+        Button {
+            showExercisePicker = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(colors.accent)
+                Text("Add exercises")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(colors.accent)
             }
-        }
-        return groups
-    }
-
-    @ViewBuilder
-    private var exerciseList: some View {
-        VStack(spacing: 10) {
-            ForEach(groupedExercises, id: \.first!.id) { group in
-                if group.count > 1 {
-                    // Superset group
-                    VStack(spacing: 0) {
-                        // Group header
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(colors.warning)
-                            Text(supersetLabel(group.count))
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(colors.warning)
-                                .textCase(.uppercase)
-                                .tracking(0.5)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(colors.warning.opacity(0.08))
-
-                        ForEach(group) { pe in
-                            PlanExerciseRow(
-                                planExercise: pe,
-                                exercise: exerciseMap[pe.exerciseId]
-                            ) {
-                                configuring = pe
-                            } onDelete: {
-                                Task { await removeExercise(pe) }
-                            }
-
-                            if pe.id != group.last?.id {
-                                Divider()
-                                    .background(colors.border)
-                                    .padding(.leading, 60)
-                            }
-                        }
-                    }
-                    .background(colors.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(colors.warning.opacity(0.3), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else if let pe = group.first {
-                    // Single exercise
-                    VStack(spacing: 0) {
-                        PlanExerciseRow(
-                            planExercise: pe,
-                            exercise: exerciseMap[pe.exerciseId]
-                        ) {
-                            configuring = pe
-                        } onDelete: {
-                            Task { await removeExercise(pe) }
-                        }
-                    }
-                    .background(colors.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(colors.border, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-    }
-
-    private func supersetLabel(_ count: Int) -> String {
-        switch count {
-        case 2: return "Superset"
-        case 3: return "Tri-set"
-        default: return "Giant set"
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(colors.accent.opacity(0.1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(colors.accent.opacity(0.3), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -315,6 +243,22 @@ struct PlanEditorView: View {
         }
     }
 
+    private func saveExerciseOrder() async {
+        do {
+            try await PlanService.reorderExercises(
+                planId: plan.id,
+                exerciseIds: exercises.map { $0.id }
+            )
+            // Update local position values
+            for i in exercises.indices {
+                exercises[i].position = i
+            }
+            PhoneSessionManager.shared.sendContextToWatch()
+        } catch {
+            errorMessage = "Failed to reorder exercises: \(error.localizedDescription)"
+        }
+    }
+
     private func deletePlan() async {
         do {
             try await PlanService.deletePlan(plan.id)
@@ -333,13 +277,14 @@ private struct PlanExerciseRow: View {
     @Environment(\.shiftColors) private var colors
     let planExercise: PlanExercise
     let exercise: Exercise?
+    var position: Int = 0
     let onTap: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             // Position badge
-            Text("\(planExercise.position + 1)")
+            Text("\(position)")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(colors.accent)
                 .frame(width: 28, height: 28)
@@ -372,6 +317,12 @@ private struct PlanExerciseRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(colors.border, lineWidth: 1)
+        )
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
     }

@@ -28,6 +28,17 @@ struct ExerciseRepository {
         }
     }
 
+    /// Returns a dictionary keyed by slug. Used for matching template plans to real exercises.
+    static func findBySlugs(_ slugs: [String]) async throws -> [String: Exercise] {
+        guard !slugs.isEmpty else { return [:] }
+        return try await AppDatabase.shared.dbPool.read { db in
+            let placeholders = slugs.map { _ in "?" }.joined(separator: ", ")
+            let sql = "SELECT * FROM exercises WHERE slug IN (\(placeholders))"
+            let exercises = try Exercise.fetchAll(db, sql: sql, arguments: StatementArguments(slugs))
+            return Dictionary(uniqueKeysWithValues: exercises.map { ($0.slug, $0) })
+        }
+    }
+
     // MARK: - Writes
 
     /// Replace the full built-in catalogue with the remote snapshot.

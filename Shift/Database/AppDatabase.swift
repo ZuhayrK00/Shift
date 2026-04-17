@@ -296,6 +296,22 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("addPlanPosition") { db in
+            try db.execute(sql: """
+                ALTER TABLE workout_plans ADD COLUMN position INTEGER NOT NULL DEFAULT 0
+            """)
+            // Back-fill positions based on creation order
+            try db.execute(sql: """
+                UPDATE workout_plans
+                SET position = (
+                    SELECT COUNT(*)
+                    FROM workout_plans wp2
+                    WHERE wp2.created_at < workout_plans.created_at
+                       OR (wp2.created_at = workout_plans.created_at AND wp2.id < workout_plans.id)
+                )
+            """)
+        }
+
         return migrator
     }
 }

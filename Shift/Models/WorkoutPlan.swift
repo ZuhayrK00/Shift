@@ -6,21 +6,23 @@ struct WorkoutPlan: Identifiable, Hashable, Codable {
     var userId: String
     var name: String
     var notes: String?
+    var position: Int
     var createdAt: Date
 
     // MARK: Codable (Supabase JSON)
 
     enum CodingKeys: String, CodingKey {
-        case id, name, notes
+        case id, name, notes, position
         case userId = "user_id"
         case createdAt = "created_at"
     }
 
-    init(id: String, userId: String, name: String, notes: String? = nil, createdAt: Date) {
+    init(id: String, userId: String, name: String, notes: String? = nil, position: Int = 0, createdAt: Date) {
         self.id = id
         self.userId = userId
         self.name = name
         self.notes = notes
+        self.position = position
         self.createdAt = createdAt
     }
 
@@ -30,6 +32,7 @@ struct WorkoutPlan: Identifiable, Hashable, Codable {
         userId = try container.decode(String.self, forKey: .userId)
         name = try container.decode(String.self, forKey: .name)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        position = try container.decodeIfPresent(Int.self, forKey: .position) ?? 0
 
         let createdAtString = try container.decode(String.self, forKey: .createdAt)
         createdAt = ISO8601DateFormatter.shared.date(from: createdAtString)
@@ -43,6 +46,7 @@ struct WorkoutPlan: Identifiable, Hashable, Codable {
         try container.encode(userId, forKey: .userId)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encode(position, forKey: .position)
         try container.encode(ISO8601DateFormatter.shared.string(from: createdAt), forKey: .createdAt)
     }
 }
@@ -55,6 +59,7 @@ extension WorkoutPlan: FetchableRecord {
         userId = row["user_id"]
         name = row["name"]
         notes = row["notes"]
+        position = row["position"] ?? 0
 
         if let createdAtString: String = row["created_at"] {
             createdAt = ISO8601DateFormatter.shared.date(from: createdAtString)
@@ -74,6 +79,7 @@ extension WorkoutPlan: PersistableRecord {
         container["user_id"] = userId
         container["name"] = name
         container["notes"] = notes
+        container["position"] = position
         container["created_at"] = ISO8601DateFormatter.shared.string(from: createdAt)
     }
 }

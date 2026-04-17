@@ -200,6 +200,12 @@ struct SignInView: View {
         do {
             try await authManager.signInWithGoogle()
         } catch {
+            // ASWebAuthenticationSession error 1 is user cancellation — don't surface it
+            let nsError = error as NSError
+            if nsError.domain == "com.apple.AuthenticationServices.WebAuthenticationSession",
+               nsError.code == 1 {
+                return
+            }
             errorMessage = error.localizedDescription
         }
     }
