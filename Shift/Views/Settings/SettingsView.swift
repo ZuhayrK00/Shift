@@ -99,6 +99,49 @@ struct SettingsView: View {
                 }
                 .listRowBackground(colors.surface)
 
+                // Support & Legal
+                Section {
+                    Button {
+                        if let url = URL(string: "mailto:support@shiftfitness.pro") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        settingsRow(
+                            icon: "envelope.fill",
+                            iconColor: colors.accent,
+                            title: "Contact Us",
+                            subtitle: "support@shiftfitness.pro"
+                        )
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://shiftfitness.pro/privacy-policy.html") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        settingsRow(
+                            icon: "hand.raised.fill",
+                            iconColor: .blue,
+                            title: "Privacy Policy",
+                            subtitle: ""
+                        )
+                    }
+
+                    Button {
+                        if let url = URL(string: "https://shiftfitness.pro/terms-of-service.html") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        settingsRow(
+                            icon: "doc.text.fill",
+                            iconColor: colors.muted,
+                            title: "Terms of Service",
+                            subtitle: ""
+                        )
+                    }
+                }
+                .listRowBackground(colors.surface)
+
                 // Sign out
                 Section {
                     Button(role: .destructive) {
@@ -142,9 +185,11 @@ struct SettingsView: View {
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(colors.text)
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(colors.muted)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(colors.muted)
+                }
             }
         }
         .padding(.vertical, 4)

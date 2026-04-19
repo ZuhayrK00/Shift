@@ -29,6 +29,7 @@ class AuthManager {
                     await MainActor.run { self.isLoading = false }
                 }
             case .signedOut:
+                UserDefaults.standard.removeObject(forKey: "shift.cachedUserId")
                 await MainActor.run {
                     self.session = nil
                     self.user = nil
@@ -86,6 +87,10 @@ class AuthManager {
             createdAt: createdAtDate,
             settings: settings
         )
+
+        // Cache userId for background wake access (HealthKit observer may fire
+        // before the async auth listener has restored the Supabase session)
+        UserDefaults.standard.set(userId, forKey: "shift.cachedUserId")
 
         await MainActor.run {
             self.session = session
@@ -160,7 +165,10 @@ class AuthManager {
 
     // MARK: - Helpers
 
-    var currentUserId: String? { session?.user.id.uuidString.lowercased() }
+    var currentUserId: String? {
+        session?.user.id.uuidString.lowercased()
+            ?? UserDefaults.standard.string(forKey: "shift.cachedUserId")
+    }
 
     func requireUserId() throws -> String {
         guard let id = currentUserId else {

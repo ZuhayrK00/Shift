@@ -57,12 +57,22 @@ struct HealthKitService {
         guard isAvailable else { return }
 
         let query = HKObserverQuery(sampleType: stepCountType, predicate: nil) { _, completionHandler, _ in
-            // HealthKit woke us — update widgets, check goals, reschedule notifications, and sync watch
+            // HealthKit woke us in the background. Do all work before calling
+            // completionHandler — iOS may suspend the app immediately after.
             Task {
+                // 1. Update the snapshot (refreshes step count + goals from HealthKit)
                 await WidgetDataService.updateSnapshot()
+
+                // 2. Check if step goal was hit and fire congrats notification
                 await GoalNotificationService.checkAndNotifyGoalCompletion()
+
+                // 3. Reschedule any expired notifications
                 await GoalNotificationService.scheduleAllNotifications()
-                PhoneSessionManager.shared.sendContextToWatch()
+
+                // 4. Push updated snapshot to watch complications (lightweight — no full context build)
+                PhoneSessionManager.shared.sendSnapshotToWatch()
+
+                // 5. Done — tell HealthKit we processed the data
                 completionHandler()
             }
         }

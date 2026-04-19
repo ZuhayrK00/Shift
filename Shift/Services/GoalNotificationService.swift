@@ -128,10 +128,21 @@ enum GoalNotificationService {
         content.title = title
         content.body = body
         content.sound = .default
+        content.interruptionLevel = .timeSensitive
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        // Use 0.1s trigger — minimal delay to ensure delivery even during background wake
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
         let request = UNNotificationRequest(identifier: fullId, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
+
+        let semaphore = DispatchSemaphore(value: 0)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[GoalNotification] Failed to add notification: \(error.localizedDescription)")
+            }
+            semaphore.signal()
+        }
+        // Wait briefly to ensure the notification is registered before the app suspends
+        _ = semaphore.wait(timeout: .now() + 2)
 
         // Clean up old sent keys from previous days
         cleanupOldSentKeys(currentKey: todayKey, prefix: id)

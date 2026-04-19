@@ -52,19 +52,26 @@ final class PhoneSessionManager: NSObject {
                 }
             }
 
-            // High-priority complication update — wakes the widget extension even if the
-            // watch app isn't running. Limited to ~50/day by the OS.
-            if WCSession.default.isComplicationEnabled {
-                let snap = WidgetSnapshot.read()
-                if let snapData = try? JSONEncoder().encode(snap),
-                   let snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] {
-                    WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict])
-                }
-            }
+            sendComplicationUpdate()
         }
     }
 
-    @MainActor
+    /// Lightweight update that only sends the snapshot to watch complications.
+    /// Used during background wakes where the full context build is too heavy.
+    /// Uses transferCurrentComplicationUserInfo for high-priority delivery.
+    func sendSnapshotToWatch() {
+        guard WCSession.default.activationState == .activated else { return }
+        sendComplicationUpdate()
+    }
+
+    private func sendComplicationUpdate() {
+        guard WCSession.default.isComplicationEnabled else { return }
+        guard let snap = WidgetSnapshot.read(),
+              let snapData = try? JSONEncoder().encode(snap),
+              let snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] else { return }
+        WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict])
+    }
+
     private func buildContext() async -> WatchContext {
         let userId = authManager.currentUserId ?? ""
 
