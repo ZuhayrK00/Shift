@@ -7,7 +7,17 @@ struct WidgetDataService {
 
     static func updateSnapshot() async {
         guard let userId = authManager.currentUserId else { return }
-        let settings = authManager.user?.settings ?? .default
+
+        // Fall back to local profile cache when woken in the background by HealthKit
+        // (authManager.user may not be fully loaded yet)
+        let settings: UserSettings
+        if let userSettings = authManager.user?.settings {
+            settings = userSettings
+        } else if let profile = try? await ProfileRepository.findById(userId) {
+            settings = profile.settings
+        } else {
+            settings = .default
+        }
 
         // Weekly progress
         let weekStart = GoalService.startOfCurrentWeek(weekStartsOn: settings.weekStartsOn)

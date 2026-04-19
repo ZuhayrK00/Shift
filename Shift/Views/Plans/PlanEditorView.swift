@@ -310,10 +310,6 @@ private struct PlanExerciseRow: View {
                     .padding(8)
             }
             .buttonStyle(.plain)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(colors.muted)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

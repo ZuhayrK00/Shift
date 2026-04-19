@@ -10,7 +10,17 @@ enum GoalNotificationService {
     /// Clears all existing goal notifications and reschedules based on current state.
     /// Called on app launch, after finishing a workout, and after goal changes.
     static func scheduleAllNotifications() async {
-        let settings = authManager.user?.settings ?? .default
+        // Read settings from auth manager, or fall back to local profile cache
+        // (auth manager may not be fully loaded when woken in the background by HealthKit)
+        let settings: UserSettings
+        if let userSettings = authManager.user?.settings {
+            settings = userSettings
+        } else if let userId = authManager.currentUserId,
+                  let profile = try? await ProfileRepository.findById(userId) {
+            settings = profile.settings
+        } else {
+            settings = .default
+        }
 
         // Clear existing
         NotificationManager.cancelNotifications(withPrefix: "shift.exercise-goal-")
@@ -18,7 +28,7 @@ enum GoalNotificationService {
         NotificationManager.cancelNotifications(withPrefix: "shift.steps-")
         NotificationManager.cancelNotifications(withPrefix: "shift.progress-")
 
-        guard let userId = try? authManager.requireUserId() else { return }
+        guard let userId = authManager.currentUserId else { return }
 
         let notificationHour = await computeNotificationHour(userId: userId)
         var scheduledCount = 0

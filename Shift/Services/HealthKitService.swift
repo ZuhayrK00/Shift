@@ -57,16 +57,24 @@ struct HealthKitService {
         guard isAvailable else { return }
 
         let query = HKObserverQuery(sampleType: stepCountType, predicate: nil) { _, completionHandler, _ in
-            // HealthKit woke us — update widgets and check if step goal is hit
+            // HealthKit woke us — update widgets, check goals, reschedule notifications, and sync watch
             Task {
                 await WidgetDataService.updateSnapshot()
                 await GoalNotificationService.checkAndNotifyGoalCompletion()
+                await GoalNotificationService.scheduleAllNotifications()
+                PhoneSessionManager.shared.sendContextToWatch()
                 completionHandler()
             }
         }
         store.execute(query)
 
-        store.enableBackgroundDelivery(for: stepCountType, frequency: .hourly) { _, _ in }
+        // .immediate ensures iOS wakes us as soon as new step data arrives
+        // Requires UIBackgroundModes "fetch" in Info.plist
+        store.enableBackgroundDelivery(for: stepCountType, frequency: .immediate) { _, error in
+            if let error {
+                print("[HealthKit] Failed to enable background delivery: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Save workout

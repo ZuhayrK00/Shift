@@ -8,6 +8,14 @@
 	<string>Shift uses speech recognition to let you describe your training preferences and goals to the AI plan generator.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Shift uses the microphone to listen to your training preferences for the AI plan generator.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Shift reads your step count and workout data to track your daily activity and goals.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Shift saves your completed workouts to Apple Health.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Shift uses Face ID to protect your progress photos.</string>
 	<key>CFBundleURLTypes</key>

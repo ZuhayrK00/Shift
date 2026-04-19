@@ -86,8 +86,6 @@ struct AIPlanGeneratorView: View {
     @State private var currentStep = 0
     @State private var ageText = ""
     @State private var weightText = ""
-    @State private var heightFeet = 5
-    @State private var heightInches = 10
     @State private var goalType: AIGoalType? = nil
     @State private var daysPerWeek = 4
     @State private var activityLevel: AIActivityLevel = .moderatelyActive
@@ -216,8 +214,7 @@ struct AIPlanGeneratorView: View {
 
     private var hasAge: Bool { authManager.user?.age != nil }
     private var hasWeight: Bool { authManager.user?.weight != nil }
-    private var hasHeight: Bool { authManager.user?.height != nil }
-    private var allProfileFieldsFilled: Bool { hasAge && hasWeight && hasHeight }
+    private var allProfileFieldsFilled: Bool { hasAge && hasWeight }
 
     private var aboutYouStep: some View {
         ScrollView {
@@ -232,9 +229,6 @@ struct AIPlanGeneratorView: View {
                         if let w = authManager.user?.weight {
                             let unit = authManager.user?.settings.weightUnit ?? "kg"
                             profileRow(label: "Weight", value: "\(formatWeight(w)) \(unit)")
-                        }
-                        if let h = authManager.user?.height {
-                            profileRow(label: "Height", value: "\(Int(h) / 12) ft \(Int(h) % 12) in")
                         }
                     }
                     .padding(16)
@@ -256,27 +250,6 @@ struct AIPlanGeneratorView: View {
                                 TextField("e.g. 75", text: $weightText)
                                     .keyboardType(.decimalPad)
                                     .foregroundStyle(colors.text)
-                            }
-                        }
-                        if !hasHeight {
-                            labeledField(label: "Height") {
-                                HStack(spacing: 8) {
-                                    Picker("", selection: $heightFeet) {
-                                        ForEach(3...8, id: \.self) { ft in
-                                            Text("\(ft) ft").tag(ft)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .tint(colors.text)
-
-                                    Picker("", selection: $heightInches) {
-                                        ForEach(0...11, id: \.self) { inch in
-                                            Text("\(inch) in").tag(inch)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .tint(colors.text)
-                                }
                             }
                         }
                     }
@@ -1079,10 +1052,6 @@ struct AIPlanGeneratorView: View {
         guard let user = authManager.user else { return }
         ageText = user.age.map { "\($0)" } ?? ""
         weightText = user.weight.map { "\($0)" } ?? ""
-        if let h = user.height {
-            heightFeet = Int(h) / 12
-            heightInches = Int(h) % 12
-        }
         if let target = user.settings.targetWeight, let current = user.weight {
             goalType = target < current ? .toneAndDefine : .buildMuscle
         }
@@ -1547,17 +1516,17 @@ struct AIPlanGeneratorView: View {
             Constraints:
             - Exactly \(daysPerWeek) sessions, no more, no less
             - Use ONLY module names from the list above, exactly as written (strip the [...] tags)
-            - 4-6 modules per session
-            - Each session should start with 2-3 compound [C] modules, then 2-3 isolation [I] modules
+            - 6-8 modules per session (aim for sessions lasting 45-60 minutes)
+            - Each session should start with 3-4 compound [C] modules, then 3-4 isolation [I] modules
             - Do not repeat the same module across different sessions
             - Group related categories together in the same session (e.g. all push or all pull)
             - Label each session descriptively (e.g. "Upper A", "Push", "Legs")
             """
 
-        // Add time budget constraint if parsed
+        // Add time budget constraint if parsed — overrides the default 45-60 min target
         if let budget = timeBudgetMinutes {
             let maxEx = Self.maxExercisesForBudget(minutes: budget)
-            prompt += "\n- IMPORTANT: Each session must fit within \(budget) minutes. Limit to \(maxEx) modules per session maximum. Use shorter pause times if needed."
+            prompt += "\n- IMPORTANT: Each session must fit within \(budget) minutes. Use \(maxEx) modules per session maximum. Use shorter pause times if needed."
         }
 
         // Add injury/recovery constraints
@@ -1599,7 +1568,7 @@ struct AIPlanGeneratorView: View {
                 if isSafetyError && attempt == 1 {
                     // Retry with absolute minimum prompt
                     prompt = """
-                        Sort these items into \(daysPerWeek) groups of 4-6.
+                        Sort these items into \(daysPerWeek) groups of 6-8.
 
                         Items by category:
                         \(exerciseListString)

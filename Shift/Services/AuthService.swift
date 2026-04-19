@@ -82,7 +82,6 @@ class AuthManager {
             name: profile?.name,
             age: profile?.age,
             weight: profile?.weight,
-            height: profile?.height,
             profilePictureUrl: profile?.profilePictureUrl,
             createdAt: createdAtDate,
             settings: settings
@@ -151,7 +150,6 @@ class AuthManager {
             name: profile?.name,
             age: profile?.age,
             weight: profile?.weight,
-            height: profile?.height,
             profilePictureUrl: profile?.profilePictureUrl,
             createdAt: session.user.createdAt,
             settings: settings

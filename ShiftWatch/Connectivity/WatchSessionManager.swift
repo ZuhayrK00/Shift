@@ -152,6 +152,16 @@ extension WatchSessionManager: WCSessionDelegate {
         }
     }
 
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        // Handle complication snapshot updates (from transferCurrentComplicationUserInfo)
+        if let snapDict = userInfo["snapshot"] as? [String: Any],
+           let data = try? JSONSerialization.data(withJSONObject: snapDict),
+           let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data) {
+            snapshot.write()
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
     private func parseContext(_ dict: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let ctx = try? JSONDecoder().decode(WatchContext.self, from: data) else { return }

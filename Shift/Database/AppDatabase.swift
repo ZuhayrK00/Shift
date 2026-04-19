@@ -312,10 +312,8 @@ final class AppDatabase {
             """)
         }
 
-        migrator.registerMigration("addProfileHeight") { db in
-            try db.execute(sql: """
-                ALTER TABLE profiles ADD COLUMN height REAL
-            """)
+        migrator.registerMigration("addProfileHeight") { _ in
+            // Height column removed — kept as no-op for databases that already ran this
         }
 
         return migrator

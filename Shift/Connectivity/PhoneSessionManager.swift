@@ -51,13 +51,32 @@ final class PhoneSessionManager: NSObject {
                     print("[PhoneSession] sendMessage error: \(error.localizedDescription)")
                 }
             }
+
+            // High-priority complication update — wakes the widget extension even if the
+            // watch app isn't running. Limited to ~50/day by the OS.
+            if WCSession.default.isComplicationEnabled {
+                let snap = WidgetSnapshot.read()
+                if let snapData = try? JSONEncoder().encode(snap),
+                   let snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] {
+                    WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict])
+                }
+            }
         }
     }
 
     @MainActor
     private func buildContext() async -> WatchContext {
         let userId = authManager.currentUserId ?? ""
-        let settings = authManager.user?.settings ?? .default
+
+        // Fall back to local profile cache when woken in the background by HealthKit
+        let settings: UserSettings
+        if let userSettings = authManager.user?.settings {
+            settings = userSettings
+        } else if !userId.isEmpty, let profile = try? await ProfileRepository.findById(userId) {
+            settings = profile.settings
+        } else {
+            settings = .default
+        }
 
         // Plans
         let plans: [WatchPlan] = await {

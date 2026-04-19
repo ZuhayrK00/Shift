@@ -20,7 +20,7 @@ struct WorkoutComplicationProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WorkoutComplicationEntry>) -> Void) {
-        let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
         completion(Timeline(entries: [entry()], policy: .after(nextUpdate)))
     }
 

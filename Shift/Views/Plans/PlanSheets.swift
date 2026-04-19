@@ -127,30 +127,49 @@ struct PlanExerciseConfigSheet: View {
                 colors.bg.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 24) {
                         // Exercise header with image
                         exerciseHeader
 
-                        // Sets
-                        configSection(icon: "square.stack.fill", title: "Sets", color: colors.accent) {
-                            stepperRow(value: $targetSets, range: 1...20, label: "\(targetSets)", suffix: targetSets == 1 ? "set" : "sets")
-                        }
+                        // Unified config card
+                        VStack(spacing: 0) {
+                            // Sets row
+                            configRow(icon: "square.stack.fill", title: "Sets", color: colors.accent) {
+                                HStack(spacing: 2) {
+                                    Text("\(targetSets)")
+                                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                                        .foregroundStyle(colors.text)
+                                        .frame(minWidth: 28)
 
-                        // Reps
-                        configSection(icon: "arrow.counterclockwise", title: "Reps", color: .orange) {
-                            VStack(spacing: 0) {
-                                stepperRow(value: $targetRepsMin, range: 1...100, label: hasMaxReps ? "Min" : "Reps", displayValue: "\(targetRepsMin)")
-
-                                if hasMaxReps {
-                                    Divider()
-                                        .background(colors.border)
-                                        .padding(.horizontal, 16)
-
-                                    stepperRow(value: $targetRepsMax, range: 1...100, label: "Max", displayValue: "\(targetRepsMax)")
+                                    stepperButtons(value: $targetSets, range: 1...20)
                                 }
                             }
 
-                            // Max toggle
+                            Divider().background(colors.border).padding(.horizontal, 16)
+
+                            // Reps row
+                            configRow(icon: "arrow.counterclockwise", title: hasMaxReps ? "Rep Range" : "Reps", color: .orange) {
+                                if hasMaxReps {
+                                    HStack(spacing: 4) {
+                                        miniStepperField(value: $targetRepsMin, range: 1...100)
+                                        Text("-")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .foregroundStyle(colors.muted)
+                                        miniStepperField(value: $targetRepsMax, range: 1...100)
+                                    }
+                                } else {
+                                    HStack(spacing: 2) {
+                                        Text("\(targetRepsMin)")
+                                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                                            .foregroundStyle(colors.text)
+                                            .frame(minWidth: 28)
+
+                                        stepperButtons(value: $targetRepsMin, range: 1...100)
+                                    }
+                                }
+                            }
+
+                            // Rep range toggle
                             HStack {
                                 Text("Rep range")
                                     .font(.system(size: 13))
@@ -161,34 +180,32 @@ struct PlanExerciseConfigSheet: View {
                                     .tint(colors.accent)
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(colors.surface.opacity(0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                            .padding(.vertical, 12)
 
-                        // Target Weight
-                        configSection(icon: "scalemass.fill", title: "Target Weight", color: .green) {
-                            HStack(spacing: 12) {
-                                TextField("e.g. 60", text: $targetWeight)
-                                    .keyboardType(.decimalPad)
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundStyle(colors.text)
+                            Divider().background(colors.border).padding(.horizontal, 16)
 
-                                Text(weightUnit)
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(colors.muted)
+                            // Target weight row
+                            configRow(icon: "scalemass.fill", title: "Weight", color: .green) {
+                                HStack(spacing: 6) {
+                                    TextField("--", text: $targetWeight)
+                                        .keyboardType(.decimalPad)
+                                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                                        .foregroundStyle(colors.text)
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 60)
+
+                                    Text(weightUnit)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(colors.muted)
+                                }
                             }
-                            .padding(.horizontal, 16)
-                            .frame(height: 52)
-                            .background(colors.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(colors.border, lineWidth: 1)
-                            )
                         }
-
-                        Spacer()
+                        .background(colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(colors.border, lineWidth: 1)
+                        )
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -218,33 +235,34 @@ struct PlanExerciseConfigSheet: View {
     // MARK: - Exercise header
 
     private var exerciseHeader: some View {
-        HStack(spacing: 14) {
+        VStack(spacing: 12) {
             if let urlStr = exercise?.imageUrl, let url = URL(string: urlStr) {
                 CachedAsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
                     default:
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 14)
                             .fill(colors.surface2)
                     }
                 }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 14)
                         .stroke(colors.border, lineWidth: 1)
                 )
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(spacing: 6) {
                 Text(exercise?.name ?? "Exercise")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(colors.text)
                     .lineLimit(2)
+                    .multilineTextAlignment(.center)
 
-                // Summary preview
-                HStack(spacing: 8) {
+                // Live summary preview
+                HStack(spacing: 6) {
                     Text("\(targetSets) sets")
                     Text("·")
                     Text(hasMaxReps ? "\(targetRepsMin)-\(targetRepsMax) reps" : "\(targetRepsMin) reps")
@@ -253,111 +271,102 @@ struct PlanExerciseConfigSheet: View {
                         Text("\(targetWeight) \(weightUnit)")
                     }
                 }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(colors.muted)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(colors.accent)
             }
-
-            Spacer()
         }
-        .padding(16)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 16)
         .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(colors.border, lineWidth: 1)
         )
     }
 
-    // MARK: - Section wrapper
+    // MARK: - Config row
 
     @ViewBuilder
-    private func configSection<Content: View>(
+    private func configRow<Content: View>(
         icon: String,
         title: String,
         color: Color,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(color)
-                Text(title.uppercased())
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(colors.muted)
-                    .kerning(0.5)
-            }
-
-            content()
-        }
-    }
-
-    // MARK: - Stepper row
-
-    @ViewBuilder
-    private func stepperRow(value: Binding<Int>, range: ClosedRange<Int>, label: String, suffix: String? = nil, displayValue: String? = nil) -> some View {
         HStack {
-            Text(label)
-                .font(.system(size: 15))
-                .foregroundStyle(colors.muted)
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 20)
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(colors.text)
+            }
 
             Spacer()
 
-            Text(displayValue ?? "\(value.wrappedValue)")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundStyle(colors.text)
-                .frame(minWidth: 32)
-
-            if let suffix {
-                Text(suffix)
-                    .font(.system(size: 13))
-                    .foregroundStyle(colors.muted)
-            }
-
-            HStack(spacing: 0) {
-                Button {
-                    if value.wrappedValue > range.lowerBound {
-                        value.wrappedValue -= 1
-                    }
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(value.wrappedValue <= range.lowerBound ? colors.muted.opacity(0.3) : colors.text)
-                        .frame(width: 40, height: 40)
-                }
-                .disabled(value.wrappedValue <= range.lowerBound)
-
-                Divider()
-                    .frame(height: 20)
-                    .background(colors.border)
-
-                Button {
-                    if value.wrappedValue < range.upperBound {
-                        value.wrappedValue += 1
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(value.wrappedValue >= range.upperBound ? colors.muted.opacity(0.3) : colors.text)
-                        .frame(width: 40, height: 40)
-                }
-                .disabled(value.wrappedValue >= range.upperBound)
-            }
-            .background(colors.surface2)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(colors.border, lineWidth: 1)
-            )
+            content()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 14)
+    }
+
+    // MARK: - Stepper buttons
+
+    @ViewBuilder
+    private func stepperButtons(value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                if value.wrappedValue > range.lowerBound {
+                    value.wrappedValue -= 1
+                }
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(value.wrappedValue <= range.lowerBound ? colors.muted.opacity(0.3) : colors.text)
+                    .frame(width: 36, height: 36)
+            }
+            .disabled(value.wrappedValue <= range.lowerBound)
+
+            Divider()
+                .frame(height: 18)
+                .background(colors.border)
+
+            Button {
+                if value.wrappedValue < range.upperBound {
+                    value.wrappedValue += 1
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(value.wrappedValue >= range.upperBound ? colors.muted.opacity(0.3) : colors.text)
+                    .frame(width: 36, height: 36)
+            }
+            .disabled(value.wrappedValue >= range.upperBound)
+        }
+        .background(colors.surface2)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(colors.border, lineWidth: 1)
         )
+    }
+
+    // MARK: - Mini stepper field (for rep range)
+
+    @ViewBuilder
+    private func miniStepperField(value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        HStack(spacing: 2) {
+            Text("\(value.wrappedValue)")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(colors.text)
+                .frame(minWidth: 24)
+
+            stepperButtons(value: value, range: range)
+        }
     }
 
     // MARK: - Save

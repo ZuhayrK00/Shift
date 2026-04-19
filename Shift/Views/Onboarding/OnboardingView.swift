@@ -14,10 +14,6 @@ struct OnboardingView: View {
     @State private var name = ""
     @State private var ageText = ""
     @State private var weightText = ""
-    @State private var heightFeet = 5
-    @State private var heightInches = 10
-    @State private var heightCmText = ""
-    @State private var isSyncingHeightFromCm = false
     @State private var photoItem: PhotosPickerItem?
     @State private var avatarData: Data?
 
@@ -274,69 +270,6 @@ struct OnboardingView: View {
                 onboardingField(label: "Name", placeholder: "Your name", text: $name)
                 onboardingField(label: "Age", placeholder: "e.g. 25", text: $ageText, keyboard: .numberPad)
                 onboardingField(label: "Weight", placeholder: "e.g. 75", text: $weightText, keyboard: .decimalPad, suffix: weightUnit)
-
-                // Height
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Height")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(colors.muted)
-
-                    HStack(spacing: 12) {
-                        HStack(spacing: 4) {
-                            Picker("", selection: $heightFeet) {
-                                ForEach(3...8, id: \.self) { ft in
-                                    Text("\(ft) ft").tag(ft)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(colors.text)
-
-                            Picker("", selection: $heightInches) {
-                                ForEach(0...11, id: \.self) { inch in
-                                    Text("\(inch) in").tag(inch)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(colors.text)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(colors.surface2)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                        HStack(spacing: 4) {
-                            TextField("cm", text: $heightCmText)
-                                .keyboardType(.decimalPad)
-                                .foregroundStyle(colors.text)
-                                .frame(width: 60)
-                                .onChange(of: heightCmText) { _, newValue in
-                                    guard let cm = Double(newValue), cm > 0 else { return }
-                                    let totalInches = cm / 2.54
-                                    isSyncingHeightFromCm = true
-                                    heightFeet = Int(totalInches) / 12
-                                    heightInches = Int(totalInches.rounded()) % 12
-                                    isSyncingHeightFromCm = false
-                                }
-                            Text("cm")
-                                .font(.system(size: 14))
-                                .foregroundStyle(colors.muted)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(colors.surface2)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-                .onChange(of: heightFeet) { _, _ in
-                    guard !isSyncingHeightFromCm else { return }
-                    let totalInches = Double(heightFeet * 12 + heightInches)
-                    heightCmText = String(format: "%.1f", totalInches * 2.54)
-                }
-                .onChange(of: heightInches) { _, _ in
-                    guard !isSyncingHeightFromCm else { return }
-                    let totalInches = Double(heightFeet * 12 + heightInches)
-                    heightCmText = String(format: "%.1f", totalInches * 2.54)
-                }
             }
         }
     }
@@ -938,12 +871,10 @@ struct OnboardingView: View {
 
         let parsedAge = Int(ageText)
         let parsedWeight = Double(weightText)
-        let totalInches = Double(heightFeet * 12 + heightInches)
         var patch = ProfilePatch(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines),
             age: parsedAge.flatMap { (1...120).contains($0) ? $0 : nil },
             weight: parsedWeight.flatMap { $0 > 0 ? $0 : nil },
-            height: totalInches,
             settings: settings
         )
 

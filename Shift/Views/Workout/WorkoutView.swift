@@ -165,63 +165,108 @@ struct WorkoutView: View {
     // MARK: - Completed summary
 
     private var completedSummary: some View {
-        VStack(spacing: 16) {
-            // Checkmark icon
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(colors.success)
-                .padding(.top, 4)
+        VStack(spacing: 0) {
+            // Top accent bar with gradient
+            VStack(spacing: 14) {
+                // Success badge
+                ZStack {
+                    Circle()
+                        .fill(colors.success.opacity(0.15))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(colors.success)
+                }
+                .padding(.top, 8)
 
-            // Duration
-            if let start = session?.startedAt, let end = session?.endedAt {
-                let duration = end.timeIntervalSince(start)
-                let mins = Int(duration) / 60
-                Text(formatDuration(mins))
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(colors.text)
+                // Workout name + duration
+                VStack(spacing: 4) {
+                    Text(session?.name ?? "Workout")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(colors.text)
+
+                    if let start = session?.startedAt, let end = session?.endedAt {
+                        let duration = end.timeIntervalSince(start)
+                        let mins = Int(duration) / 60
+                        Text(formatDuration(mins))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(colors.muted)
+                    }
+                }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                LinearGradient(
+                    colors: [colors.success.opacity(0.08), colors.surface],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
 
-            // Stats
-            HStack(spacing: 24) {
+            Divider().background(colors.border)
+
+            // Stats grid
+            HStack(spacing: 0) {
                 completedStat(
                     value: "\(exerciseCount)",
                     label: exerciseCount == 1 ? "Exercise" : "Exercises",
-                    icon: "dumbbell.fill"
+                    icon: "dumbbell.fill",
+                    color: colors.accent
                 )
+
+                verticalDivider
+
                 completedStat(
                     value: "\(completedSetCount)",
                     label: completedSetCount == 1 ? "Set" : "Sets",
-                    icon: "checkmark.circle"
+                    icon: "checkmark.circle.fill",
+                    color: colors.success
                 )
+
+                verticalDivider
+
                 completedStat(
                     value: totalVolume,
                     label: weightUnit,
-                    icon: "scalemass"
+                    icon: "scalemass.fill",
+                    color: .orange
                 )
             }
+            .padding(.vertical, 16)
 
-            // HealthKit stats (calories + heart rate)
+            // HealthKit stats
             if sessionCalories != nil || sessionAvgHeartRate != nil {
-                HStack(spacing: 24) {
+                Divider().background(colors.border)
+
+                HStack(spacing: 0) {
                     if let cal = sessionCalories, cal > 0 {
                         completedStat(
                             value: "\(Int(cal.rounded()))",
                             label: "kcal",
-                            icon: "flame.fill"
+                            icon: "flame.fill",
+                            color: .red
                         )
+                    }
+                    if sessionCalories != nil && sessionAvgHeartRate != nil {
+                        verticalDivider
                     }
                     if let bpm = sessionAvgHeartRate, bpm > 0 {
                         completedStat(
                             value: "\(Int(bpm.rounded()))",
                             label: "avg bpm",
-                            icon: "heart.fill"
+                            icon: "heart.fill",
+                            color: .pink
                         )
                     }
                 }
+                .padding(.vertical, 16)
             }
 
+            Divider().background(colors.border)
+
             // Action buttons
-            HStack(spacing: 12) {
+            HStack(spacing: 0) {
                 Button {
                     Task {
                         try? await WorkoutService.resumeSession(sessionId)
@@ -230,36 +275,35 @@ struct WorkoutView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                         Text("Edit")
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .foregroundStyle(colors.accent)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(colors.accent.opacity(0.1))
-                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
                 }
                 .buttonStyle(.plain)
+
+                Divider()
+                    .frame(height: 20)
+                    .background(colors.border)
 
                 Button { shareWorkout() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                         Text("Share")
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .foregroundStyle(colors.accent)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(colors.accent.opacity(0.1))
-                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
                 }
                 .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
         .background(colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
@@ -268,19 +312,26 @@ struct WorkoutView: View {
         )
     }
 
+    private var verticalDivider: some View {
+        Rectangle()
+            .fill(colors.border)
+            .frame(width: 1, height: 28)
+    }
+
     @ViewBuilder
-    private func completedStat(value: String, label: String, icon: String) -> some View {
-        VStack(spacing: 4) {
+    private func completedStat(value: String, label: String, icon: String, color: Color = .clear) -> some View {
+        VStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundStyle(colors.muted)
+                .font(.system(size: 13))
+                .foregroundStyle(color)
             Text(value)
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundStyle(colors.text)
             Text(label)
                 .font(.system(size: 11))
                 .foregroundStyle(colors.muted)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var totalVolume: String {
