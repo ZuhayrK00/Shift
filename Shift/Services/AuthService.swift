@@ -11,6 +11,7 @@ class AuthManager {
     var session: Session?
     var user: User?
     var isLoading = true
+    var showPasswordReset = false
 
     init() {
         Task { await listenForAuthChanges() }
@@ -34,6 +35,16 @@ class AuthManager {
                     self.session = nil
                     self.user = nil
                     self.isLoading = false
+                }
+            case .passwordRecovery:
+                if let session {
+                    await MainActor.run {
+                        self.session = session
+                        self.showPasswordReset = true
+                        self.isLoading = false
+                    }
+                } else {
+                    await MainActor.run { self.isLoading = false }
                 }
             default:
                 await MainActor.run { self.isLoading = false }
@@ -132,6 +143,10 @@ class AuthManager {
 
     func resetPassword(email: String) async throws {
         try await supabase.auth.resetPasswordForEmail(email)
+    }
+
+    func updatePassword(_ newPassword: String) async throws {
+        try await supabase.auth.update(user: UserAttributes(password: newPassword))
     }
 
     func signOut() async throws {

@@ -43,6 +43,13 @@ struct ContentView: View {
                     }
             }
         }
+        .sheet(isPresented: Binding(
+            get: { authManager.showPasswordReset },
+            set: { authManager.showPasswordReset = $0 }
+        )) {
+            ResetPasswordSheet()
+                .environment(authManager)
+        }
         .onChange(of: authManager.currentUserId) { _, _ in
             // Reset onboarding state when user changes (sign out → sign in, or account deletion)
             onboardingCheckDone = false
@@ -179,5 +186,148 @@ struct MainTabView: View {
                 plansPath = NavigationPath()
             }
         }
+    }
+}
+
+// MARK: - Reset Password Sheet
+
+struct ResetPasswordSheet: View {
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.shiftColors) private var colors
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    @State private var success = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                colors.bg.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Image(systemName: "lock.rotation")
+                                .font(.system(size: 40))
+                                .foregroundStyle(colors.accent)
+                                .padding(.bottom, 8)
+
+                            Text("Set New Password")
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(colors.text)
+
+                            Text("Enter your new password below.")
+                                .font(.system(size: 16))
+                                .foregroundStyle(colors.muted)
+                        }
+                        .padding(.top, 24)
+                        .padding(.bottom, 32)
+
+                        if success {
+                            HStack(spacing: 10) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text("Password updated successfully!")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(colors.text)
+                            }
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.green.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.bottom, 16)
+
+                            Button {
+                                dismiss()
+                            } label: {
+                                Text("Done")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 52)
+                                    .background(colors.accent)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        } else {
+                            VStack(spacing: 12) {
+                                ShiftSecureField(placeholder: "New password", text: $newPassword)
+                                ShiftSecureField(placeholder: "Confirm password", text: $confirmPassword)
+                            }
+                            .padding(.bottom, 8)
+
+                            if let errorMessage {
+                                Text(errorMessage)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(colors.danger)
+                                    .padding(.bottom, 8)
+                            }
+
+                            Button {
+                                Task { await updatePassword() }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if isLoading {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .scaleEffect(0.8)
+                                    }
+                                    Text("Update Password")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(isValid ? colors.accent : colors.accent.opacity(0.4))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .disabled(!isValid || isLoading)
+                            .padding(.top, 8)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if !success {
+                        Button("Cancel") { dismiss() }
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+            }
+        }
+    }
+
+    private var isValid: Bool {
+        newPassword.count >= 6 && newPassword == confirmPassword
+    }
+
+    private func updatePassword() async {
+        isLoading = true
+        errorMessage = nil
+
+        guard newPassword == confirmPassword else {
+            errorMessage = "Passwords do not match."
+            isLoading = false
+            return
+        }
+
+        guard newPassword.count >= 6 else {
+            errorMessage = "Password must be at least 6 characters."
+            isLoading = false
+            return
+        }
+
+        do {
+            try await authManager.updatePassword(newPassword)
+            success = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
     }
 }
