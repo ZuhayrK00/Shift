@@ -6,6 +6,12 @@ import WidgetKit
 struct WidgetDataService {
 
     static func updateSnapshot() async {
+        guard StoreService.shared.isPro else {
+            // Clear snapshot so widgets show placeholder
+            UserDefaults(suiteName: WidgetSnapshot.suiteName)?.removeObject(forKey: WidgetSnapshot.key)
+            WidgetCenter.shared.reloadAllTimelines()
+            return
+        }
         guard let userId = authManager.currentUserId else { return }
 
         // Fall back to local profile cache when woken in the background by HealthKit

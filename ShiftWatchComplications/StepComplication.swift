@@ -7,11 +7,12 @@ struct StepComplicationEntry: TimelineEntry {
     let date: Date
     let steps: Int
     let goal: Int?
+    let isPro: Bool
 }
 
 struct StepComplicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> StepComplicationEntry {
-        StepComplicationEntry(date: .now, steps: 6420, goal: 10000)
+        StepComplicationEntry(date: .now, steps: 6420, goal: 10000, isPro: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StepComplicationEntry) -> Void) {
@@ -28,7 +29,8 @@ struct StepComplicationProvider: TimelineProvider {
         return StepComplicationEntry(
             date: .now,
             steps: snap?.stepsToday ?? 0,
-            goal: snap?.stepGoal
+            goal: snap?.stepGoal,
+            isPro: WidgetSnapshot.isProUser
         )
     }
 }
@@ -43,12 +45,42 @@ struct StepComplicationView: View {
     }
 
     var body: some View {
-        switch family {
-        case .accessoryCircular: circularView
-        case .accessoryInline: inlineView
-        case .accessoryCorner: cornerView
-        case .accessoryRectangular: rectangularView
-        default: circularView
+        if !entry.isPro {
+            proLockedView
+        } else {
+            switch family {
+            case .accessoryCircular: circularView
+            case .accessoryInline: inlineView
+            case .accessoryCorner: cornerView
+            case .accessoryRectangular: rectangularView
+            default: circularView
+            }
+        }
+    }
+
+    private var proLockedView: some View {
+        ZStack {
+            switch family {
+            case .accessoryInline:
+                HStack(spacing: 4) {
+                    Image(systemName: "crown.fill")
+                    Text("Shift Pro")
+                }
+            case .accessoryRectangular:
+                VStack(spacing: 4) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 14))
+                    Text("Shift Pro")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+            default:
+                VStack(spacing: 2) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 12))
+                    Text("Pro")
+                        .font(.system(size: 9, weight: .bold))
+                }
+            }
         }
     }
 

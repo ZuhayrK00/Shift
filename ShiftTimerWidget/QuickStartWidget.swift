@@ -5,34 +5,39 @@ import WidgetKit
 
 struct QuickStartEntry: TimelineEntry {
     let date: Date
+    let isPro: Bool
 }
 
 // MARK: - Provider
 
 struct QuickStartProvider: TimelineProvider {
     func placeholder(in context: Context) -> QuickStartEntry {
-        QuickStartEntry(date: .now)
+        QuickStartEntry(date: .now, isPro: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (QuickStartEntry) -> Void) {
-        completion(QuickStartEntry(date: .now))
+        completion(QuickStartEntry(date: .now, isPro: WidgetSnapshot.isProUser))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<QuickStartEntry>) -> Void) {
-        completion(Timeline(entries: [QuickStartEntry(date: .now)], policy: .never))
+        completion(Timeline(entries: [QuickStartEntry(date: .now, isPro: WidgetSnapshot.isProUser)], policy: .never))
     }
 }
 
 // MARK: - View
 
 struct QuickStartWidgetView: View {
+    let entry: QuickStartEntry
     @Environment(\.widgetFamily) var family
 
     var body: some View {
-        switch family {
-        case .systemMedium: mediumLayout
-        default: smallLayout
+        Group {
+            switch family {
+            case .systemMedium: mediumLayout
+            default: smallLayout
+            }
         }
+        .proLocked(entry.isPro)
     }
 
     // MARK: - Small
@@ -100,8 +105,8 @@ struct QuickStartWidget: Widget {
     let kind = "QuickStartWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: QuickStartProvider()) { _ in
-            QuickStartWidgetView()
+        StaticConfiguration(kind: kind, provider: QuickStartProvider()) { entry in
+            QuickStartWidgetView(entry: entry)
         }
         .configurationDisplayName("Quick Start")
         .description("Tap to start a workout.")

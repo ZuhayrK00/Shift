@@ -65,6 +65,7 @@ struct ShiftApp: App {
         WindowGroup {
             ContentView()
                 .environment(authManager)
+                .environment(StoreService.shared)
                 .preferredColorScheme(preferredScheme)
                 .shiftTheme()
                 .onOpenURL { url in

@@ -7,23 +7,24 @@ struct StepCounterEntry: TimelineEntry {
     let date: Date
     let steps: Int
     let goal: Int?
+    let isPro: Bool
 }
 
 // MARK: - Provider
 
 struct StepCounterProvider: TimelineProvider {
     func placeholder(in context: Context) -> StepCounterEntry {
-        StepCounterEntry(date: .now, steps: 6420, goal: 10000)
+        StepCounterEntry(date: .now, steps: 6420, goal: 10000, isPro: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StepCounterEntry) -> Void) {
         let s = WidgetSnapshot.read() ?? .placeholder
-        completion(StepCounterEntry(date: .now, steps: s.stepsToday, goal: s.stepGoal))
+        completion(StepCounterEntry(date: .now, steps: s.stepsToday, goal: s.stepGoal, isPro: WidgetSnapshot.isProUser))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepCounterEntry>) -> Void) {
         let s = WidgetSnapshot.read() ?? .placeholder
-        let entry = StepCounterEntry(date: .now, steps: s.stepsToday, goal: s.stepGoal)
+        let entry = StepCounterEntry(date: .now, steps: s.stepsToday, goal: s.stepGoal, isPro: WidgetSnapshot.isProUser)
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
@@ -41,10 +42,13 @@ struct StepCounterWidgetView: View {
     }
 
     var body: some View {
-        switch family {
-        case .systemMedium: mediumLayout
-        default: smallLayout
+        Group {
+            switch family {
+            case .systemMedium: mediumLayout
+            default: smallLayout
+            }
         }
+        .proLocked(entry.isPro)
     }
 
     // MARK: - Small

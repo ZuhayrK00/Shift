@@ -27,4 +27,8 @@ struct WidgetSnapshot: Codable {
         guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
     }
+
+    static var isProUser: Bool {
+        UserDefaults(suiteName: suiteName)?.bool(forKey: "isPro") ?? false
+    }
 }

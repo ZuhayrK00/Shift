@@ -28,6 +28,7 @@ final class PhoneSessionManager: NSObject {
 
     func sendContextToWatch() {
         guard WCSession.default.activationState == .activated else { return }
+        guard StoreService.shared.isPro else { return }
 
         Task {
             // Ensure snapshot is fresh before sending to watch
@@ -61,6 +62,7 @@ final class PhoneSessionManager: NSObject {
     /// Uses transferCurrentComplicationUserInfo for high-priority delivery.
     func sendSnapshotToWatch() {
         guard WCSession.default.activationState == .activated else { return }
+        guard StoreService.shared.isPro else { return }
         sendComplicationUpdate()
     }
 

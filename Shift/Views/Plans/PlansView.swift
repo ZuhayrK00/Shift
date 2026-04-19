@@ -3,6 +3,7 @@ import SwiftUI
 struct PlansView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
+    @Environment(StoreService.self) private var store
 
     @State private var planItems: [WorkoutPlanWithCount] = []
     @State private var isLoading = false
@@ -10,8 +11,11 @@ struct PlansView: View {
     @State private var showExplore = false
     @State private var showAIGenerator = false
     @State private var showQuickSession = false
+    @State private var showPaywall = false
     @State private var toastMessage: String?
     @State private var showToast = false
+
+    private let freePlanLimit = 3
 
     var body: some View {
         ZStack {
@@ -46,7 +50,11 @@ struct PlansView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
-                        showNewPlan = true
+                        if !store.isPro && planItems.count >= freePlanLimit {
+                            showPaywall = true
+                        } else {
+                            showNewPlan = true
+                        }
                     } label: {
                         Label("Blank Plan", systemImage: "doc")
                     }
@@ -55,12 +63,20 @@ struct PlansView: View {
                     if #available(iOS 26, *) {
                         Section("AI-Powered") {
                             Button {
-                                showAIGenerator = true
+                                if store.isPro {
+                                    showAIGenerator = true
+                                } else {
+                                    showPaywall = true
+                                }
                             } label: {
                                 Label("Full Program", systemImage: "sparkles")
                             }
                             Button {
-                                showQuickSession = true
+                                if store.isPro {
+                                    showQuickSession = true
+                                } else {
+                                    showPaywall = true
+                                }
                             } label: {
                                 Label("Quick Session", systemImage: "bolt.fill")
                             }
@@ -110,6 +126,9 @@ struct PlansView: View {
             }
         }
         .task { await loadPlans() }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView()
+        }
         .overlay(alignment: .bottom) {
             if showToast, let message = toastMessage {
                 PlanToast(message: message)

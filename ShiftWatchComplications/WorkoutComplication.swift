@@ -8,11 +8,12 @@ struct WorkoutComplicationEntry: TimelineEntry {
     let workouts: Int
     let goal: Int?
     let workedOutToday: Bool
+    let isPro: Bool
 }
 
 struct WorkoutComplicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> WorkoutComplicationEntry {
-        WorkoutComplicationEntry(date: .now, workouts: 3, goal: 5, workedOutToday: true)
+        WorkoutComplicationEntry(date: .now, workouts: 3, goal: 5, workedOutToday: true, isPro: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WorkoutComplicationEntry) -> Void) {
@@ -30,7 +31,8 @@ struct WorkoutComplicationProvider: TimelineProvider {
             date: .now,
             workouts: snap?.workoutsThisWeek ?? 0,
             goal: snap?.weeklyGoal,
-            workedOutToday: snap?.workedOutToday ?? false
+            workedOutToday: snap?.workedOutToday ?? false,
+            isPro: WidgetSnapshot.isProUser
         )
     }
 }
@@ -45,11 +47,41 @@ struct WorkoutComplicationView: View {
     }
 
     var body: some View {
-        switch family {
-        case .accessoryCircular: circularView
-        case .accessoryInline: inlineView
-        case .accessoryRectangular: rectangularView
-        default: circularView
+        if !entry.isPro {
+            proLockedView
+        } else {
+            switch family {
+            case .accessoryCircular: circularView
+            case .accessoryInline: inlineView
+            case .accessoryRectangular: rectangularView
+            default: circularView
+            }
+        }
+    }
+
+    private var proLockedView: some View {
+        ZStack {
+            switch family {
+            case .accessoryInline:
+                HStack(spacing: 4) {
+                    Image(systemName: "crown.fill")
+                    Text("Shift Pro")
+                }
+            case .accessoryRectangular:
+                VStack(spacing: 4) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 14))
+                    Text("Shift Pro")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+            default:
+                VStack(spacing: 2) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 12))
+                    Text("Pro")
+                        .font(.system(size: 9, weight: .bold))
+                }
+            }
         }
     }
 

@@ -7,13 +7,14 @@ struct WeeklyProgressEntry: TimelineEntry {
     let date: Date
     let completed: Int
     let goal: Int?
+    let isPro: Bool
 }
 
 // MARK: - Provider
 
 struct WeeklyProgressProvider: TimelineProvider {
     func placeholder(in context: Context) -> WeeklyProgressEntry {
-        WeeklyProgressEntry(date: .now, completed: 3, goal: 5)
+        WeeklyProgressEntry(date: .now, completed: 3, goal: 5, isPro: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WeeklyProgressEntry) -> Void) {
@@ -31,7 +32,8 @@ struct WeeklyProgressProvider: TimelineProvider {
         return WeeklyProgressEntry(
             date: .now,
             completed: s.workoutsThisWeek,
-            goal: s.weeklyGoal
+            goal: s.weeklyGoal,
+            isPro: WidgetSnapshot.isProUser
         )
     }
 }
@@ -48,10 +50,13 @@ struct WeeklyProgressWidgetView: View {
     }
 
     var body: some View {
-        switch family {
-        case .systemMedium: mediumLayout
-        default: smallLayout
+        Group {
+            switch family {
+            case .systemMedium: mediumLayout
+            default: smallLayout
+            }
         }
+        .proLocked(entry.isPro)
     }
 
     // MARK: - Small

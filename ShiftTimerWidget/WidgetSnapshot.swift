@@ -28,6 +28,10 @@ struct WidgetSnapshot: Codable {
         return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
     }
 
+    static var isProUser: Bool {
+        UserDefaults(suiteName: suiteName)?.bool(forKey: "isPro") ?? false
+    }
+
     static let placeholder = WidgetSnapshot(
         workoutsThisWeek: 3,
         weeklyGoal: 5,

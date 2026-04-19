@@ -11,6 +11,7 @@ struct TodaysActivityEntry: TimelineEntry {
     let workoutsThisWeek: Int
     let weeklyGoal: Int?
     let currentStreak: Int
+    let isPro: Bool
 }
 
 // MARK: - Provider
@@ -38,7 +39,8 @@ struct TodaysActivityProvider: TimelineProvider {
             workedOutToday: s.workedOutToday,
             workoutsThisWeek: s.workoutsThisWeek,
             weeklyGoal: s.weeklyGoal,
-            currentStreak: s.currentStreak
+            currentStreak: s.currentStreak,
+            isPro: WidgetSnapshot.isProUser
         )
     }
 }
@@ -60,11 +62,14 @@ struct TodaysActivityWidgetView: View {
     }
 
     var body: some View {
-        switch family {
-        case .systemLarge: largeLayout
-        case .systemMedium: mediumLayout
-        default: smallLayout
+        Group {
+            switch family {
+            case .systemLarge: largeLayout
+            case .systemMedium: mediumLayout
+            default: smallLayout
+            }
         }
+        .proLocked(entry.isPro)
     }
 
     // MARK: - Small

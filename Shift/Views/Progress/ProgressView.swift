@@ -5,6 +5,7 @@ import LocalAuthentication
 struct ProgressTrackingView: View {
     @Environment(\.shiftColors) private var colors
     @Environment(AuthManager.self) private var authManager
+    @Environment(StoreService.self) private var store
 
     @State private var activeTab: Tab = .weight
     @State private var triggerAdd = false
@@ -19,6 +20,7 @@ struct ProgressTrackingView: View {
     // Photo lock
     @State private var photosUnlocked = false
     @State private var authFailed = false
+    @State private var showPaywall = false
 
     private var photosLocked: Bool {
         (authManager.user?.settings.lockPhotos ?? false) && !photosUnlocked
@@ -39,7 +41,9 @@ struct ProgressTrackingView: View {
                 HStack(spacing: 0) {
                     ForEach(Tab.allCases, id: \.self) { tab in
                         Button {
-                            if tab == .photos && photosLocked {
+                            if (tab == .photos || tab == .measurements) && !store.isPro {
+                                showPaywall = true
+                            } else if tab == .photos && photosLocked {
                                 authenticate { success in
                                     if success {
                                         photosUnlocked = true
@@ -114,6 +118,9 @@ struct ProgressTrackingView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Could not verify your identity. Please try again.")
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView()
         }
     }
 

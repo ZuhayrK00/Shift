@@ -7,13 +7,14 @@ struct StreakEntry: TimelineEntry {
     let date: Date
     let streak: Int
     let unit: String
+    let isPro: Bool
 }
 
 // MARK: - Provider
 
 struct StreakProvider: TimelineProvider {
     func placeholder(in context: Context) -> StreakEntry {
-        StreakEntry(date: .now, streak: 4, unit: "days")
+        StreakEntry(date: .now, streak: 4, unit: "days", isPro: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StreakEntry) -> Void) {
@@ -28,7 +29,7 @@ struct StreakProvider: TimelineProvider {
 
     private func entry(from snapshot: WidgetSnapshot?) -> StreakEntry {
         let s = snapshot ?? .placeholder
-        return StreakEntry(date: .now, streak: s.currentStreak, unit: s.streakUnit)
+        return StreakEntry(date: .now, streak: s.currentStreak, unit: s.streakUnit, isPro: WidgetSnapshot.isProUser)
     }
 }
 
@@ -41,10 +42,13 @@ struct StreakCounterWidgetView: View {
     private var accentColor: Color { entry.streak > 0 ? .orange : .gray }
 
     var body: some View {
-        switch family {
-        case .systemMedium: mediumLayout
-        default: smallLayout
+        Group {
+            switch family {
+            case .systemMedium: mediumLayout
+            default: smallLayout
+            }
         }
+        .proLocked(entry.isPro)
     }
 
     // MARK: - Small

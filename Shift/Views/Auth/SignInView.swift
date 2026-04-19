@@ -318,7 +318,7 @@ struct ForgotPasswordSheet: View {
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(colors.success)
-                            Text("Reset link sent! Check your email.")
+                            Text("If an account exists with that email, you'll receive a reset link shortly.")
                                 .font(.system(size: 14))
                                 .foregroundStyle(colors.success)
                         }
@@ -392,7 +392,15 @@ struct ForgotPasswordSheet: View {
             try await authManager.resetPassword(email: email)
             sent = true
         } catch {
-            errorMessage = error.localizedDescription
+            let message = error.localizedDescription.lowercased()
+            if message.contains("not found")
+                || message.contains("no user")
+                || message.contains("unable to validate")
+                || message.contains("user not found") {
+                errorMessage = "No account found with that email address."
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
     }

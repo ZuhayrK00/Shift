@@ -8,16 +8,94 @@ struct SettingsView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss) private var dismiss
+    @Environment(StoreService.self) private var store
 
     var onSaved: (() -> Void)?
 
     @State private var showSignOutAlert = false
+    @State private var showPaywall = false
 
     var body: some View {
         ZStack {
             colors.bg.ignoresSafeArea()
 
             List {
+                // Subscription
+                Section {
+                    if store.isPro {
+                        HStack(spacing: 14) {
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .background(
+                                    LinearGradient(
+                                        colors: [colors.accent, Color(hex: "#6344e0")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Shift Pro")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(colors.text)
+                                Text("Active subscription")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(colors.success)
+                            }
+
+                            Spacer()
+
+                            Button("Manage") {
+                                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(colors.accent)
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        Button {
+                            showPaywall = true
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 32, height: 32)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [colors.accent, Color(hex: "#6344e0")],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 7))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundStyle(colors.text)
+                                    Text("Unlock all features")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(colors.muted)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(colors.muted)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+                .listRowBackground(colors.surface)
+
                 // Profile
                 Section {
                     NavigationLink {
@@ -169,6 +247,9 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to sign out?")
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView()
         }
     }
 
