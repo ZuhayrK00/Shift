@@ -94,7 +94,7 @@
               "locale" : "en_GB"
             }
           ],
-          "productID" : "shift.pro.monthly",
+          "productID" : "com.zuhayrk.shift.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Shift Pro Monthly",
           "subscriptionGroupID" : "21489076",
@@ -125,7 +125,7 @@
               "locale" : "en_GB"
             }
           ],
-          "productID" : "shift.pro.yearly",
+          "productID" : "com.zuhayrk.shift.pro.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Shift Pro Yearly",
           "subscriptionGroupID" : "21489076",

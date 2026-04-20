@@ -4,8 +4,8 @@ import StoreKit
 // MARK: - Product identifiers
 
 enum StoreProduct: String, CaseIterable {
-    case monthlyPro = "shift.pro.monthly"
-    case yearlyPro = "shift.pro.yearly"
+    case monthlyPro = "com.zuhayrk.shift.pro.monthly"
+    case yearlyPro = "com.zuhayrk.shift.pro.yearly"
 }
 
 // MARK: - StoreService
