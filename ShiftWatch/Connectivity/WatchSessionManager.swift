@@ -153,6 +153,11 @@ extension WatchSessionManager: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        // Save Pro status to app group for complications
+        if let isPro = userInfo["isPro"] as? Bool {
+            UserDefaults(suiteName: "group.com.zuhayrk.shift")?.set(isPro, forKey: "isPro")
+        }
+
         // Handle complication snapshot updates (from transferCurrentComplicationUserInfo)
         if let snapDict = userInfo["snapshot"] as? [String: Any],
            let data = try? JSONSerialization.data(withJSONObject: snapDict),
@@ -163,6 +168,11 @@ extension WatchSessionManager: WCSessionDelegate {
     }
 
     private func parseContext(_ dict: [String: Any]) {
+        // Save Pro status to app group for complications
+        if let isPro = dict["isPro"] as? Bool {
+            UserDefaults(suiteName: "group.com.zuhayrk.shift")?.set(isPro, forKey: "isPro")
+        }
+
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let ctx = try? JSONDecoder().decode(WatchContext.self, from: data) else { return }
 

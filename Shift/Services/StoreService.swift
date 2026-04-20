@@ -106,6 +106,9 @@ final class StoreService {
 
         // Sync Pro status to App Group so widgets/complications can check
         UserDefaults(suiteName: "group.com.zuhayrk.shift")?.set(isPro, forKey: "isPro")
+
+        // Sync Pro status to watch
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     // MARK: - Transaction listener

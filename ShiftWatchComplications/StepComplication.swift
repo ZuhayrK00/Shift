@@ -63,19 +63,19 @@ struct StepComplicationView: View {
             switch family {
             case .accessoryInline:
                 HStack(spacing: 4) {
-                    Image(systemName: "crown.fill")
+                    Image(systemName: "lock.fill")
                     Text("Shift Pro")
                 }
             case .accessoryRectangular:
                 VStack(spacing: 4) {
-                    Image(systemName: "crown.fill")
+                    Image(systemName: "lock.fill")
                         .font(.system(size: 14))
                     Text("Shift Pro")
                         .font(.system(size: 12, weight: .semibold))
                 }
             default:
                 VStack(spacing: 2) {
-                    Image(systemName: "crown.fill")
+                    Image(systemName: "lock.fill")
                         .font(.system(size: 12))
                     Text("Pro")
                         .font(.system(size: 9, weight: .bold))

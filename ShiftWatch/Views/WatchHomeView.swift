@@ -10,10 +10,57 @@ struct WatchHomeView: View {
     @State private var showCompletedDetail = false
 
     private var ctx: WatchContext? { session.context }
+
+    private var isPro: Bool {
+        UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
+            if !isPro {
+                proLockedView
+            } else {
+                mainContent
+            }
+        }
+    }
+
+    // MARK: - Pro locked view
+
+    private var proLockedView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+
+                Text("Shift Pro Required")
+                    .font(.system(size: 16, weight: .bold))
+
+                Text("Upgrade to Shift Pro on your iPhone to unlock the watch app.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 20)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Image("ShiftLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+            }
+        }
+    }
+
+    // MARK: - Main content
+
+    private var mainContent: some View {
+        ScrollView {
+            VStack(spacing: 12) {
                     // Continue active workout
                     if workout.isActive {
                         Button {
@@ -106,7 +153,6 @@ struct WatchHomeView: View {
                     workout.clear()
                 }
             }
-        }
     }
 
     // MARK: - Last workout card

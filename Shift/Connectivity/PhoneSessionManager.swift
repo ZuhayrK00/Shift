@@ -28,17 +28,19 @@ final class PhoneSessionManager: NSObject {
 
     func sendContextToWatch() {
         guard WCSession.default.activationState == .activated else { return }
-        guard StoreService.shared.isPro else { return }
 
         Task {
             // Ensure snapshot is fresh before sending to watch
             await WidgetDataService.updateSnapshot()
             let context = await buildContext()
             guard let data = try? JSONEncoder().encode(context),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  var dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 print("[PhoneSession] Failed to encode context")
                 return
             }
+
+            // Include Pro status so the watch can update complications
+            dict["isPro"] = StoreService.shared.isPro
 
             do {
                 try WCSession.default.updateApplicationContext(dict)
@@ -62,7 +64,6 @@ final class PhoneSessionManager: NSObject {
     /// Uses transferCurrentComplicationUserInfo for high-priority delivery.
     func sendSnapshotToWatch() {
         guard WCSession.default.activationState == .activated else { return }
-        guard StoreService.shared.isPro else { return }
         sendComplicationUpdate()
     }
 
@@ -70,8 +71,9 @@ final class PhoneSessionManager: NSObject {
         guard WCSession.default.isComplicationEnabled else { return }
         guard let snap = WidgetSnapshot.read(),
               let snapData = try? JSONEncoder().encode(snap),
-              let snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] else { return }
-        WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict])
+              var snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] else { return }
+        snapDict["isPro"] = StoreService.shared.isPro
+        WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict, "isPro": StoreService.shared.isPro])
     }
 
     private func buildContext() async -> WatchContext {
