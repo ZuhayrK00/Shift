@@ -43,7 +43,9 @@ final class StoreService {
         isLoading = true
         do {
             let ids = StoreProduct.allCases.map(\.rawValue)
+            print("[StoreService] Requesting products with IDs: \(ids)")
             let fetched = try await Product.products(for: ids)
+            print("[StoreService] Fetched \(fetched.count) products: \(fetched.map(\.id))")
             await MainActor.run {
                 // Sort so monthly comes first
                 self.products = fetched.sorted { a, b in
@@ -52,7 +54,7 @@ final class StoreService {
                 self.isLoading = false
             }
         } catch {
-            print("[StoreService] Failed to load products: \(error.localizedDescription)")
+            print("[StoreService] Failed to load products: \(error)")
             await MainActor.run { self.isLoading = false }
         }
     }
