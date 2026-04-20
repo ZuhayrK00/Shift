@@ -52,7 +52,8 @@ struct OnboardingView: View {
     @State private var isSaving = false
     @State private var savedSettings: UserSettings?
 
-    private let totalSteps = 8
+    @State private var showPaywall = false
+    private let totalSteps = 9
 
     var body: some View {
         ZStack {
@@ -72,7 +73,8 @@ struct OnboardingView: View {
                     case 3: preferencesStep
                     case 4: goalsStep
                     case 5: integrationsStep
-                    case 6: planStep
+                    case 6: proStep
+                    case 7: planStep
                     default: allSetStep
                     }
                 }
@@ -460,7 +462,7 @@ struct OnboardingView: View {
     // MARK: - Step 5: Integrations
 
     private var integrationsStep: some View {
-        stepLayout(continueTitle: "Continue", onContinue: { step = 6 }, skipAction: { step = 6 }) {
+        stepLayout(continueTitle: "Continue", onContinue: { step = 6 }, skipAction: { step = 7 }) {
             stepHeader(
                 icon: "gearshape.2.fill",
                 title: "Integrations & Privacy",
@@ -512,7 +514,108 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 6: First Plan
+    // MARK: - Step 6: Shift Pro
+
+    private var proStep: some View {
+        stepLayout(continueTitle: "Maybe Later", onContinue: { step = 7 }) {
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [colors.accent, colors.accent.opacity(0.6)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 64, height: 64)
+
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.white)
+                }
+
+                Text("Unlock Shift Pro")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(colors.text)
+
+                Text("Get the most out of your training")
+                    .font(.system(size: 15))
+                    .foregroundStyle(colors.muted)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 0) {
+                proFeatureRow(icon: "sparkles", title: "AI Workout Plans", subtitle: "Generate personalised plans with on-device AI")
+                proFeatureRow(icon: "list.bullet.rectangle.fill", title: "Unlimited Plans", subtitle: "Create as many workout plans as you need")
+                proFeatureRow(icon: "photo.on.rectangle.angled", title: "Progress Photos", subtitle: "Track your physique with photo comparisons")
+                proFeatureRow(icon: "ruler", title: "Body Measurements", subtitle: "Log chest, waist, arms and more over time")
+                proFeatureRow(icon: "applewatch", title: "Apple Watch", subtitle: "Full watch app with complications")
+                proFeatureRow(icon: "square.grid.2x2", title: "Widgets", subtitle: "Home screen widgets for steps, streaks and more")
+            }
+            .background(colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(colors.border, lineWidth: 1)
+            )
+
+            Button {
+                showPaywall = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 14))
+                    Text("Start Free Trial")
+                        .font(.system(size: 17, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(
+                    LinearGradient(
+                        colors: [colors.accent, Color(hex: "#6344e0")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView()
+        }
+    }
+
+    private func proFeatureRow(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(colors.accent)
+                .frame(width: 36, height: 36)
+                .background(colors.accent.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(colors.text)
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(colors.muted)
+            }
+
+            Spacer()
+
+            Image(systemName: "checkmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(colors.success)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Step 7: First Plan
 
     private var planStep: some View {
         stepLayout(

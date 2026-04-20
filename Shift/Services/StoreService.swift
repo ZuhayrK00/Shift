@@ -1,5 +1,6 @@
 import Foundation
 import StoreKit
+import WidgetKit
 
 // MARK: - Product identifiers
 
@@ -92,6 +93,7 @@ final class StoreService {
     // MARK: - Entitlement check
 
     func updatePurchasedProducts() async {
+        let wasPro = isPro
         var purchased: Set<String> = []
 
         for await result in Transaction.currentEntitlements {
@@ -107,8 +109,23 @@ final class StoreService {
         // Sync Pro status to App Group so widgets/complications can check
         UserDefaults(suiteName: "group.com.zuhayrk.shift")?.set(isPro, forKey: "isPro")
 
+        // Refresh widgets when Pro status changes
+        if wasPro != isPro {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+
         // Sync Pro status to watch
         PhoneSessionManager.shared.sendContextToWatch()
+    }
+
+    /// Resets cached state on sign out so another user doesn't inherit Pro status.
+    func reset() async {
+        await MainActor.run {
+            self.purchasedProductIDs = []
+            self.products = []
+        }
+        UserDefaults(suiteName: "group.com.zuhayrk.shift")?.set(false, forKey: "isPro")
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Transaction listener

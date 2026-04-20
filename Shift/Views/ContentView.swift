@@ -325,6 +325,10 @@ struct ResetPasswordSheet: View {
         do {
             try await authManager.updatePassword(newPassword)
             success = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                dismiss()
+                authManager.showPasswordReset = false
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

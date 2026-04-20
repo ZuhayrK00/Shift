@@ -17,6 +17,7 @@ struct TodayView: View {
     @State private var activityData: ActivityData?
     @State private var showActivityDetail = false
     @State private var currentStreak: Int = 0
+    @State private var workoutError: String?
 
     private var todayKey: String { toLocalDateKey(Date()) }
     private var selectedKey: String { toLocalDateKey(selectedDate) }
@@ -110,6 +111,9 @@ struct TodayView: View {
         .onReceive(NotificationCenter.default.publisher(for: .watchDidUpdateWorkout)) { _ in
             Task { await loadData() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkStartWorkout)) { _ in
+            Task { await startWorkout(plan: nil) }
+        }
         .onChange(of: navigationPath) {
             // Fires when popping back from a workout — refresh sessions + calendar
             if navigationPath.isEmpty {
@@ -123,6 +127,14 @@ struct TodayView: View {
             PlanPickerSheet(plans: plans) { plan in
                 Task { await startWorkout(plan: plan) }
             }
+        }
+        .alert("Error", isPresented: .init(
+            get: { workoutError != nil },
+            set: { if !$0 { workoutError = nil } }
+        )) {
+            Button("OK") { workoutError = nil }
+        } message: {
+            Text(workoutError ?? "")
         }
     }
 
@@ -501,7 +513,9 @@ struct TodayView: View {
                 session = try await WorkoutService.createSession(startedAt: startedAt)
             }
             navigationPath.append(session.id)
-        } catch {}
+        } catch {
+            workoutError = "Failed to start workout. Please try again."
+        }
     }
 
     // MARK: - Helpers

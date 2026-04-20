@@ -133,6 +133,8 @@ extension WatchSessionManager: WCSessionDelegate {
             if !session.receivedApplicationContext.isEmpty {
                 parseContext(session.receivedApplicationContext)
             }
+            // Request fresh data from phone
+            requestSync()
         }
     }
 
@@ -143,6 +145,10 @@ extension WatchSessionManager: WCSessionDelegate {
     func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
             isPhoneReachable = session.isReachable
+        }
+        // Request fresh data whenever the phone becomes reachable
+        if session.isReachable {
+            requestSync()
         }
     }
 

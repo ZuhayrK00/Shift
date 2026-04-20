@@ -8,11 +8,13 @@ struct WatchHomeView: View {
     @State private var navigateToStart = false
 
     @State private var showCompletedDetail = false
+    @State private var liveSteps: Int?
+    @State private var isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
 
     private var ctx: WatchContext? { session.context }
 
-    private var isPro: Bool {
-        UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+    private var displaySteps: Int {
+        liveSteps ?? ctx?.snapshot.stepsToday ?? 0
     }
 
     var body: some View {
@@ -153,6 +155,16 @@ struct WatchHomeView: View {
                     workout.clear()
                 }
             }
+            .task {
+                await WatchHealthKitService.requestAuthorization()
+                liveSteps = await WatchHealthKitService.fetchStepsToday()
+            }
+            .onAppear {
+                isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+                isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+            }
     }
 
     // MARK: - Last workout card
@@ -215,48 +227,44 @@ struct WatchHomeView: View {
     // MARK: - Step counter card
 
     private var stepCard: some View {
-        Group {
-            if let snap = ctx?.snapshot {
-                VStack(spacing: 6) {
-                    HStack {
-                        Image(systemName: "shoeprints.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.green)
-                        Text("Steps")
-                            .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                    }
+        VStack(spacing: 6) {
+            HStack {
+                Image(systemName: "shoeprints.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                Text("Steps")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+            }
 
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(formatSteps(snap.stepsToday))
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                        if let goal = snap.stepGoal, goal > 0 {
-                            Text("/ \(formatSteps(goal))")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(formatSteps(displaySteps))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                if let goal = ctx?.snapshot.stepGoal, goal > 0 {
+                    Text("/ \(formatSteps(goal))")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
 
-                    if let goal = snap.stepGoal, goal > 0 {
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.white.opacity(0.1))
-                                    .frame(height: 6)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(.green)
-                                    .frame(width: geo.size.width * min(Double(snap.stepsToday) / Double(goal), 1.0), height: 6)
-                            }
-                        }
-                        .frame(height: 6)
+            if let goal = ctx?.snapshot.stepGoal, goal > 0 {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(height: 6)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(.green)
+                            .frame(width: geo.size.width * min(Double(displaySteps) / Double(goal), 1.0), height: 6)
                     }
                 }
-                .padding(10)
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(height: 6)
             }
         }
+        .padding(10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Weekly goal card

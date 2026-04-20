@@ -34,6 +34,26 @@ struct PlansView: View {
         }
         .navigationTitle("Plans")
         .navigationBarTitleDisplayMode(.large)
+        .safeAreaInset(edge: .top) {
+            if !store.isPro && !planItems.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 12))
+                    Text("\(planItems.count)/\(freePlanLimit) free plans used")
+                        .font(.system(size: 13, weight: .medium))
+                    if planItems.count >= freePlanLimit {
+                        Text("·")
+                        Button("Upgrade") { showPaywall = true }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(colors.accent)
+                    }
+                }
+                .foregroundStyle(colors.muted)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(colors.surface)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -201,7 +221,11 @@ struct PlansView: View {
 
                 Menu {
                     Button {
-                        showNewPlan = true
+                        if !store.isPro && planItems.count >= freePlanLimit {
+                            showPaywall = true
+                        } else {
+                            showNewPlan = true
+                        }
                     } label: {
                         Label("Blank Plan", systemImage: "doc")
                     }
@@ -210,12 +234,20 @@ struct PlansView: View {
                     if #available(iOS 26, *) {
                         Section("AI-Powered") {
                             Button {
-                                showAIGenerator = true
+                                if store.isPro {
+                                    showAIGenerator = true
+                                } else {
+                                    showPaywall = true
+                                }
                             } label: {
                                 Label("Full Program", systemImage: "sparkles")
                             }
                             Button {
-                                showQuickSession = true
+                                if store.isPro {
+                                    showQuickSession = true
+                                } else {
+                                    showPaywall = true
+                                }
                             } label: {
                                 Label("Quick Session", systemImage: "bolt.fill")
                             }

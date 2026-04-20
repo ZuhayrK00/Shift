@@ -60,8 +60,10 @@ struct PhotosTabView: View {
             get: { comparePhotos.count == 2 },
             set: { if !$0 { comparePhotos = [] } }
         )) {
-            PhotoCompareView(photo1: comparePhotos[0], photo2: comparePhotos[1]) {
-                comparePhotos = []
+            if comparePhotos.count == 2 {
+                PhotoCompareView(photo1: comparePhotos[0], photo2: comparePhotos[1]) {
+                    comparePhotos = []
+                }
             }
         }
         .fullScreenCover(isPresented: $showCamera) {

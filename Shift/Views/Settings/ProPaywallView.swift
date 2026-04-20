@@ -81,8 +81,10 @@ struct ProPaywallView: View {
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(colors.muted)
                     }
+                    .disabled(isPurchasing)
                 }
             }
+            .interactiveDismissDisabled(isPurchasing)
             .task {
                 await store.loadProducts()
                 // Default to yearly
@@ -318,6 +320,8 @@ struct ProPaywallView: View {
                 await store.restorePurchases()
                 if store.isPro {
                     purchaseSuccess = true
+                } else {
+                    errorMessage = "No active subscription found for this Apple ID."
                 }
             }
         } label: {
@@ -330,10 +334,19 @@ struct ProPaywallView: View {
     // MARK: - Legal
 
     private var legalText: some View {
-        Text("Payment is charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage and cancel subscriptions in your Account Settings on the App Store.")
-            .font(.system(size: 11))
-            .foregroundStyle(colors.muted.opacity(0.7))
-            .multilineTextAlignment(.center)
+        VStack(spacing: 8) {
+            Text("Payment is charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage and cancel subscriptions in your Account Settings on the App Store.")
+                .font(.system(size: 12))
+                .foregroundStyle(colors.muted.opacity(0.7))
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 16) {
+                Link("Privacy Policy", destination: URL(string: "https://shiftfitness.pro/privacy-policy.html")!)
+                Link("Terms of Service", destination: URL(string: "https://shiftfitness.pro/terms-of-service.html")!)
+            }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(colors.muted)
+        }
     }
 
     // MARK: - Purchase logic

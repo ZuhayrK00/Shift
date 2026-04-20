@@ -151,6 +151,7 @@ class AuthManager {
 
     func signOut() async throws {
         try await supabase.auth.signOut()
+        await StoreService.shared.reset()
     }
 
     // MARK: - Refresh
