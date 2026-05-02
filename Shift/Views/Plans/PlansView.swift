@@ -34,26 +34,6 @@ struct PlansView: View {
         }
         .navigationTitle("Plans")
         .navigationBarTitleDisplayMode(.large)
-        .safeAreaInset(edge: .top) {
-            if !store.isPro && !planItems.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.system(size: 12))
-                    Text("\(planItems.count)/\(freePlanLimit) free plans used")
-                        .font(.system(size: 13, weight: .medium))
-                    if planItems.count >= freePlanLimit {
-                        Text("·")
-                        Button("Upgrade") { showPaywall = true }
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(colors.accent)
-                    }
-                }
-                .foregroundStyle(colors.muted)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(colors.surface)
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -69,14 +49,28 @@ struct PlansView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button {
-                        if !store.isPro && planItems.count >= freePlanLimit {
-                            showPaywall = true
-                        } else {
-                            showNewPlan = true
+                    if !store.isPro {
+                        Section("\(planItems.count)/\(freePlanLimit) free plans used") {
+                            if planItems.count >= freePlanLimit {
+                                Button {
+                                    showPaywall = true
+                                } label: {
+                                    Label("Upgrade to Pro", systemImage: "star.fill")
+                                }
+                            } else {
+                                Button {
+                                    showNewPlan = true
+                                } label: {
+                                    Label("Blank Plan", systemImage: "doc")
+                                }
+                            }
                         }
-                    } label: {
-                        Label("Blank Plan", systemImage: "doc")
+                    } else {
+                        Button {
+                            showNewPlan = true
+                        } label: {
+                            Label("Blank Plan", systemImage: "doc")
+                        }
                     }
 
                     #if canImport(FoundationModels)

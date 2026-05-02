@@ -54,6 +54,9 @@ enum GoalNotificationService {
         }
 
         // Step goal reminders (separate toggle from frequency reminders)
+        if let stepGoal = settings.dailyStepGoal, stepGoal > 0 {
+            cacheStepGoalSettings(goal: stepGoal, reminders: settings.notifications.stepGoalReminders)
+        }
         if settings.notifications.stepGoalReminders, let stepGoal = settings.dailyStepGoal, stepGoal > 0 {
             scheduledCount += await scheduleStepGoalReminders(
                 stepGoal: stepGoal,
@@ -82,24 +85,38 @@ enum GoalNotificationService {
     /// also fires the "morning kickoff" notification — giving a natural,
     /// wake-time-aligned greeting instead of a fixed-hour scheduled message.
     static func checkAndNotifyGoalCompletion() async {
-        let settings: UserSettings
-        if let userSettings = authManager.user?.settings {
-            settings = userSettings
-        } else if let userId = authManager.currentUserId,
-                  let profile = try? await ProfileRepository.findById(userId) {
-            settings = profile.settings
-        } else {
-            settings = .default
-        }
         guard HealthKitService.isAvailable else { return }
-        guard let activity = await HealthKitService.fetchTodayActivity() else { return }
 
-        guard settings.notifications.stepGoalReminders,
-              let stepGoal = settings.dailyStepGoal, stepGoal > 0 else { return }
+        // Resolve the step goal as fast as possible. Try the lightweight
+        // UserDefaults cache first (always available, no async), then fall
+        // back to the profile database if the cache is empty.
+        let stepGoalReminders: Bool
+        let stepGoal: Int
+        if let userSettings = authManager.user?.settings,
+           let goal = userSettings.dailyStepGoal, goal > 0 {
+            stepGoalReminders = userSettings.notifications.stepGoalReminders
+            stepGoal = goal
+            cacheStepGoalSettings(goal: goal, reminders: stepGoalReminders)
+        } else if let cached = cachedStepGoalSettings() {
+            stepGoalReminders = cached.reminders
+            stepGoal = cached.goal
+        } else if let userId = authManager.currentUserId,
+                  let profile = try? await ProfileRepository.findById(userId),
+                  let goal = profile.settings.dailyStepGoal, goal > 0 {
+            stepGoalReminders = profile.settings.notifications.stepGoalReminders
+            stepGoal = goal
+            cacheStepGoalSettings(goal: goal, reminders: stepGoalReminders)
+        } else {
+            return
+        }
+        guard stepGoalReminders, stepGoal > 0 else { return }
+
+        // Fetch live step count from HealthKit — always real-time, never cached.
+        let steps = await HealthKitService.fetchStepsForWidget()
 
         let todayKey = toLocalDateKey(Date())
         let actions = NotificationDecisionEngine.stepProgressActions(
-            steps: activity.steps, goal: stepGoal, todayKey: todayKey
+            steps: steps, goal: stepGoal, todayKey: todayKey
         )
 
         for action in actions {
@@ -116,7 +133,7 @@ enum GoalNotificationService {
         // Morning kickoff: fire once when we first see steps for today.
         // HealthKit background delivery wakes the app when the user starts
         // walking, giving us a natural "just woke up" signal.
-        if activity.steps > 0, activity.steps < stepGoal {
+        if steps > 0, steps < stepGoal {
             let formattedGoal = formatNumber(stepGoal)
             let msg = pickVariant([
                 ("Your step goal starts now", "Today's target: \(formattedGoal) steps. Every step counts."),
@@ -186,6 +203,20 @@ enum GoalNotificationService {
         for key in oldKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+
+    // MARK: - Step goal caching (background wake fallback)
+
+    private static func cacheStepGoalSettings(goal: Int, reminders: Bool) {
+        UserDefaults.standard.set(goal, forKey: "shift.cached.dailyStepGoal")
+        UserDefaults.standard.set(reminders, forKey: "shift.cached.stepGoalReminders")
+    }
+
+    private static func cachedStepGoalSettings() -> (goal: Int, reminders: Bool)? {
+        let goal = UserDefaults.standard.integer(forKey: "shift.cached.dailyStepGoal")
+        guard goal > 0 else { return nil }
+        let reminders = UserDefaults.standard.bool(forKey: "shift.cached.stepGoalReminders")
+        return (goal, reminders)
     }
 
     private static func formatNumber(_ n: Int) -> String {

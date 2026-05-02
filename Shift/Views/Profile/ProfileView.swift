@@ -471,11 +471,6 @@ struct ProfileView: View {
                             Text("Goal reached!")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(colors.success)
-                        } else {
-                            let remaining = max(0, goal - todaySteps)
-                            Text("\(formatSteps(remaining)) to go")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(colors.muted)
                         }
                     }
 
