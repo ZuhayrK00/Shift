@@ -39,7 +39,6 @@ struct PhotosTabView: View {
             }
         }
         .task { await loadData() }
-        .onAppear { Task { await loadData() } }
         .onChange(of: selectedItem) { _, newItem in
             guard let newItem else { return }
             Task { await uploadPhoto(from: newItem) }

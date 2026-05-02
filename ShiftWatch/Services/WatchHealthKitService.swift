@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import WidgetKit
 
 /// Lightweight HealthKit service for the watch app.
 /// Reads step count directly so the watch doesn't depend on the phone for steps.
@@ -35,5 +36,16 @@ struct WatchHealthKitService {
             }
             store.execute(query)
         }
+    }
+
+    /// Writes the live step count into the shared snapshot so complications
+    /// always reflect the watch's own HealthKit data instead of stale phone data.
+    static func updateSnapshotSteps(_ steps: Int) {
+        guard var snapshot = WidgetSnapshot.read() else { return }
+        guard snapshot.stepsToday != steps else { return }
+        snapshot.stepsToday = steps
+        snapshot.updatedAt = Date()
+        snapshot.write()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

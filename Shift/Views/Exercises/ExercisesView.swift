@@ -30,9 +30,10 @@ struct ExercisesView: View {
     }
 
     private func applyFilters(_ list: [Exercise]) -> [Exercise] {
-        list.filter { ex in
-            let matchesSearch = searchQuery.isEmpty
-                || ex.name.localizedCaseInsensitiveContains(searchQuery)
+        let trimmedSearch = searchQuery.trimmingCharacters(in: .whitespaces)
+        return list.filter { ex in
+            let matchesSearch = trimmedSearch.isEmpty
+                || ex.name.localizedCaseInsensitiveContains(trimmedSearch)
             let matchesMuscle = activeMuscleId == nil
                 || ex.primaryMuscleId == activeMuscleId
             let matchesEquipment = activeEquipment == nil

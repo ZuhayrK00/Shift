@@ -242,7 +242,7 @@ struct HealthKitService {
         async let stepsData = fetchSteps(for: date)
         async let distanceData = fetchDistance(for: date)
 
-        guard var activity = await summaryData else { return nil }
+        var activity = await summaryData ?? ActivityData()
         activity.steps = await stepsData
         activity.distanceKm = await distanceData
         return activity

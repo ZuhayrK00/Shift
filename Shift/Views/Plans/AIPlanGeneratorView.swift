@@ -1329,7 +1329,7 @@ struct AIPlanGeneratorView: View {
         }
 
         // "X.X hours" or "X hours"
-        let hourPattern = try! NSRegularExpression(pattern: #"(\d+\.?\d*)\s*hours?"#)
+        guard let hourPattern = try? NSRegularExpression(pattern: #"(\d+\.?\d*)\s*hours?"#) else { return nil }
         if let match = hourPattern.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
            let numRange = Range(match.range(at: 1), in: lower),
            let hours = Double(lower[numRange]) {
@@ -1337,7 +1337,7 @@ struct AIPlanGeneratorView: View {
         }
 
         // "X minutes" / "X mins" / "X min"
-        let minPattern = try! NSRegularExpression(pattern: #"(\d+)\s*(?:minutes?|mins?)"#)
+        guard let minPattern = try? NSRegularExpression(pattern: #"(\d+)\s*(?:minutes?|mins?)"#) else { return nil }
         if let match = minPattern.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)),
            let numRange = Range(match.range(at: 1), in: lower),
            let mins = Int(lower[numRange]) {

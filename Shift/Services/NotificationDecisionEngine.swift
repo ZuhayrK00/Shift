@@ -16,43 +16,79 @@ enum NotificationDecisionEngine {
         case fireImmediately(id: String, title: String, body: String)
     }
 
-    // MARK: - Goal Completion Check
+    // MARK: - Step Progress Actions
 
-    /// Determines what notifications to fire/cancel based on current activity vs goals.
-    static func goalCompletionActions(
-        activity: ActivityData,
-        stepGoal: Int?,
+    /// Determines what notifications to fire/cancel based on current step progress.
+    /// Returns milestone celebrations and progressive cancellation of upcoming reminders.
+    static func stepProgressActions(
+        steps: Int,
+        goal: Int,
         todayKey: String
     ) -> [Action] {
+        guard goal > 0 else { return [] }
         var actions: [Action] = []
+        let pct = Double(steps) / Double(goal) * 100
+        let formatted = formatNumber(goal)
 
-        // Step goal
-        if let goal = stepGoal, goal > 0, activity.steps >= goal {
-            actions.append(.cancel(prefix: "shift.steps-remind-0"))
+        if pct >= 100 {
+            for tier in stepReminderTiers {
+                actions.append(.cancel(prefix: "shift.steps-remind-\(tier)-0"))
+            }
             actions.append(.fireImmediately(
                 id: "shift.steps-completed-\(todayKey)",
                 title: "Steps crushed!",
-                body: "You hit your \(formatNumber(goal))-step goal. Keep it up!"
+                body: "You hit your \(formatted)-step goal. Keep it up!"
+            ))
+        } else if pct >= 75 {
+            actions.append(.cancel(prefix: "shift.steps-remind-evening-0"))
+            actions.append(.fireImmediately(
+                id: "shift.steps-milestone-75-\(todayKey)",
+                title: "Almost there!",
+                body: "75% of your \(formatted)-step goal is done. The finish line is close."
+            ))
+        } else if pct >= 50 {
+            actions.append(.cancel(prefix: "shift.steps-remind-afternoon-0"))
+            actions.append(.fireImmediately(
+                id: "shift.steps-milestone-50-\(todayKey)",
+                title: "Halfway there!",
+                body: "You've hit 50% of your \(formatted)-step goal. Keep moving!"
             ))
         }
 
         return actions
     }
 
-    // MARK: - Step Goal Reminder Decisions
-
-    /// Determines whether a step reminder or congrats should be scheduled for a given day.
-    enum StepNotificationType: Equatable {
-        case eveningReminder
-        case morningCongrats
+    /// Backward-compatible wrapper used by existing tests.
+    static func goalCompletionActions(
+        activity: ActivityData,
+        stepGoal: Int?,
+        todayKey: String
+    ) -> [Action] {
+        guard let goal = stepGoal else { return [] }
+        return stepProgressActions(steps: activity.steps, goal: goal, todayKey: todayKey)
     }
 
-    static func stepNotificationTypes(
-        stepGoal: Int,
-        notificationsEnabled: Bool
-    ) -> [StepNotificationType] {
-        guard notificationsEnabled, stepGoal > 0 else { return [] }
-        return [.eveningReminder, .morningCongrats]
+    // MARK: - Step Reminder Tiers
+
+    static let stepReminderTiers = ["morning", "afternoon", "evening"]
+
+    /// Base hours for each step reminder tier. Actual fire time adds date-seeded jitter.
+    static func stepTierBaseHour(_ tier: String) -> Int {
+        switch tier {
+        case "morning": return 10
+        case "afternoon": return 14
+        case "evening": return 20
+        default: return 14
+        }
+    }
+
+    /// Deterministic jitter (±20 min) so notifications don't fire at the exact same minute daily.
+    /// Seeded by the day + tier so a reschedule on the same day produces the same time.
+    static func stepTierMinuteJitter(tier: String, dayOffset: Int, baseDaySeed: Int) -> Int {
+        var hash = baseDaySeed &+ dayOffset
+        hash = hash &* 2654435761 // Knuth multiplicative hash
+        hash ^= tier.hashValue
+        return abs(hash) % 41 - 20 // -20 ... +20
     }
 
     // MARK: - Frequency Stage

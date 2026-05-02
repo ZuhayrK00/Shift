@@ -30,7 +30,11 @@ final class PhoneSessionManager: NSObject {
         guard WCSession.default.activationState == .activated else { return }
 
         Task {
-            // Ensure snapshot is fresh before sending to watch
+            // Re-verify entitlement from StoreKit before syncing to watch.
+            // This ensures Pro status is fresh even if the app process was
+            // killed and restarted by a WatchConnectivity wake.
+            await StoreService.shared.updatePurchasedProducts()
+
             await WidgetDataService.updateSnapshot()
             let context = await buildContext()
             guard let data = try? JSONEncoder().encode(context),
@@ -72,8 +76,12 @@ final class PhoneSessionManager: NSObject {
         guard let snap = WidgetSnapshot.read(),
               let snapData = try? JSONEncoder().encode(snap),
               var snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] else { return }
-        snapDict["isPro"] = StoreService.shared.isPro
-        WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict, "isPro": StoreService.shared.isPro])
+        // Read from App Group rather than the singleton — during background
+        // wakes, verifyProEntitlement() has already written the fresh value
+        // here but the singleton may not have been refreshed.
+        let isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+        snapDict["isPro"] = isPro
+        WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict, "isPro": isPro])
     }
 
     private func buildContext() async -> WatchContext {

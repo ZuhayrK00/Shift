@@ -22,10 +22,11 @@ enum GoalNotificationService {
             settings = .default
         }
 
-        // Clear existing
+        // Clear existing scheduled reminders. Uses the "remind" infix so we
+        // don't cancel milestone/completion notifications fired by checkAndNotifyGoalCompletion.
         NotificationManager.cancelNotifications(withPrefix: "shift.exercise-goal-")
         NotificationManager.cancelNotifications(withPrefix: "shift.frequency-")
-        NotificationManager.cancelNotifications(withPrefix: "shift.steps-")
+        NotificationManager.cancelNotifications(withPrefix: "shift.steps-remind-")
         NotificationManager.cancelNotifications(withPrefix: "shift.progress-")
 
         guard let userId = authManager.currentUserId else { return }
@@ -71,11 +72,16 @@ enum GoalNotificationService {
         }
     }
 
-    /// Checks current HealthKit data and fires immediate congrats / cancels stale reminders.
+    /// Checks current HealthKit data and fires milestone / completion notifications.
     /// Called on every app foreground event and from HealthKit background delivery.
+    /// This is the primary source of progress-aware step notifications: since
+    /// scheduled notifications can't read HealthKit at fire time, real-time
+    /// milestones (50%, 75%, 100%) are fired here and stale reminders cancelled.
+    ///
+    /// When HealthKit wakes the app with the first morning step samples, this
+    /// also fires the "morning kickoff" notification — giving a natural,
+    /// wake-time-aligned greeting instead of a fixed-hour scheduled message.
     static func checkAndNotifyGoalCompletion() async {
-        // Read settings from auth manager, or fall back to local profile cache
-        // (auth manager may not be loaded when woken in the background by HealthKit)
         let settings: UserSettings
         if let userSettings = authManager.user?.settings {
             settings = userSettings
@@ -86,20 +92,43 @@ enum GoalNotificationService {
             settings = .default
         }
         guard HealthKitService.isAvailable else { return }
-
-        // Fetch today's activity
         guard let activity = await HealthKitService.fetchTodayActivity() else { return }
 
-        // Check step goal (only if step notifications are enabled)
-        if settings.notifications.stepGoalReminders,
-           let stepGoal = settings.dailyStepGoal, stepGoal > 0, activity.steps >= stepGoal {
-            // Cancel today's evening reminder — already hit
-            NotificationManager.cancelNotifications(withPrefix: "shift.steps-remind-0")
-            // Fire immediate congrats if not already sent today
+        guard settings.notifications.stepGoalReminders,
+              let stepGoal = settings.dailyStepGoal, stepGoal > 0 else { return }
+
+        let todayKey = toLocalDateKey(Date())
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: activity.steps, goal: stepGoal, todayKey: todayKey
+        )
+
+        for action in actions {
+            switch action {
+            case .cancel(let prefix):
+                NotificationManager.cancelNotifications(withPrefix: prefix)
+            case .fireImmediately(let id, let title, let body):
+                fireOnceToday(id: id, title: title, body: body)
+            case .schedule:
+                break
+            }
+        }
+
+        // Morning kickoff: fire once when we first see steps for today.
+        // HealthKit background delivery wakes the app when the user starts
+        // walking, giving us a natural "just woke up" signal.
+        if activity.steps > 0, activity.steps < stepGoal {
+            let formattedGoal = formatNumber(stepGoal)
+            let msg = pickVariant([
+                ("Your step goal starts now", "Today's target: \(formattedGoal) steps. Every step counts."),
+                ("Good morning!", "You've got \(formattedGoal) steps ahead of you. Let's go."),
+                ("New day, new steps", "\(formattedGoal) is the target. Get moving!"),
+                ("Rise and step!", "\(formattedGoal) steps today. The first ones are in — keep it up."),
+                ("Steps start now", "Your \(formattedGoal)-step goal is live. Make today count.")
+            ])
             fireOnceToday(
-                id: "shift.steps-completed",
-                title: "Steps crushed!",
-                body: "You hit your \(formatNumber(stepGoal))-step goal. Keep it up!"
+                id: "shift.steps-kickoff",
+                title: msg.0,
+                body: msg.1
             )
         }
     }
@@ -414,7 +443,7 @@ enum GoalNotificationService {
         }
     }
 
-    // MARK: - Step Goal Reminders
+    // MARK: - Step Goal Reminders (3-tier + jitter)
 
     private static func scheduleStepGoalReminders(
         stepGoal: Int,
@@ -423,14 +452,8 @@ enum GoalNotificationService {
     ) async -> Int {
         guard budget > 0 else { return 0 }
         var scheduled = 0
+        let formattedGoal = formatNumber(stepGoal)
 
-        let formattedGoal = {
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .decimal
-            return formatter.string(from: NSNumber(value: stepGoal)) ?? "\(stepGoal)"
-        }()
-
-        // Check if today's goal is already hit — skip today's reminder if so
         let todayAlreadyHit: Bool
         if let activity = await HealthKitService.fetchTodayActivity() {
             todayAlreadyHit = activity.steps >= stepGoal
@@ -438,48 +461,79 @@ enum GoalNotificationService {
             todayAlreadyHit = false
         }
 
-        // Evening reminder at 8pm — "you still have time"
-        // Only schedule for days when the goal hasn't been reached yet.
-        // Real-time congrats are handled by checkAndNotifyGoalCompletion
-        // via HealthKit background delivery — no pre-scheduled congrats needed.
         let cal = Calendar.current
-        for dayOffset in 0..<min(7, budget) {
-            // Skip today's reminder if already hit
+        let now = Date()
+        let baseDaySeed = Int(now.timeIntervalSince1970) / 86400
+
+        for dayOffset in 0..<min(7, budget / 2 + 1) {
             if dayOffset == 0 && todayAlreadyHit { continue }
-            // Skip today if it's already past 8pm
-            if dayOffset == 0 && cal.component(.hour, from: Date()) >= 20 { continue }
+            guard let targetDate = cal.date(byAdding: .day, value: dayOffset, to: cal.startOfDay(for: now)) else { continue }
 
-            let targetDate = cal.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
-            var comps = DateComponents()
-            comps.year = cal.component(.year, from: targetDate)
-            comps.month = cal.component(.month, from: targetDate)
-            comps.day = cal.component(.day, from: targetDate)
-            comps.hour = 20
-            comps.minute = 0
+            for tier in NotificationDecisionEngine.stepReminderTiers {
+                guard scheduled < budget else { break }
+                let baseHour = NotificationDecisionEngine.stepTierBaseHour(tier)
+                let jitterMin = NotificationDecisionEngine.stepTierMinuteJitter(
+                    tier: tier, dayOffset: dayOffset, baseDaySeed: baseDaySeed
+                )
+                let totalMinutes = baseHour * 60 + jitterMin
+                let finalHour = max(7, min(21, totalMinutes / 60))
+                let finalMinute = max(0, min(59, ((totalMinutes % 60) + 60) % 60))
 
-            let msg = stepReminderMessage(goal: formattedGoal)
-            NotificationManager.scheduleGoalNotification(
-                identifier: "shift.steps-remind-\(dayOffset)",
-                title: msg.title,
-                body: msg.body,
-                at: comps
-            )
-            scheduled += 1
+                if dayOffset == 0 {
+                    let currentHour = cal.component(.hour, from: now)
+                    let currentMinute = cal.component(.minute, from: now)
+                    if currentHour > finalHour || (currentHour == finalHour && currentMinute >= finalMinute) {
+                        continue
+                    }
+                }
+
+                var comps = cal.dateComponents([.year, .month, .day], from: targetDate)
+                comps.hour = finalHour
+                comps.minute = finalMinute
+
+                let msg = stepTierMessage(tier: tier, goal: formattedGoal)
+                NotificationManager.scheduleGoalNotification(
+                    identifier: "shift.steps-remind-\(tier)-\(dayOffset)",
+                    title: msg.title,
+                    body: msg.body,
+                    at: comps
+                )
+                scheduled += 1
+            }
         }
 
         return scheduled
     }
 
-    // MARK: Step goal messages
+    // MARK: Step tier messages
 
-    private static func stepReminderMessage(goal: String) -> Message {
-        pickVariant([
-            Message(title: "Steps check", body: "Have you hit \(goal) steps today? There's still time to get moving."),
-            Message(title: "Get those steps in", body: "Your \(goal)-step goal is waiting. A quick walk could close the gap."),
-            Message(title: "Almost bedtime", body: "Check your step count — you might be closer to \(goal) than you think."),
-            Message(title: "Evening walk?", body: "Still time to hit your \(goal)-step target. Even a short walk helps."),
-            Message(title: "Don't forget", body: "Your daily step goal is \(goal). Lace up and finish strong.")
-        ])
+    private static func stepTierMessage(tier: String, goal: String) -> Message {
+        switch tier {
+        case "morning":
+            return pickVariant([
+                Message(title: "Your step goal starts now", body: "Today's target: \(goal) steps. Every step counts."),
+                Message(title: "New day, new steps", body: "\(goal) is the target. Get moving!"),
+                Message(title: "Good morning!", body: "You've got \(goal) steps ahead of you. Let's go."),
+                Message(title: "Rise and step!", body: "\(goal) steps today. Make it happen."),
+                Message(title: "Steps start now", body: "Your \(goal)-step goal is live. Make today count.")
+            ])
+        case "afternoon":
+            return pickVariant([
+                Message(title: "Afternoon step check", body: "How's the step count looking? Still time to hit \(goal)."),
+                Message(title: "Halfway through the day", body: "A quick walk could make a big difference for your \(goal)-step goal."),
+                Message(title: "Keep it moving", body: "Still have the afternoon and evening to reach \(goal) steps."),
+                Message(title: "Step check-in", body: "Don't forget your \(goal)-step goal. An afternoon walk helps."),
+                Message(title: "Afternoon nudge", body: "Your \(goal)-step target is still in play. Get those steps in.")
+            ])
+        default:
+            return pickVariant([
+                Message(title: "Still time tonight", body: "Your \(goal)-step goal is waiting. A quick evening walk could seal it."),
+                Message(title: "Evening walk?", body: "Could be the difference for your \(goal)-step goal tonight."),
+                Message(title: "Last call for steps", body: "Check your step count — you might be closer to \(goal) than you think."),
+                Message(title: "Steps check", body: "Have you hit \(goal) steps today? There's still time."),
+                Message(title: "Don't forget", body: "Your daily step goal is \(goal). Lace up and finish strong.")
+            ])
+        }
     }
 
     // MARK: - Progress Tracking Reminders

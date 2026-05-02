@@ -7,6 +7,8 @@ struct WatchHomeView: View {
     @State private var navigateToWorkout = false
     @State private var navigateToStart = false
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var showCompletedDetail = false
     @State private var liveSteps: Int?
     @State private var isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
@@ -157,10 +159,16 @@ struct WatchHomeView: View {
             }
             .task {
                 await WatchHealthKitService.requestAuthorization()
-                liveSteps = await WatchHealthKitService.fetchStepsToday()
+                await refreshSteps()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    refreshProStatus()
+                    Task { await refreshSteps() }
+                }
             }
             .onAppear {
-                isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+                refreshProStatus()
             }
             .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
                 isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
@@ -347,6 +355,19 @@ struct WatchHomeView: View {
                     .padding(.vertical, 12)
             }
         }
+    }
+
+    private func refreshProStatus() {
+        isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
+        if !isPro {
+            session.requestSync()
+        }
+    }
+
+    private func refreshSteps() async {
+        let steps = await WatchHealthKitService.fetchStepsToday()
+        liveSteps = steps
+        WatchHealthKitService.updateSnapshotSteps(steps)
     }
 
     private func formatSteps(_ steps: Int) -> String {

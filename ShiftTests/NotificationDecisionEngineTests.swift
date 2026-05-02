@@ -5,46 +5,41 @@ final class NotificationDecisionEngineTests: XCTestCase {
 
     // MARK: - Goal Completion Actions
 
-    func testStepGoalMet_cancelReminderAndFireCongrats() {
-        let activity = ActivityData(steps: 10000)
-        let actions = NotificationDecisionEngine.goalCompletionActions(
-            activity: activity, stepGoal: 10000, todayKey: "2026-04-14"
+    func testStepGoalMet_cancelsAllTiersAndFiresCongrats() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 10000, goal: 10000, todayKey: "2026-04-14"
         )
 
-        XCTAssertTrue(actions.contains(.cancel(prefix: "shift.steps-remind-0")))
+        for tier in ["morning", "afternoon", "evening"] {
+            XCTAssertTrue(actions.contains(.cancel(prefix: "shift.steps-remind-\(tier)-0")),
+                          "Should cancel \(tier) reminder")
+        }
         XCTAssertTrue(actions.contains(where: {
             if case .fireImmediately(let id, _, _) = $0 { return id.contains("steps-completed") }
             return false
         }))
     }
 
-    func testStepGoalExceeded_cancelReminderAndFireCongrats() {
-        let activity = ActivityData(steps: 12000)
-        let actions = NotificationDecisionEngine.goalCompletionActions(
-            activity: activity, stepGoal: 10000, todayKey: "2026-04-14"
+    func testStepGoalExceeded_cancelsAllTiersAndFiresCongrats() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 12000, goal: 10000, todayKey: "2026-04-14"
         )
 
-        XCTAssertTrue(actions.contains(.cancel(prefix: "shift.steps-remind-0")))
+        for tier in ["morning", "afternoon", "evening"] {
+            XCTAssertTrue(actions.contains(.cancel(prefix: "shift.steps-remind-\(tier)-0")))
+        }
         XCTAssertTrue(actions.contains(where: {
             if case .fireImmediately(let id, _, _) = $0 { return id.contains("steps-completed") }
             return false
         }))
     }
 
-    func testStepGoalNotMet_noActions() {
-        let activity = ActivityData(steps: 5000)
-        let actions = NotificationDecisionEngine.goalCompletionActions(
-            activity: activity, stepGoal: 10000, todayKey: "2026-04-14"
+    func testStepGoalNotMet_below50pct_noActions() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 4999, goal: 10000, todayKey: "2026-04-14"
         )
 
-        XCTAssertFalse(actions.contains(where: {
-            if case .cancel(let prefix) = $0 { return prefix.contains("steps") }
-            return false
-        }))
-        XCTAssertFalse(actions.contains(where: {
-            if case .fireImmediately(let id, _, _) = $0 { return id.contains("steps") }
-            return false
-        }))
+        XCTAssertTrue(actions.isEmpty)
     }
 
     func testNoStepGoal_noStepActions() {
@@ -91,15 +86,14 @@ final class NotificationDecisionEngineTests: XCTestCase {
 
     // MARK: - Step Goal Only
 
-    func testOnlyStepGoal_oneCancel_oneCongrats() {
-        let activity = ActivityData(steps: 12000)
-        let actions = NotificationDecisionEngine.goalCompletionActions(
-            activity: activity, stepGoal: 10000, todayKey: "2026-04-14"
+    func testStepGoalComplete_threeCancels_oneCongrats() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 12000, goal: 10000, todayKey: "2026-04-14"
         )
 
         let cancels = actions.filter { if case .cancel = $0 { return true }; return false }
         let fires = actions.filter { if case .fireImmediately = $0 { return true }; return false }
-        XCTAssertEqual(cancels.count, 1)
+        XCTAssertEqual(cancels.count, 3, "Should cancel morning, afternoon, and evening")
         XCTAssertEqual(fires.count, 1)
     }
 
@@ -253,14 +247,19 @@ final class NotificationDecisionEngineTests: XCTestCase {
         XCTAssertEqual(fires.count, 1, "Exactly meeting step goal should trigger congrats")
     }
 
-    func testOneStepShort_noStepCongrats() {
+    func testOneStepShort_fires75MilestoneNotCompletion() {
         let activity = ActivityData(steps: 9999)
         let actions = NotificationDecisionEngine.goalCompletionActions(
             activity: activity, stepGoal: 10000, todayKey: "2026-04-14"
         )
 
+        // 99.99% → should fire 75% milestone, not completion
+        XCTAssertTrue(actions.contains(where: {
+            if case .fireImmediately(let id, _, _) = $0 { return id.contains("milestone-75") }
+            return false
+        }))
         XCTAssertFalse(actions.contains(where: {
-            if case .fireImmediately(let id, _, _) = $0 { return id.contains("steps") }
+            if case .fireImmediately(let id, _, _) = $0 { return id.contains("completed") }
             return false
         }))
     }
@@ -271,5 +270,130 @@ final class NotificationDecisionEngineTests: XCTestCase {
             activity: activity, stepGoal: nil, todayKey: "2026-04-14"
         )
         XCTAssertTrue(actions.isEmpty)
+    }
+
+    // MARK: - Step Milestones
+
+    func testHalfwayMilestone_firesAndCancelsAfternoon() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 5000, goal: 10000, todayKey: "2026-04-14"
+        )
+
+        XCTAssertTrue(actions.contains(.cancel(prefix: "shift.steps-remind-afternoon-0")))
+        XCTAssertTrue(actions.contains(where: {
+            if case .fireImmediately(let id, _, _) = $0 { return id.contains("milestone-50") }
+            return false
+        }))
+        // Should NOT cancel morning or evening
+        XCTAssertFalse(actions.contains(.cancel(prefix: "shift.steps-remind-morning-0")))
+        XCTAssertFalse(actions.contains(.cancel(prefix: "shift.steps-remind-evening-0")))
+    }
+
+    func testThreeQuarterMilestone_firesAndCancelsEvening() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 7500, goal: 10000, todayKey: "2026-04-14"
+        )
+
+        XCTAssertTrue(actions.contains(.cancel(prefix: "shift.steps-remind-evening-0")))
+        XCTAssertTrue(actions.contains(where: {
+            if case .fireImmediately(let id, _, _) = $0 { return id.contains("milestone-75") }
+            return false
+        }))
+        // Should NOT cancel morning or afternoon
+        XCTAssertFalse(actions.contains(.cancel(prefix: "shift.steps-remind-morning-0")))
+        XCTAssertFalse(actions.contains(.cancel(prefix: "shift.steps-remind-afternoon-0")))
+    }
+
+    func testAt49Percent_noMilestoneActions() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 4999, goal: 10000, todayKey: "2026-04-14"
+        )
+        XCTAssertTrue(actions.isEmpty)
+    }
+
+    func testAt74Percent_fires50MilestoneOnly() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 7499, goal: 10000, todayKey: "2026-04-14"
+        )
+
+        XCTAssertTrue(actions.contains(where: {
+            if case .fireImmediately(let id, _, _) = $0 { return id.contains("milestone-50") }
+            return false
+        }))
+        XCTAssertFalse(actions.contains(where: {
+            if case .fireImmediately(let id, _, _) = $0 { return id.contains("milestone-75") }
+            return false
+        }))
+    }
+
+    func testMilestoneIdsContainDate() {
+        let actions = NotificationDecisionEngine.stepProgressActions(
+            steps: 5000, goal: 10000, todayKey: "2026-04-14"
+        )
+
+        let fireId = actions.compactMap {
+            if case .fireImmediately(let id, _, _) = $0 { return id }; return nil
+        }.first
+        XCTAssertTrue(fireId?.contains("2026-04-14") ?? false)
+    }
+
+    // MARK: - Step Tier Configuration
+
+    func testStepReminderTiers_hasThreeTiers() {
+        XCTAssertEqual(NotificationDecisionEngine.stepReminderTiers.count, 3)
+        XCTAssertEqual(NotificationDecisionEngine.stepReminderTiers, ["morning", "afternoon", "evening"])
+    }
+
+    func testStepTierBaseHours() {
+        XCTAssertEqual(NotificationDecisionEngine.stepTierBaseHour("morning"), 10)
+        XCTAssertEqual(NotificationDecisionEngine.stepTierBaseHour("afternoon"), 14)
+        XCTAssertEqual(NotificationDecisionEngine.stepTierBaseHour("evening"), 20)
+    }
+
+    func testStepTierJitter_withinBounds() {
+        for dayOffset in 0..<14 {
+            for tier in ["morning", "afternoon", "evening"] {
+                let jitter = NotificationDecisionEngine.stepTierMinuteJitter(
+                    tier: tier, dayOffset: dayOffset, baseDaySeed: 20000
+                )
+                XCTAssertGreaterThanOrEqual(jitter, -20)
+                XCTAssertLessThanOrEqual(jitter, 20)
+            }
+        }
+    }
+
+    func testStepTierJitter_deterministicForSameInputs() {
+        let j1 = NotificationDecisionEngine.stepTierMinuteJitter(
+            tier: "morning", dayOffset: 0, baseDaySeed: 20000
+        )
+        let j2 = NotificationDecisionEngine.stepTierMinuteJitter(
+            tier: "morning", dayOffset: 0, baseDaySeed: 20000
+        )
+        XCTAssertEqual(j1, j2)
+    }
+
+    func testStepTierJitter_variesAcrossDays() {
+        let j1 = NotificationDecisionEngine.stepTierMinuteJitter(
+            tier: "morning", dayOffset: 0, baseDaySeed: 20000
+        )
+        let j2 = NotificationDecisionEngine.stepTierMinuteJitter(
+            tier: "morning", dayOffset: 1, baseDaySeed: 20000
+        )
+        // Technically could collide, but with the hash it's extremely unlikely
+        // for adjacent days. If this ever flakes, just verify both are in range.
+        XCTAssertNotEqual(j1, j2)
+    }
+
+    // MARK: - Backward Compatibility
+
+    func testGoalCompletionActions_delegatesToStepProgress() {
+        let activity = ActivityData(steps: 10000)
+        let viaLegacy = NotificationDecisionEngine.goalCompletionActions(
+            activity: activity, stepGoal: 10000, todayKey: "2026-04-14"
+        )
+        let viaDirect = NotificationDecisionEngine.stepProgressActions(
+            steps: 10000, goal: 10000, todayKey: "2026-04-14"
+        )
+        XCTAssertEqual(viaLegacy, viaDirect)
     }
 }

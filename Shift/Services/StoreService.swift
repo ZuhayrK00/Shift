@@ -142,6 +142,28 @@ final class StoreService {
         }
     }
 
+    // MARK: - Standalone entitlement check
+
+    /// Verifies Pro entitlement directly from StoreKit without requiring the
+    /// singleton to have been refreshed. Safe to call from background contexts
+    /// (WidgetDataService, HealthKit wake, watch sync handler).
+    /// Writes the result to the App Group so widgets/complications stay current.
+    static func verifyProEntitlement() async -> Bool {
+        let proIDs: Set<String> = [
+            StoreProduct.monthlyPro.rawValue,
+            StoreProduct.yearlyPro.rawValue
+        ]
+        var found = false
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let tx) = result, proIDs.contains(tx.productID) {
+                found = true
+                break
+            }
+        }
+        UserDefaults(suiteName: "group.com.zuhayrk.shift")?.set(found, forKey: "isPro")
+        return found
+    }
+
     // MARK: - Helpers
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {

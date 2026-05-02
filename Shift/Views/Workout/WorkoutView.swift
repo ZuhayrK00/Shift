@@ -622,7 +622,7 @@ struct WorkoutView: View {
 
     private func autoDeleteIfEmpty() async {
         guard !isCompleted else { return }
-        let ids = (try? await WorkoutService.getSessionExerciseIds(sessionId)) ?? []
+        guard let ids = try? await WorkoutService.getSessionExerciseIds(sessionId) else { return }
         if ids.isEmpty {
             try? await WorkoutService.deleteSession(sessionId)
         }

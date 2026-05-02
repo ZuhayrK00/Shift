@@ -195,7 +195,7 @@ struct ExerciseDetailView: View {
                     Image(systemName: chip.1)
                         .font(.system(size: 10))
                         .foregroundStyle(colors.accent)
-                    Text(chip.0!)
+                    Text(chip.0 ?? "")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(colors.text)
                 }

@@ -92,10 +92,7 @@ struct PlanEditorView: View {
 
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Save") {
-                    Task {
-                        await saveName()
-                        dismiss()
-                    }
+                    Task { await saveName() }
                 }
                 .foregroundStyle(colors.accent)
                 .font(.system(size: 15, weight: .semibold))

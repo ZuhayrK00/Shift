@@ -29,7 +29,6 @@ struct MeasurementsTabView: View {
             }
         }
         .task { await loadData() }
-        .onAppear { Task { await loadData() } }
         .sheet(isPresented: $showAddSheet, onDismiss: { preselectedType = nil }) {
             AddMeasurementSheet(unit: measurementUnit, preselectedType: preselectedType) {
                 Task { await loadData() }
@@ -433,7 +432,6 @@ struct MeasurementDetailView: View {
             }
         }
         .task { await loadData() }
-        .onAppear { Task { await loadData() } }
         .sheet(isPresented: $showAddSheet) {
             AddMeasurementSheet(unit: measurementUnit, preselectedType: type) {
                 Task { await loadData() }

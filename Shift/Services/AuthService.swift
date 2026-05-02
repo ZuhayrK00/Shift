@@ -150,6 +150,7 @@ class AuthManager {
     }
 
     func signOut() async throws {
+        _ = try? await SyncService.flushQueue()
         try await supabase.auth.signOut()
         await StoreService.shared.reset()
     }

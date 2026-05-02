@@ -19,6 +19,10 @@ class ShiftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let sessionId = response.notification.request.content.userInfo["sessionId"] as? String
             if let sessionId {
                 try? await WorkoutService.finishSession(sessionId)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
+                }
+                PhoneSessionManager.shared.sendContextToWatch()
             }
         }
     }
@@ -78,6 +82,7 @@ struct ShiftApp: App {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                Task { await StoreService.shared.updatePurchasedProducts() }
                 Task { await GoalNotificationService.checkAndNotifyGoalCompletion() }
                 Task { await WidgetDataService.updateSnapshot() }
                 PhoneSessionManager.shared.sendContextToWatch()

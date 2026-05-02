@@ -6,8 +6,8 @@ import WidgetKit
 struct WidgetDataService {
 
     static func updateSnapshot() async {
-        guard StoreService.shared.isPro else {
-            // Clear snapshot so widgets show placeholder
+        let isPro = await StoreService.verifyProEntitlement()
+        guard isPro else {
             UserDefaults(suiteName: WidgetSnapshot.suiteName)?.removeObject(forKey: WidgetSnapshot.key)
             WidgetCenter.shared.reloadAllTimelines()
             return
