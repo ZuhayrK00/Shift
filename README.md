@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Shift/Assets.xcassets/AppIcon.appiconset/Shift-dark.png" alt="Shift" width="100" height="100" style="border-radius: 22px;">
+  <img src="screenshots/logo.png" alt="Shift" width="140">
 </p>
 
 <h1 align="center">Shift</h1>
