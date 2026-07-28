@@ -13,6 +13,9 @@ final class PhoneSessionManager: NSObject {
     static let shared = PhoneSessionManager()
 
     private(set) var isWatchReachable = false
+    private let sendLock = NSLock()
+    private var isSendingContext = false
+    private var needsAnotherContextPass = false
 
     private override init() {
         super.init()
@@ -27,13 +30,42 @@ final class PhoneSessionManager: NSObject {
     // MARK: - Send context to Watch
 
     func sendContextToWatch() {
-        guard WCSession.default.activationState == .activated else { return }
+        guard WCSession.default.activationState == .activated,
+              WCSession.default.isPaired else { return }
 
-        Task {
+        let shouldStart = sendLock.withLock {
+            if isSendingContext {
+                needsAnotherContextPass = true
+                return false
+            }
+            isSendingContext = true
+            return true
+        }
+        guard shouldStart else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            while true {
+                await sendContextPass()
+
+                let shouldRepeat = sendLock.withLock {
+                    if self.needsAnotherContextPass {
+                        self.needsAnotherContextPass = false
+                        return true
+                    }
+                    self.isSendingContext = false
+                    return false
+                }
+                if !shouldRepeat { break }
+            }
+        }
+    }
+
+    private func sendContextPass() async {
             // Re-verify entitlement from StoreKit before syncing to watch.
             // This ensures Pro status is fresh even if the app process was
             // killed and restarted by a WatchConnectivity wake.
-            await StoreService.shared.updatePurchasedProducts()
+            await StoreService.shared.updatePurchasedProducts(syncWatch: false)
 
             await WidgetDataService.updateSnapshot()
             let context = await buildContext()
@@ -60,14 +92,14 @@ final class PhoneSessionManager: NSObject {
             }
 
             sendComplicationUpdate()
-        }
     }
 
     /// Lightweight update that only sends the snapshot to watch complications.
     /// Used during background wakes where the full context build is too heavy.
     /// Uses transferCurrentComplicationUserInfo for high-priority delivery.
     func sendSnapshotToWatch() {
-        guard WCSession.default.activationState == .activated else { return }
+        guard WCSession.default.activationState == .activated,
+              WCSession.default.isPaired else { return }
         sendComplicationUpdate()
     }
 
@@ -268,15 +300,15 @@ final class PhoneSessionManager: NSObject {
                     return
                 }
                 do {
-                    let newSet = try await WorkoutService.addSet(sessionId: sessionId, exerciseId: exerciseId)
                     let weight = message["weight"] as? Double
                     let setType = message["setType"] as? String
-                    try await WorkoutService.updateSet(newSet.id, patch: SetPatch(
+                    let newSet = try await WorkoutService.addSet(
+                        sessionId: sessionId,
+                        exerciseId: exerciseId,
                         reps: reps,
                         weight: weight,
-                        isCompleted: true,
                         setType: SetType(rawValue: setType ?? "normal")
-                    ))
+                    )
                     replyHandler?(["success": true, "setId": newSet.id])
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {

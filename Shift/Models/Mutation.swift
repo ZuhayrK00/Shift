@@ -97,6 +97,10 @@ struct MutationQueueRow: Identifiable {
     var op: String
     var payload: String // JSON-encoded Mutation payload
     var createdAt: String
+    var userId: String?
+    var attemptCount: Int
+    var lastError: String?
+    var nextAttemptAt: String?
 
     /// Decode this row back into a `Mutation`. Returns nil if the JSON is malformed.
     func decode() -> Mutation? {
@@ -118,6 +122,10 @@ extension MutationQueueRow: FetchableRecord {
         op = row["op"]
         payload = row["payload"]
         createdAt = row["created_at"]
+        userId = row["user_id"]
+        attemptCount = row["attempt_count"]
+        lastError = row["last_error"]
+        nextAttemptAt = row["next_attempt_at"]
     }
 }
 
@@ -130,6 +138,10 @@ extension MutationQueueRow: PersistableRecord {
         container["op"] = op
         container["payload"] = payload
         container["created_at"] = createdAt
+        container["user_id"] = userId
+        container["attempt_count"] = attemptCount
+        container["last_error"] = lastError
+        container["next_attempt_at"] = nextAttemptAt
     }
 }
 

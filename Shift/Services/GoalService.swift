@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import GRDB
 
 // MARK: - FrequencyProgress
 
@@ -12,13 +13,6 @@ struct FrequencyProgress {
 // MARK: - GoalService
 
 struct GoalService {
-
-    // MARK: - Internal enqueue helper
-
-    private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
-        try await MutationQueueRepository.enqueue(table: table, op: op, payload: payload)
-        SyncService.flushInBackground()
-    }
 
     // MARK: - Exercise Goals
 
@@ -41,8 +35,14 @@ struct GoalService {
             deadline: deadline
         )
 
-        try await ExerciseGoalRepository.insert(goal)
-        try await enqueue(table: "exercise_goals", op: "insert", payload: goalPayload(goal))
+        let mutation = LocalMutation(
+            table: "exercise_goals",
+            op: "insert",
+            payload: goalPayload(goal)
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try goal.insert(db)
+        }
 
         Task { await GoalNotificationService.scheduleAllNotifications() }
 
@@ -54,26 +54,46 @@ struct GoalService {
         targetWeightIncrease: Double,
         deadline: Date
     ) async throws {
-        guard var goal = try await ExerciseGoalRepository.findById(goalId) else { return }
+        let userId = try authManager.requireUserId()
+        guard var goal = try await ExerciseGoalRepository.findById(goalId),
+              goal.userId == userId else { return }
 
         goal.targetWeightIncrease = targetWeightIncrease
         goal.deadline = deadline
 
-        try await ExerciseGoalRepository.update(goal)
-        try await enqueue(table: "exercise_goals", op: "update", payload: goalPayload(goal))
+        let mutation = LocalMutation(
+            table: "exercise_goals",
+            op: "update",
+            payload: goalPayload(goal)
+        )
+        let goalToSave = goal
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try goalToSave.update(db)
+        }
         Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
     static func deleteGoal(_ goalId: String) async throws {
-        try await ExerciseGoalRepository.delete(goalId)
-        try await enqueue(table: "exercise_goals", op: "delete", payload: ["id": goalId])
+        let userId = try authManager.requireUserId()
+        guard let goal = try await ExerciseGoalRepository.findById(goalId),
+              goal.userId == userId else { return }
+        let mutation = LocalMutation(
+            table: "exercise_goals",
+            op: "delete",
+            payload: ["id": goalId]
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try db.execute(sql: "DELETE FROM exercise_goals WHERE id = ?", arguments: [goalId])
+        }
         Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
     /// Checks if a goal's target has been met. If so, marks it completed.
     @discardableResult
     static func checkGoalCompletion(_ goalId: String) async throws -> Bool {
+        let userId = try authManager.requireUserId()
         guard var goal = try await ExerciseGoalRepository.findById(goalId),
+              goal.userId == userId,
               !goal.isCompleted else { return false }
 
         let currentMax = try await ExerciseGoalRepository.findCurrentMaxWeight(
@@ -84,8 +104,15 @@ struct GoalService {
 
         goal.isCompleted = true
         goal.completedAt = Date()
-        try await ExerciseGoalRepository.update(goal)
-        try await enqueue(table: "exercise_goals", op: "update", payload: goalPayload(goal))
+        let mutation = LocalMutation(
+            table: "exercise_goals",
+            op: "update",
+            payload: goalPayload(goal)
+        )
+        let completedGoal = goal
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try completedGoal.update(db)
+        }
 
         return true
     }

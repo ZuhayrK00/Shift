@@ -177,8 +177,12 @@ struct ExerciseGoalsView: View {
 
             Button(role: .destructive) {
                 Task {
-                    try? await GoalService.deleteGoal(goal.id)
-                    await loadGoals()
+                    do {
+                        try await GoalService.deleteGoal(goal.id)
+                        await loadGoals()
+                    } catch {
+                        AppErrorCenter.shared.present(error)
+                    }
                 }
             } label: {
                 Label("Delete Goal", systemImage: "trash")
@@ -273,8 +277,12 @@ struct ExerciseGoalsView: View {
         .contextMenu {
             Button(role: .destructive) {
                 Task {
-                    try? await GoalService.deleteGoal(goal.id)
-                    await loadGoals()
+                    do {
+                        try await GoalService.deleteGoal(goal.id)
+                        await loadGoals()
+                    } catch {
+                        AppErrorCenter.shared.present(error)
+                    }
                 }
             } label: {
                 Label("Delete Goal", systemImage: "trash")

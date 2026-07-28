@@ -246,8 +246,12 @@ struct WeightTabView: View {
                 .contextMenu {
                     Button(role: .destructive) {
                         Task {
-                            try? await WeightEntryService.delete(entry.id)
-                            await loadEntries()
+                            do {
+                                try await WeightEntryService.delete(entry.id)
+                                await loadEntries()
+                            } catch {
+                                AppErrorCenter.shared.present(error)
+                            }
                         }
                     } label: {
                         Label("Delete", systemImage: "trash")
@@ -422,8 +426,14 @@ struct WeightEntrySheet: View {
             createdAt: Date()
         )
 
-        _ = try? await WeightEntryService.insert(entry)
-        _ = try? await ProfileService.updateProfile(ProfilePatch(weight: w))
+        do {
+            try await WeightEntryService.insert(entry)
+            try await ProfileService.updateProfile(ProfilePatch(weight: w))
+        } catch {
+            AppErrorCenter.shared.present(error)
+            isSaving = false
+            return
+        }
 
         if authManager.user?.settings.healthKit.syncBodyWeight == true {
             let weightKg = weightUnit == "lbs" ? w / 2.20462 : w

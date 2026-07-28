@@ -1,37 +1,55 @@
 import SwiftUI
+import UIKit
 
 // MARK: - ImageCache
 
-/// Persistent in-memory image cache. Uses a plain dictionary (not NSCache)
-/// so entries are never evicted by the OS. The exercise image set is bounded
-/// (~300 small thumbnails) so memory impact is negligible.
+/// Memory-bounded image cache. NSCache automatically evicts decoded images when
+/// the process is under memory pressure.
 final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
 
-    private var images: [String: UIImage] = [:]
+    private let images = NSCache<NSString, UIImage>()
     private var pending: [String: [(@Sendable (UIImage?) -> Void)]] = [:]
     private let lock = NSLock()
+    private let session: URLSession
 
-    private init() {}
+    private init() {
+        images.countLimit = 80
+        images.totalCostLimit = 80 * 1_024 * 1_024
+
+        let configuration = URLSessionConfiguration.default
+        configuration.httpMaximumConnectionsPerHost = 4
+        configuration.timeoutIntervalForRequest = 20
+        configuration.requestCachePolicy = .returnCacheDataElseLoad
+        session = URLSession(configuration: configuration)
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.removeAll()
+        }
+    }
 
     func image(for url: URL) -> UIImage? {
-        lock.lock()
-        let img = images[url.absoluteString]
-        lock.unlock()
-        return img
+        images.object(forKey: url.absoluteString as NSString)
     }
 
     func store(_ image: UIImage, for url: URL) {
-        lock.lock()
-        images[url.absoluteString] = image
-        lock.unlock()
+        images.setObject(image, forKey: url.absoluteString as NSString, cost: image.memoryCost)
     }
 
-    /// Prefetch a batch of URLs in the background (fire-and-forget).
+    func removeAll() {
+        images.removeAllObjects()
+        GIFDataCache.shared.removeAll()
+    }
+
+    /// Prefetches only a small leading batch. Callers should prefer demand loading.
     func prefetch(_ urls: [URL]) {
-        for url in urls {
+        for url in urls.prefix(12) {
             lock.lock()
-            let cached = images[url.absoluteString] != nil
+            let cached = images.object(forKey: url.absoluteString as NSString) != nil
             let inflight = pending[url.absoluteString] != nil
             lock.unlock()
             if cached || inflight { continue }
@@ -44,7 +62,7 @@ final class ImageCache: @unchecked Sendable {
         let key = url.absoluteString
 
         lock.lock()
-        if let cached = images[key] {
+        if let cached = images.object(forKey: key as NSString) {
             lock.unlock()
             completion(cached)
             return
@@ -58,16 +76,25 @@ final class ImageCache: @unchecked Sendable {
         pending[key] = [completion]
         lock.unlock()
 
-        URLSession.shared.dataTask(with: url) { [self] data, _, _ in
-            let img = data.flatMap { UIImage(data: $0) }
+        session.dataTask(with: url) { [self] data, response, _ in
+            let validData: Data? = {
+                guard let data,
+                      data.count <= 20 * 1_024 * 1_024,
+                      let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else { return nil }
+                return data
+            }()
+            let img = validData.flatMap { UIImage(data: $0) }
 
             lock.lock()
-            if let img { images[key] = img }
+            if let img {
+                images.setObject(img, forKey: key as NSString, cost: img.memoryCost)
+            }
             let waiters = pending.removeValue(forKey: key) ?? []
             lock.unlock()
 
             // Also cache raw data so the GIF decoder doesn't need a second fetch
-            if let data { GIFDataCache.shared.store(data, for: url) }
+            if let validData { GIFDataCache.shared.store(validData, for: url) }
 
             DispatchQueue.main.async {
                 for w in waiters { w(img) }
@@ -78,27 +105,39 @@ final class ImageCache: @unchecked Sendable {
 
 // MARK: - GIFDataCache
 
-/// Persistent in-memory cache for raw GIF data so the animated decoder can
-/// re-use it instantly without a second network fetch.
+/// Memory-bounded raw-data cache used by the GIF decoder.
 final class GIFDataCache: @unchecked Sendable {
     static let shared = GIFDataCache()
 
-    private var storage: [String: Data] = [:]
-    private let lock = NSLock()
+    private let storage = NSCache<NSString, NSData>()
 
-    private init() {}
+    private init() {
+        storage.countLimit = 20
+        storage.totalCostLimit = 30 * 1_024 * 1_024
+    }
 
     func data(for url: URL) -> Data? {
-        lock.lock()
-        let d = storage[url.absoluteString]
-        lock.unlock()
-        return d
+        storage.object(forKey: url.absoluteString as NSString) as Data?
     }
 
     func store(_ data: Data, for url: URL) {
-        lock.lock()
-        storage[url.absoluteString] = data
-        lock.unlock()
+        guard data.count <= 20 * 1_024 * 1_024 else { return }
+        storage.setObject(data as NSData, forKey: url.absoluteString as NSString, cost: data.count)
+    }
+
+    func removeAll() {
+        storage.removeAllObjects()
+    }
+}
+
+private extension UIImage {
+    var memoryCost: Int {
+        if let frames = images {
+            return frames.reduce(0) { result, frame in
+                result + (frame.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
+            }
+        }
+        return cgImage.map { $0.bytesPerRow * $0.height } ?? 1
     }
 }
 

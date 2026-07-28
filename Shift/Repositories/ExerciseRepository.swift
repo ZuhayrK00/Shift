@@ -6,24 +6,59 @@ struct ExerciseRepository {
     // MARK: - Reads
 
     static func findAll() async throws -> [Exercise] {
-        try await AppDatabase.shared.dbPool.read { db in
-            try Exercise.order(Column("name")).fetchAll(db)
+        let userId = authManager.currentUserId
+        return try await AppDatabase.shared.dbPool.read { db in
+            if let userId {
+                return try Exercise
+                    .filter(Column("is_built_in") == true || Column("created_by") == userId)
+                    .order(Column("name"))
+                    .fetchAll(db)
+            }
+            return try Exercise
+                .filter(Column("is_built_in") == true)
+                .order(Column("name"))
+                .fetchAll(db)
         }
     }
 
     static func findById(_ id: String) async throws -> Exercise? {
-        try await AppDatabase.shared.dbPool.read { db in
-            try Exercise.fetchOne(db, key: id)
+        let userId = authManager.currentUserId
+        return try await AppDatabase.shared.dbPool.read { db in
+            if let userId {
+                return try Exercise
+                    .filter(Column("id") == id)
+                    .filter(Column("is_built_in") == true || Column("created_by") == userId)
+                    .fetchOne(db)
+            }
+            return try Exercise
+                .filter(Column("id") == id && Column("is_built_in") == true)
+                .fetchOne(db)
         }
     }
 
     /// Returns a dictionary keyed by exercise id. Missing ids are silently absent.
     static func findByIds(_ ids: [String]) async throws -> [String: Exercise] {
         guard !ids.isEmpty else { return [:] }
+        let userId = authManager.currentUserId
         return try await AppDatabase.shared.dbPool.read { db in
             let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
-            let sql = "SELECT * FROM exercises WHERE id IN (\(placeholders))"
-            let exercises = try Exercise.fetchAll(db, sql: sql, arguments: StatementArguments(ids))
+            let sql: String
+            var arguments = ids
+            if let userId {
+                sql = """
+                    SELECT * FROM exercises
+                    WHERE id IN (\(placeholders))
+                      AND (is_built_in = 1 OR created_by = ?)
+                    """
+                arguments.append(userId)
+            } else {
+                sql = "SELECT * FROM exercises WHERE id IN (\(placeholders)) AND is_built_in = 1"
+            }
+            let exercises = try Exercise.fetchAll(
+                db,
+                sql: sql,
+                arguments: StatementArguments(arguments)
+            )
             return Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, $0) })
         }
     }
@@ -31,10 +66,26 @@ struct ExerciseRepository {
     /// Returns a dictionary keyed by slug. Used for matching template plans to real exercises.
     static func findBySlugs(_ slugs: [String]) async throws -> [String: Exercise] {
         guard !slugs.isEmpty else { return [:] }
+        let userId = authManager.currentUserId
         return try await AppDatabase.shared.dbPool.read { db in
             let placeholders = slugs.map { _ in "?" }.joined(separator: ", ")
-            let sql = "SELECT * FROM exercises WHERE slug IN (\(placeholders))"
-            let exercises = try Exercise.fetchAll(db, sql: sql, arguments: StatementArguments(slugs))
+            let sql: String
+            var arguments = slugs
+            if let userId {
+                sql = """
+                    SELECT * FROM exercises
+                    WHERE slug IN (\(placeholders))
+                      AND (is_built_in = 1 OR created_by = ?)
+                    """
+                arguments.append(userId)
+            } else {
+                sql = "SELECT * FROM exercises WHERE slug IN (\(placeholders)) AND is_built_in = 1"
+            }
+            let exercises = try Exercise.fetchAll(
+                db,
+                sql: sql,
+                arguments: StatementArguments(arguments)
+            )
             return Dictionary(uniqueKeysWithValues: exercises.map { ($0.slug, $0) })
         }
     }

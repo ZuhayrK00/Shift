@@ -107,41 +107,60 @@ struct SessionRepository {
 
     static func insert(_ session: WorkoutSession) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            try session.insert(db)
+            try insert(session, in: db)
         }
+    }
+
+    static func insert(_ session: WorkoutSession, in db: Database) throws {
+        try session.insert(db)
     }
 
     static func setEndedAt(_ sessionId: String, _ endedAt: Date?) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            let endedAtString = endedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
-            try db.execute(
-                sql: "UPDATE workout_sessions SET ended_at = ? WHERE id = ?",
-                arguments: [endedAtString, sessionId]
-            )
+            try setEndedAt(sessionId, endedAt, in: db)
         }
+    }
+
+    static func setEndedAt(_ sessionId: String, _ endedAt: Date?, in db: Database) throws {
+        let endedAtString = endedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
+        try db.execute(
+            sql: "UPDATE workout_sessions SET ended_at = ? WHERE id = ?",
+            arguments: [endedAtString, sessionId]
+        )
     }
 
     static func setOriginalEndedAt(_ sessionId: String, _ originalEndedAt: Date?) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            let str = originalEndedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
-            try db.execute(
-                sql: "UPDATE workout_sessions SET original_ended_at = ? WHERE id = ?",
-                arguments: [str, sessionId]
-            )
+            try setOriginalEndedAt(sessionId, originalEndedAt, in: db)
         }
+    }
+
+    static func setOriginalEndedAt(
+        _ sessionId: String,
+        _ originalEndedAt: Date?,
+        in db: Database
+    ) throws {
+        let str = originalEndedAt.map { ISO8601DateFormatter.shared.string(from: $0) }
+        try db.execute(
+            sql: "UPDATE workout_sessions SET original_ended_at = ? WHERE id = ?",
+            arguments: [str, sessionId]
+        )
     }
 
     static func delete(_ sessionId: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            // Delete child session_sets first to avoid orphans
-            try db.execute(
-                sql: "DELETE FROM session_sets WHERE session_id = ?",
-                arguments: [sessionId]
-            )
-            try db.execute(
-                sql: "DELETE FROM workout_sessions WHERE id = ?",
-                arguments: [sessionId]
-            )
+            try delete(sessionId, in: db)
         }
+    }
+
+    static func delete(_ sessionId: String, in db: Database) throws {
+        try db.execute(
+            sql: "DELETE FROM session_sets WHERE session_id = ?",
+            arguments: [sessionId]
+        )
+        try db.execute(
+            sql: "DELETE FROM workout_sessions WHERE id = ?",
+            arguments: [sessionId]
+        )
     }
 }

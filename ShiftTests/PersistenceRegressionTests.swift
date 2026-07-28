@@ -1,0 +1,135 @@
+import XCTest
+@preconcurrency import GRDB
+@testable import Shift
+
+final class PersistenceRegressionTests: XCTestCase {
+
+    func testSetWeightCanBeCleared() async throws {
+        let setId = "test-weight-\(UUID().uuidString)"
+        let set = SessionSet(
+            id: setId,
+            sessionId: "test-session",
+            exerciseId: "test-exercise",
+            setNumber: 1,
+            reps: 8,
+            weight: 42.5,
+            isCompleted: true
+        )
+        try await SessionSetRepository.insert(set)
+        defer { Task { try? await SessionSetRepository.delete(setId) } }
+
+        try await SessionSetRepository.update(
+            setId,
+            patch: SetPatch(weight: .some(nil))
+        )
+
+        let storedWeight: Double? = try await AppDatabase.shared.dbPool.read { db in
+            try Double.fetchOne(
+                db,
+                sql: "SELECT weight FROM session_sets WHERE id = ?",
+                arguments: [setId]
+            )
+        }
+        XCTAssertNil(storedWeight)
+    }
+
+    func testClearingExerciseNoteReturnsSyncTargetAndClearsValue() async throws {
+        let setId = "test-note-\(UUID().uuidString)"
+        let sessionId = "test-session-\(UUID().uuidString)"
+        let exerciseId = "test-exercise-\(UUID().uuidString)"
+        let set = SessionSet(
+            id: setId,
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            setNumber: 1,
+            notes: "old note"
+        )
+        try await SessionSetRepository.insert(set)
+        defer { Task { try? await SessionSetRepository.delete(setId) } }
+
+        let targetId = try await SessionSetRepository.setExerciseNote(
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            note: nil
+        )
+        let storedNote = try await SessionSetRepository.findExerciseNote(
+            sessionId: sessionId,
+            exerciseId: exerciseId
+        )
+
+        XCTAssertEqual(targetId, setId)
+        XCTAssertNil(storedNote)
+    }
+
+    func testAtomicMutationRollsBackLocalWriteOnFailure() async throws {
+        enum ExpectedFailure: Error { case stopTransaction }
+
+        let setId = "test-rollback-\(UUID().uuidString)"
+        let set = SessionSet(
+            id: setId,
+            sessionId: "test-session",
+            exerciseId: "test-exercise",
+            setNumber: 1
+        )
+        let mutation = LocalMutation(
+            table: "session_sets",
+            op: "insert",
+            payload: ["id": setId]
+        )
+
+        do {
+            try await MutationQueueRepository.performAtomically(
+                mutations: [mutation]
+            ) { db in
+                try set.insert(db)
+                throw ExpectedFailure.stopTransaction
+            }
+            XCTFail("Expected the transaction to fail")
+        } catch {
+            // Expected: GRDB must roll the inserted set back with the transaction.
+        }
+
+        let rowExists = try await AppDatabase.shared.dbPool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM session_sets WHERE id = ?)",
+                arguments: [setId]
+            ) ?? false
+        }
+        XCTAssertFalse(rowExists)
+    }
+
+    func testMutationQueueHasRetryAndUserScopingColumns() async throws {
+        let columns = try await AppDatabase.shared.dbPool.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(mutation_queue)")
+                .compactMap { $0["name"] as String? }
+        }
+
+        XCTAssertTrue(columns.contains("user_id"))
+        XCTAssertTrue(columns.contains("attempt_count"))
+        XCTAssertTrue(columns.contains("last_error"))
+        XCTAssertTrue(columns.contains("next_attempt_at"))
+    }
+
+    func testFreshDatabaseRunsEveryMigration() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shift-db-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let database = try AppDatabase(
+            databaseURL: directory.appendingPathComponent("shift.db")
+        )
+        let columns = try database.dbPool.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(mutation_queue)")
+                .compactMap { $0["name"] as String? }
+        }
+
+        XCTAssertTrue(columns.contains("user_id"))
+        XCTAssertTrue(columns.contains("attempt_count"))
+        XCTAssertTrue(columns.contains("next_attempt_at"))
+    }
+}

@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import GRDB
 
 // MARK: - Supporting types
 
@@ -17,13 +18,6 @@ struct PlanWithExercises {
 
 struct PlanService {
 
-    // MARK: - Internal enqueue helper
-
-    private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
-        try await MutationQueueRepository.enqueue(table: table, op: op, payload: payload)
-        SyncService.flushInBackground()
-    }
-
     // MARK: - Plans
 
     static func listPlans() async throws -> [WorkoutPlanWithCount] {
@@ -32,7 +26,9 @@ struct PlanService {
     }
 
     static func getPlanWithExercises(_ id: String) async throws -> PlanWithExercises? {
-        guard let plan = try await PlanRepository.findById(id) else { return nil }
+        let userId = try authManager.requireUserId()
+        guard let plan = try await PlanRepository.findById(id),
+              plan.userId == userId else { return nil }
 
         let planExercises = try await PlanRepository.findExercises(planId: id)
         let exerciseIds = planExercises.map { $0.exerciseId }
@@ -56,8 +52,7 @@ struct PlanService {
 
         let plan = WorkoutPlan(id: id, userId: userId, name: name, position: nextPosition, createdAt: Date())
 
-        try await PlanRepository.insert(plan)
-        try await enqueue(table: "workout_plans", op: "insert", payload: [
+        let mutation = LocalMutation(table: "workout_plans", op: "insert", payload: [
             "id": id,
             "user_id": userId,
             "name": name,
@@ -65,40 +60,53 @@ struct PlanService {
             "position": nextPosition,
             "created_at": ISO8601DateFormatter.shared.string(from: plan.createdAt)
         ])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try plan.insert(db)
+        }
         return plan
     }
 
     static func updatePlan(_ id: String, name: String?, notes: String?) async throws {
-        try await PlanRepository.update(id, name: name, notes: notes)
-
         var payload: [String: Any] = ["id": id]
         if let name  { payload["name"]  = name }
         if let notes { payload["notes"] = notes }
-        try await enqueue(table: "workout_plans", op: "update", payload: payload)
+        let mutation = LocalMutation(table: "workout_plans", op: "update", payload: payload)
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            guard var plan = try WorkoutPlan.fetchOne(db, key: id) else { return }
+            if let name { plan.name = name }
+            if let notes { plan.notes = notes }
+            try plan.update(db)
+        }
     }
 
     static func reorderPlans(_ planIds: [String]) async throws {
         let positions = planIds.enumerated().map { (id: $1, position: $0) }
-        try await PlanRepository.reorder(positions)
-
-        // Enqueue a mutation for each plan's new position
-        for (index, planId) in planIds.enumerated() {
-            try await enqueue(table: "workout_plans", op: "update", payload: [
+        let mutations = planIds.enumerated().map { index, planId in
+            LocalMutation(table: "workout_plans", op: "update", payload: [
                 "id": planId,
                 "position": index,
             ])
+        }
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            for item in positions {
+                try db.execute(
+                    sql: "UPDATE workout_plans SET position = ? WHERE id = ?",
+                    arguments: [item.position, item.id]
+                )
+            }
         }
     }
 
     static func deletePlan(_ id: String) async throws {
         // Remove all plan exercises first
         let exercises = try await PlanRepository.findExercises(planId: id)
-        for pe in exercises {
-            try await PlanRepository.deleteExercise(pe.id)
-            try await enqueue(table: "plan_exercises", op: "delete", payload: ["id": pe.id])
+        let mutations = exercises.map {
+            LocalMutation(table: "plan_exercises", op: "delete", payload: ["id": $0.id])
+        } + [LocalMutation(table: "workout_plans", op: "delete", payload: ["id": id])]
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            try db.execute(sql: "DELETE FROM plan_exercises WHERE plan_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM workout_plans WHERE id = ?", arguments: [id])
         }
-        try await PlanRepository.delete(id)
-        try await enqueue(table: "workout_plans", op: "delete", payload: ["id": id])
     }
 
     // MARK: - Plan exercises
@@ -123,53 +131,90 @@ struct PlanService {
                 targetSets: 3,
                 groupId: groupId
             )
-            try await PlanRepository.insertExercise(pe)
-            try await enqueue(table: "plan_exercises", op: "insert", payload: [
-                "id": id,
-                "plan_id": planId,
-                "exercise_id": exerciseId,
-                "position": maxPosition,
-                "target_sets": 3,
+            added.append(pe)
+        }
+
+        let mutations = added.map { pe in
+            LocalMutation(table: "plan_exercises", op: "insert", payload: [
+                "id": pe.id,
+                "plan_id": pe.planId,
+                "exercise_id": pe.exerciseId,
+                "position": pe.position,
+                "target_sets": pe.targetSets,
                 "target_reps_min": NSNull(),
                 "target_reps_max": NSNull(),
                 "target_weight": NSNull(),
                 "rest_seconds": NSNull(),
-                "group_id": groupId.map { $0 as Any } ?? NSNull()
+                "group_id": pe.groupId.map { $0 as Any } ?? NSNull()
             ])
-            added.append(pe)
         }
-
+        let addedExercises = added
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            for exercise in addedExercises { try exercise.insert(db) }
+        }
         return added
     }
 
     static func updateExercise(_ id: String, patch: PlanExercisePatch) async throws {
-        try await PlanRepository.updateExercise(id, patch: patch)
-
         var payload: [String: Any] = ["id": id]
         if let v = patch.targetSets    { payload["target_sets"]     = v }
         if let v = patch.targetRepsMin { payload["target_reps_min"] = v }
         if let v = patch.targetRepsMax { payload["target_reps_max"] = v }
-        if let v = patch.targetWeight  { payload["target_weight"]   = v }
+        if let value = patch.targetWeight {
+            payload["target_weight"] = value.map { $0 as Any } ?? NSNull()
+        }
         if let v = patch.restSeconds   { payload["rest_seconds"]    = v }
 
-        try await enqueue(table: "plan_exercises", op: "update", payload: payload)
+        let mutation = LocalMutation(table: "plan_exercises", op: "update", payload: payload)
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            guard var exercise = try PlanExercise.fetchOne(db, key: id) else { return }
+            if let value = patch.targetSets { exercise.targetSets = value }
+            if let value = patch.targetRepsMin { exercise.targetRepsMin = value }
+            if let value = patch.targetRepsMax { exercise.targetRepsMax = value }
+            if let value = patch.targetWeight { exercise.targetWeight = value }
+            if let value = patch.restSeconds { exercise.restSeconds = value }
+            try exercise.update(db)
+        }
     }
 
     static func reorderExercises(planId: String, exerciseIds: [String]) async throws {
         let positions = exerciseIds.enumerated().map { (id: $1, position: $0) }
-        try await PlanRepository.reorderExercises(positions)
-
-        for (index, id) in exerciseIds.enumerated() {
-            try await enqueue(table: "plan_exercises", op: "update", payload: [
+        let mutations = exerciseIds.enumerated().map { index, id in
+            LocalMutation(table: "plan_exercises", op: "update", payload: [
                 "id": id,
                 "position": index,
             ])
         }
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            for item in positions {
+                try db.execute(
+                    sql: "UPDATE plan_exercises SET position = ? WHERE id = ?",
+                    arguments: [item.position, item.id]
+                )
+            }
+        }
     }
 
     static func removeExercise(_ id: String) async throws {
-        try await PlanRepository.deleteExercise(id)
-        try await enqueue(table: "plan_exercises", op: "delete", payload: ["id": id])
+        let mutation = LocalMutation(table: "plan_exercises", op: "delete", payload: ["id": id])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try db.execute(sql: "DELETE FROM plan_exercises WHERE id = ?", arguments: [id])
+        }
+    }
+
+    /// Inserts preconfigured exercises (templates/AI) and their sync mutations
+    /// in one transaction.
+    static func addConfiguredExercises(_ exercises: [PlanExercise]) async throws {
+        let mutations = exercises.map {
+            LocalMutation(
+                table: "plan_exercises",
+                op: "insert",
+                payload: planExercisePayload($0)
+            )
+        }
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            for exercise in exercises { try exercise.insert(db) }
+        }
     }
 
     // MARK: - Session from plan
@@ -179,11 +224,12 @@ struct PlanService {
         _ planId: String,
         startedAt: Date = Date()
     ) async throws -> WorkoutSession {
-        guard let plan = try await PlanRepository.findById(planId) else {
+        let userId = try authManager.requireUserId()
+        guard let plan = try await PlanRepository.findById(planId),
+              plan.userId == userId else {
             throw PlanServiceError.planNotFound(planId)
         }
 
-        let userId = try authManager.requireUserId()
         let sessionId = UUID().uuidString.lowercased()
         let session = WorkoutSession(
             id: sessionId,
@@ -193,28 +239,13 @@ struct PlanService {
             startedAt: startedAt
         )
 
-        try await SessionRepository.insert(session)
-        try await MutationQueueRepository.enqueue(
-            table: "workout_sessions",
-            op: "insert",
-            payload: [
-                "id": sessionId,
-                "user_id": userId,
-                "plan_id": planId,
-                "name": plan.name,
-                "started_at": ISO8601DateFormatter.shared.string(from: startedAt),
-                "ended_at": NSNull(),
-                "notes": NSNull()
-            ]
-        )
-        SyncService.flushInBackground()
-
         // Add placeholder sets for each plan exercise, respecting targetSets count.
         // Preserve superset grouping: exercises sharing a plan group_id get
         // the same session group_id so the workout UI treats them as a superset.
         let planExercises = try await PlanRepository.findExercises(planId: planId)
         var planGroupToSessionGroup: [String: String] = [:]
 
+        var placeholders: [SessionSet] = []
         for pe in planExercises {
             let sessionGroupId: String? = {
                 guard let pgid = pe.groupId else { return nil }
@@ -237,17 +268,52 @@ struct PlanService {
                     isCompleted: false,
                     groupId: sessionGroupId
                 )
-                try await SessionSetRepository.insert(placeholder)
-                try await MutationQueueRepository.enqueue(
-                    table: "session_sets",
-                    op: "insert",
-                    payload: WorkoutService.setPayload(placeholder)
-                )
+                placeholders.append(placeholder)
             }
         }
-        SyncService.flushInBackground()
+
+        let sessionMutation = LocalMutation(table: "workout_sessions", op: "insert", payload: [
+            "id": sessionId,
+            "user_id": userId,
+            "plan_id": planId,
+            "name": plan.name,
+            "started_at": ISO8601DateFormatter.shared.string(from: startedAt),
+            "ended_at": NSNull(),
+            "notes": NSNull()
+        ])
+        let setMutations = placeholders.map {
+            LocalMutation(
+                table: "session_sets",
+                op: "insert",
+                payload: WorkoutService.setPayload($0)
+            )
+        }
+        let sessionPlaceholders = placeholders
+        try await MutationQueueRepository.performAtomically(
+            mutations: [sessionMutation] + setMutations
+        ) { db in
+            try SessionRepository.insert(session, in: db)
+            for placeholder in sessionPlaceholders {
+                try SessionSetRepository.insert(placeholder, in: db)
+            }
+        }
 
         return session
+    }
+
+    private static func planExercisePayload(_ exercise: PlanExercise) -> [String: Any] {
+        [
+            "id": exercise.id,
+            "plan_id": exercise.planId,
+            "exercise_id": exercise.exerciseId,
+            "position": exercise.position,
+            "target_sets": exercise.targetSets,
+            "target_reps_min": exercise.targetRepsMin.map { $0 as Any } ?? NSNull(),
+            "target_reps_max": exercise.targetRepsMax.map { $0 as Any } ?? NSNull(),
+            "target_weight": exercise.targetWeight.map { $0 as Any } ?? NSNull(),
+            "rest_seconds": exercise.restSeconds.map { $0 as Any } ?? NSNull(),
+            "group_id": exercise.groupId.map { $0 as Any } ?? NSNull(),
+        ]
     }
 }
 

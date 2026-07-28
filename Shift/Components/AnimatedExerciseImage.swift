@@ -74,8 +74,13 @@ private struct GIFImageView: UIViewRepresentable {
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            guard let data,
+                  data.count <= 20 * 1_024 * 1_024,
+                  let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else { return }
 
             // Cache the raw data for instant re-decode
             GIFDataCache.shared.store(data, for: url)
@@ -100,10 +105,22 @@ private struct GIFImageView: UIViewRepresentable {
         guard count > 0 else { return nil }
 
         var rawFrames: [UIImage] = []
-        var rawDelays: [Double] = []
+        var totalDuration: Double = 0
+        let maximumFrameCount = 24
+        let stride = max(1, Int(ceil(Double(count) / Double(maximumFrameCount))))
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 360,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
 
-        for i in 0..<count {
-            guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+        for i in Swift.stride(from: 0, to: count, by: stride) {
+            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
+                source,
+                i,
+                thumbnailOptions as CFDictionary
+            ) else { continue }
             rawFrames.append(UIImage(cgImage: cgImage))
 
             var delay = 0.1
@@ -114,31 +131,13 @@ private struct GIFImageView: UIViewRepresentable {
                     ?? 0.1
                 if delay < 0.02 { delay = 0.1 }
             }
-            rawDelays.append(delay)
+            totalDuration += delay * Double(stride)
         }
         guard !rawFrames.isEmpty else { return nil }
 
-        // UIImage.animatedImage uses a uniform frame duration, so we approximate
-        // variable delays by duplicating frames proportionally.
-        // Use the GIF's native timing, plus a 0.8s hold on first and last.
-        let tick = 0.04  // smallest time slice
-        let holdTicks = Int(0.8 / tick)
-
-        var frames: [UIImage] = []
-
-        // Hold first frame
-        for _ in 0..<holdTicks { frames.append(rawFrames.first!) }
-
-        // Native-timed frames
-        for (i, img) in rawFrames.enumerated() {
-            let copies = max(1, Int((rawDelays[i] / tick).rounded()))
-            for _ in 0..<copies { frames.append(img) }
-        }
-
-        // Hold last frame
-        for _ in 0..<holdTicks { frames.append(rawFrames.last!) }
-
-        let totalDuration = Double(frames.count) * tick
-        return UIImage.animatedImage(with: frames, duration: totalDuration)
+        return UIImage.animatedImage(
+            with: rawFrames,
+            duration: max(totalDuration, Double(rawFrames.count) * 0.1)
+        )
     }
 }

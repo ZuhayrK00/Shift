@@ -25,6 +25,8 @@ struct ExerciseLogView: View {
     @State private var isBackfill               = false
     @State private var loading                  = true
     @State private var exerciseNote: String     = ""
+    @State private var isSaving                 = false
+    @State private var saveError: String?
 
     // MARK: - Tab enum
 
@@ -60,12 +62,25 @@ struct ExerciseLogView: View {
                     tabContent
                 }
             }
+
+            if isSaving {
+                Color.black.opacity(0.08).ignoresSafeArea()
+                ProgressView().tint(colors.accent)
+            }
         }
         .navigationTitle(exercise?.name ?? "Exercise")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadData() }
         .onDisappear {
             RestTimerManager.shared.stop()
+        }
+        .alert("Couldn't save", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "Please try again.")
         }
     }
 
@@ -116,6 +131,7 @@ struct ExerciseLogView: View {
                 weightIncrement: weightIncrement,
                 selectedSetId: selectedSetId,
                 isBackfill: isBackfill,
+                isBusy: isSaving,
                 exerciseNote: $exerciseNote,
                 weight: $weight,
                 reps: $reps,
@@ -151,39 +167,47 @@ struct ExerciseLogView: View {
         loading = true
         defer { loading = false }
 
-        async let exTask   = ExerciseService.getById(exerciseId)
-        async let sessTask = WorkoutService.getSession(sessionId)
-        async let setsTask = WorkoutService.getSetsFor(sessionId: sessionId, exerciseId: exerciseId)
+        do {
+            async let exTask = ExerciseService.getById(exerciseId)
+            async let sessTask = WorkoutService.getSession(sessionId)
+            async let setsTask = WorkoutService.getSetsFor(
+                sessionId: sessionId,
+                exerciseId: exerciseId
+            )
 
-        exercise    = (try? await exTask)   ?? nil
-        let sess    = (try? await sessTask) ?? nil
-        sessionDate = sess?.startedAt ?? Date()
+            let (loadedExercise, loadedSession, allSets) = try await (
+                exTask,
+                sessTask,
+                setsTask
+            )
+            guard let loadedExercise, let sess = loadedSession else {
+                throw ExerciseLogError.dataNotFound
+            }
+            exercise = loadedExercise
+            sessionDate = sess.startedAt
 
-        // A session is a backfill if it's already ended OR started more than 12 hours ago
-        let sessionAge = Date().timeIntervalSince(sess?.startedAt ?? Date())
-        isBackfill = sess?.endedAt != nil || sessionAge > 12 * 3600
+            let sessionAge = Date().timeIntervalSince(sess.startedAt)
+            isBackfill = sess.endedAt != nil || sessionAge > 12 * 3600
+            sets = allSets
 
-        let allSets = (try? await setsTask) ?? []
-        sets = allSets
+            if let planId = sess.planId,
+               let planWithExercises = try await PlanService.getPlanWithExercises(planId) {
+                planExercise = planWithExercises.exercises
+                    .first { $0.exercise.id == exerciseId }?
+                    .planExercise
+            }
 
-        // Load plan exercise data BEFORE seeding stepper so defaults are available
-        if let planId = sess?.planId,
-           let planWithExercises = try? await PlanService.getPlanWithExercises(planId) {
-            planExercise = planWithExercises.exercises
-                .first { $0.exercise.id == exerciseId }?
-                .planExercise
+            exerciseNote = try await WorkoutService.getExerciseNote(
+                sessionId: sessionId,
+                exerciseId: exerciseId
+            ) ?? ""
+            seedStepperValues(from: allSets)
+            restDuration = planExercise?.restSeconds
+                ?? authManager.user?.settings.restTimer.durationSeconds
+                ?? 90
+        } catch {
+            saveError = error.localizedDescription
         }
-
-        // Load exercise note
-        exerciseNote = (try? await WorkoutService.getExerciseNote(
-            sessionId: sessionId, exerciseId: exerciseId)) ?? ""
-
-        seedStepperValues(from: allSets)
-
-        // Per-exercise rest duration takes priority over global setting
-        restDuration = planExercise?.restSeconds
-            ?? authManager.user?.settings.restTimer.durationSeconds
-            ?? 90
     }
 
     private func seedStepperValues(from allSets: [SessionSet]) {
@@ -209,104 +233,124 @@ struct ExerciseLogView: View {
     private func addSet() async {
         // Don't log empty sets — require at least 1 rep
         guard Int(reps) > 0 else { return }
+        await performSave {
 
-        // If there's a placeholder (incomplete) set, complete it instead of creating a new one
-        let loggedSet: SessionSet?
-        if let placeholder = sets.first(where: { !$0.isCompleted }) {
-            try? await WorkoutService.updateSet(placeholder.id, patch: SetPatch(
-                reps: Int(reps),
-                weight: weightInKg,
-                isCompleted: true
-            ))
-            loggedSet = placeholder
-        } else {
-            let newSet = try? await WorkoutService.addSet(sessionId: sessionId, exerciseId: exerciseId)
-            if let s = newSet {
-                try? await WorkoutService.updateSet(s.id, patch: SetPatch(
+            // If there's a placeholder, complete it instead of creating another row.
+            let loggedSet: SessionSet?
+            if let placeholder = sets.first(where: { !$0.isCompleted }) {
+                try await WorkoutService.updateSet(placeholder.id, patch: SetPatch(
+                    reps: Int(reps),
+                    weight: weightInKg,
+                    isCompleted: true
+                ))
+                loggedSet = placeholder
+            } else {
+                let newSet = try await WorkoutService.addSet(
+                    sessionId: sessionId,
+                    exerciseId: exerciseId,
                     reps: Int(reps),
                     weight: weightInKg
-                ))
+                )
+                loggedSet = newSet
             }
-            loggedSet = newSet
-        }
-        // Start rest timer after logging — but not when backfilling old sessions
-        let restEnabled = authManager.user?.settings.restTimer.enabled ?? true
-        if restEnabled && !isBackfill {
-            if let gid = loggedSet?.groupId {
-                let roundDone = (try? await WorkoutService.isGroupRoundComplete(
-                    sessionId: sessionId, groupId: gid)) ?? false
-                if roundDone {
+            let restEnabled = authManager.user?.settings.restTimer.enabled ?? true
+            if restEnabled && !isBackfill {
+                if let gid = loggedSet?.groupId {
+                    let roundDone = try await WorkoutService.isGroupRoundComplete(
+                        sessionId: sessionId,
+                        groupId: gid
+                    )
+                    if roundDone {
+                        RestTimerManager.shared.start(seconds: restDuration)
+                    }
+                } else {
                     RestTimerManager.shared.start(seconds: restDuration)
                 }
-            } else {
-                RestTimerManager.shared.start(seconds: restDuration)
             }
+            try await reloadSets()
+            PhoneSessionManager.shared.sendContextToWatch()
         }
-        await reloadSets()
-        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func changeSetType(set: SessionSet, newType: SetType) async {
-        try? await WorkoutService.updateSet(set.id, patch: SetPatch(setType: newType))
-        await reloadSets()
-        PhoneSessionManager.shared.sendContextToWatch()
+        await performSave {
+            try await WorkoutService.updateSet(set.id, patch: SetPatch(setType: newType))
+            try await reloadSets()
+            PhoneSessionManager.shared.sendContextToWatch()
+        }
     }
 
     private func updateSelectedSet() async {
         guard let id = selectedSetId else { return }
-        try? await WorkoutService.updateSet(id, patch: SetPatch(
-            reps: Int(reps),
-            weight: weightInKg
-        ))
-        selectedSetId = nil
-        await reloadSets()
-        PhoneSessionManager.shared.sendContextToWatch()
+        await performSave {
+            try await WorkoutService.updateSet(id, patch: SetPatch(
+                reps: Int(reps),
+                weight: weightInKg
+            ))
+            selectedSetId = nil
+            try await reloadSets()
+            PhoneSessionManager.shared.sendContextToWatch()
+        }
     }
 
     private func deleteSelectedSet() async {
         guard let id = selectedSetId else { return }
 
-        // If this set is a plan template placeholder, revert to incomplete instead of deleting
-        if let plan = planExercise, sets.count <= plan.targetSets {
-            try? await WorkoutService.updateSet(id, patch: SetPatch(
-                reps: plan.defaultReps,
-                weight: plan.targetWeight,
-                isCompleted: false
-            ))
-        } else {
-            try? await WorkoutService.deleteSet(id)
+        await performSave {
+            if let plan = planExercise, sets.count <= plan.targetSets {
+                try await WorkoutService.updateSet(id, patch: SetPatch(
+                    reps: plan.defaultReps,
+                    weight: plan.targetWeight,
+                    isCompleted: false
+                ))
+            } else {
+                try await WorkoutService.deleteSet(id)
+            }
+            selectedSetId = nil
+            try await reloadSets()
+            PhoneSessionManager.shared.sendContextToWatch()
         }
-
-        selectedSetId = nil
-        await reloadSets()
-        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     private func saveNote() async {
         let trimmed = exerciseNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        try? await WorkoutService.setExerciseNote(
-            sessionId: sessionId, exerciseId: exerciseId, note: trimmed.isEmpty ? nil : trimmed
+        await performSave {
+            try await WorkoutService.setExerciseNote(
+                sessionId: sessionId,
+                exerciseId: exerciseId,
+                note: trimmed.isEmpty ? nil : trimmed
+            )
+        }
+    }
+
+    private func reloadSets() async throws {
+        try await WorkoutService.normalizeSetOrder(
+            sessionId: sessionId,
+            exerciseId: exerciseId
+        )
+        sets = try await WorkoutService.getSetsFor(
+            sessionId: sessionId,
+            exerciseId: exerciseId
         )
     }
 
-    private func reloadSets() async {
-        let allSets = (try? await WorkoutService.getSetsFor(
-            sessionId: sessionId, exerciseId: exerciseId)) ?? []
-
-        // Renumber: completed first, then placeholders, sequential from 1
-        let completed = allSets.filter { $0.isCompleted }
-        let placeholders = allSets.filter { !$0.isCompleted }
-        var ordered = completed + placeholders
-
-        for i in ordered.indices {
-            let correctNumber = i + 1
-            if ordered[i].setNumber != correctNumber {
-                try? await WorkoutService.updateSet(ordered[i].id, patch: SetPatch(setNumber: correctNumber))
-                ordered[i].setNumber = correctNumber
-            }
+    private func performSave(_ operation: () async throws -> Void) async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await operation()
+        } catch {
+            saveError = error.localizedDescription
         }
+    }
+}
 
-        sets = ordered
+private enum ExerciseLogError: LocalizedError {
+    case dataNotFound
+
+    var errorDescription: String? {
+        "This exercise log could not be loaded for the signed-in account."
     }
 }
 

@@ -445,8 +445,12 @@ struct MeasurementDetailView: View {
             Button("Delete", role: .destructive) {
                 if let entry = entryToDelete {
                     Task {
-                        try? await ProgressService.deleteMeasurement(entry.id)
-                        await loadData()
+                        do {
+                            try await ProgressService.deleteMeasurement(entry.id)
+                            await loadData()
+                        } catch {
+                            AppErrorCenter.shared.present(error)
+                        }
                     }
                 }
             }

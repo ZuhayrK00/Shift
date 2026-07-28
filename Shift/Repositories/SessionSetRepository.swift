@@ -5,7 +5,8 @@ import Foundation
 
 struct SetPatch: Sendable {
     var reps: Int?
-    var weight: Double?
+    /// Outer nil means "leave unchanged"; inner nil means "clear the weight".
+    var weight: Double??
     var isCompleted: Bool?
     var setNumber: Int?
     var setType: SetType?
@@ -32,10 +33,19 @@ struct SessionSetRepository {
     // MARK: - Reads
 
     static func findForSession(_ sessionId: String) async throws -> [SessionSet] {
-        try await AppDatabase.shared.dbPool.read { db in
+        return try await AppDatabase.shared.dbPool.read { db in
             try SessionSet
                 .filter(Column("session_id") == sessionId && Column("is_completed") == 1)
                 .order(Column("exercise_id"), Column("set_number"))
+                .fetchAll(db)
+        }
+    }
+
+    static func findAllForSession(_ sessionId: String) async throws -> [SessionSet] {
+        try await AppDatabase.shared.dbPool.read { db in
+            try SessionSet
+                .filter(Column("session_id") == sessionId)
+                .order(Column("set_number").asc)
                 .fetchAll(db)
         }
     }
@@ -186,7 +196,8 @@ struct SessionSetRepository {
     static func findHistory(
         exerciseId: String
     ) async throws -> [(set: SessionSet, sessionStartedAt: Date)] {
-        try await AppDatabase.shared.dbPool.read { db in
+        guard let userId = authManager.currentUserId else { return [] }
+        return try await AppDatabase.shared.dbPool.read { db in
             let sql = """
                 SELECT s.*, ws.started_at AS session_started_at
                 FROM session_sets s
@@ -194,9 +205,10 @@ struct SessionSetRepository {
                 WHERE s.exercise_id = ?
                   AND s.is_completed = 1
                   AND ws.ended_at IS NOT NULL
+                  AND ws.user_id = ?
                 ORDER BY ws.started_at DESC, s.set_number ASC
                 """
-            let rows = try Row.fetchAll(db, sql: sql, arguments: [exerciseId])
+            let rows = try Row.fetchAll(db, sql: sql, arguments: [exerciseId, userId])
             return try rows.map { row in
                 let set = try SessionSet(row: row)
                 let startedAtString: String = row["session_started_at"] ?? ""
@@ -258,13 +270,6 @@ struct SessionSetRepository {
     /// Sets the exercise note on the first set for the given exercise in a session.
     static func setExerciseNote(sessionId: String, exerciseId: String, note: String?) async throws -> String? {
         try await AppDatabase.shared.dbPool.write { db in
-            // Clear any existing notes on all sets for this exercise
-            try db.execute(
-                sql: "UPDATE session_sets SET notes = NULL WHERE session_id = ? AND exercise_id = ?",
-                arguments: [sessionId, exerciseId]
-            )
-            // Set the note on the first set (by set_number)
-            guard let trimmed = note, !trimmed.isEmpty else { return nil }
             let row = try Row.fetchOne(
                 db,
                 sql: """
@@ -276,6 +281,14 @@ struct SessionSetRepository {
                 arguments: [sessionId, exerciseId]
             )
             guard let setId: String = row?["id"] else { return nil }
+
+            // Clear any existing notes on all sets for this exercise
+            try db.execute(
+                sql: "UPDATE session_sets SET notes = NULL WHERE session_id = ? AND exercise_id = ?",
+                arguments: [sessionId, exerciseId]
+            )
+            // Set the note on the first set (by set_number)
+            guard let trimmed = note, !trimmed.isEmpty else { return setId }
             try db.execute(
                 sql: "UPDATE session_sets SET notes = ? WHERE id = ?",
                 arguments: [trimmed, setId]
@@ -288,8 +301,12 @@ struct SessionSetRepository {
 
     static func insert(_ set: SessionSet) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            try set.insert(db)
+            try insert(set, in: db)
         }
+    }
+
+    static func insert(_ set: SessionSet, in db: Database) throws {
+        try set.insert(db)
     }
 
     /// Applies a partial update from SetPatch. Returns the completedAt timestamp
@@ -297,55 +314,64 @@ struct SessionSetRepository {
     @discardableResult
     static func update(_ setId: String, patch: SetPatch) async throws -> Date? {
         try await AppDatabase.shared.dbPool.write { db in
-            var setClauses: [String] = []
-            var args: [DatabaseValue] = []
+            try update(setId, patch: patch, in: db)
+        }
+    }
 
-            if let reps = patch.reps {
-                setClauses.append("reps = ?")
-                args.append(reps.databaseValue)
-            }
-            if let weight = patch.weight {
+    @discardableResult
+    static func update(_ setId: String, patch: SetPatch, in db: Database) throws -> Date? {
+        var setClauses: [String] = []
+        var args: [DatabaseValue] = []
+
+        if let reps = patch.reps {
+            setClauses.append("reps = ?")
+            args.append(reps.databaseValue)
+        }
+        if let weightUpdate = patch.weight {
+            if let weight = weightUpdate {
                 setClauses.append("weight = ?")
                 args.append(weight.databaseValue)
+            } else {
+                setClauses.append("weight = NULL")
             }
-
-            var completedAt: Date? = nil
-            if let isCompleted = patch.isCompleted {
-                setClauses.append("is_completed = ?")
-                args.append((isCompleted ? 1 : 0).databaseValue)
-                if isCompleted {
-                    let now = Date()
-                    completedAt = now
-                    setClauses.append("completed_at = ?")
-                    args.append(ISO8601DateFormatter.shared.string(from: now).databaseValue)
-                } else {
-                    setClauses.append("completed_at = NULL")
-                }
-            }
-            if let setNumber = patch.setNumber {
-                setClauses.append("set_number = ?")
-                args.append(setNumber.databaseValue)
-            }
-            if let setType = patch.setType {
-                setClauses.append("set_type = ?")
-                args.append(setType.rawValue.databaseValue)
-            }
-            if let notes = patch.notes {
-                if notes.isEmpty {
-                    setClauses.append("notes = NULL")
-                } else {
-                    setClauses.append("notes = ?")
-                    args.append(notes.databaseValue)
-                }
-            }
-
-            guard !setClauses.isEmpty else { return nil }
-
-            let sql = "UPDATE session_sets SET \(setClauses.joined(separator: ", ")) WHERE id = ?"
-            args.append(setId.databaseValue)
-            try db.execute(sql: sql, arguments: StatementArguments(args))
-            return completedAt
         }
+
+        var completedAt: Date? = nil
+        if let isCompleted = patch.isCompleted {
+            setClauses.append("is_completed = ?")
+            args.append((isCompleted ? 1 : 0).databaseValue)
+            if isCompleted {
+                let now = Date()
+                completedAt = now
+                setClauses.append("completed_at = ?")
+                args.append(ISO8601DateFormatter.shared.string(from: now).databaseValue)
+            } else {
+                setClauses.append("completed_at = NULL")
+            }
+        }
+        if let setNumber = patch.setNumber {
+            setClauses.append("set_number = ?")
+            args.append(setNumber.databaseValue)
+        }
+        if let setType = patch.setType {
+            setClauses.append("set_type = ?")
+            args.append(setType.rawValue.databaseValue)
+        }
+        if let notes = patch.notes {
+            if notes.isEmpty {
+                setClauses.append("notes = NULL")
+            } else {
+                setClauses.append("notes = ?")
+                args.append(notes.databaseValue)
+            }
+        }
+
+        guard !setClauses.isEmpty else { return nil }
+
+        let sql = "UPDATE session_sets SET \(setClauses.joined(separator: ", ")) WHERE id = ?"
+        args.append(setId.databaseValue)
+        try db.execute(sql: sql, arguments: StatementArguments(args))
+        return completedAt
     }
 
     static func setCompletedAt(_ setId: String, date: Date) async throws {
@@ -359,20 +385,28 @@ struct SessionSetRepository {
 
     static func setGroupId(_ setId: String, groupId: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            try db.execute(
-                sql: "UPDATE session_sets SET group_id = ? WHERE id = ?",
-                arguments: [groupId, setId]
-            )
+            try setGroupId(setId, groupId: groupId, in: db)
         }
+    }
+
+    static func setGroupId(_ setId: String, groupId: String, in db: Database) throws {
+        try db.execute(
+            sql: "UPDATE session_sets SET group_id = ? WHERE id = ?",
+            arguments: [groupId, setId]
+        )
     }
 
     static func delete(_ setId: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
-            try db.execute(
-                sql: "DELETE FROM session_sets WHERE id = ?",
-                arguments: [setId]
-            )
+            try delete(setId, in: db)
         }
+    }
+
+    static func delete(_ setId: String, in db: Database) throws {
+        try db.execute(
+            sql: "DELETE FROM session_sets WHERE id = ?",
+            arguments: [setId]
+        )
     }
 
     static func deleteForSession(_ sessionId: String) async throws {

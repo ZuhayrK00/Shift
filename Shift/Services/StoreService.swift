@@ -92,7 +92,7 @@ final class StoreService {
 
     // MARK: - Entitlement check
 
-    func updatePurchasedProducts() async {
+    func updatePurchasedProducts(syncWatch: Bool = true) async {
         let wasPro = isPro
         var purchased: Set<String> = []
 
@@ -102,8 +102,9 @@ final class StoreService {
             }
         }
 
+        let purchasedIDs = purchased
         await MainActor.run {
-            self.purchasedProductIDs = purchased
+            self.purchasedProductIDs = purchasedIDs
         }
 
         // Sync Pro status to App Group so widgets/complications can check
@@ -115,7 +116,9 @@ final class StoreService {
         }
 
         // Sync Pro status to watch
-        PhoneSessionManager.shared.sendContextToWatch()
+        if syncWatch {
+            PhoneSessionManager.shared.sendContextToWatch()
+        }
     }
 
     /// Resets cached state on sign out so another user doesn't inherit Pro status.

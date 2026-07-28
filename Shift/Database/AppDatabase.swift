@@ -13,9 +13,42 @@ final class AppDatabase {
         do {
             return try AppDatabase()
         } catch {
-            fatalError("Failed to open database: \(error)")
+            // Preserve an unreadable database for diagnostics/recovery, then
+            // reopen a clean store so a corrupt file does not crash-loop the app.
+            guard AppDatabase.isRecoverableCorruption(error) else {
+                fatalError("Failed to open or migrate the local database: \(error)")
+            }
+            do {
+                let fileManager = FileManager.default
+                let documentsURL = try fileManager.url(
+                    for: .documentDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                )
+                let databaseURL = documentsURL.appendingPathComponent("shift.db")
+                let stamp = Int(Date().timeIntervalSince1970)
+                for suffix in ["", "-wal", "-shm"] {
+                    let source = URL(fileURLWithPath: databaseURL.path + suffix)
+                    guard fileManager.fileExists(atPath: source.path) else { continue }
+                    let destination = documentsURL.appendingPathComponent(
+                        "shift-corrupt-\(stamp).db\(suffix)"
+                    )
+                    try fileManager.moveItem(at: source, to: destination)
+                }
+                return try AppDatabase()
+            } catch {
+                fatalError("Failed to recover the local database: \(error)")
+            }
         }
     }()
+
+    private static func isRecoverableCorruption(_ error: Error) -> Bool {
+        let message = String(describing: error).lowercased()
+        return message.contains("database disk image is malformed")
+            || message.contains("file is not a database")
+            || message.contains("database is malformed")
+    }
 
     // MARK: Storage
 
@@ -23,15 +56,20 @@ final class AppDatabase {
 
     // MARK: Init
 
-    init() throws {
+    init(databaseURL suppliedDatabaseURL: URL? = nil) throws {
         let fileManager = FileManager.default
-        let documentsURL = try fileManager.url(
-            for: .documentDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let databaseURL = documentsURL.appendingPathComponent("shift.db")
+        let databaseURL: URL
+        if let suppliedDatabaseURL {
+            databaseURL = suppliedDatabaseURL
+        } else {
+            let documentsURL = try fileManager.url(
+                for: .documentDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            databaseURL = documentsURL.appendingPathComponent("shift.db")
+        }
 
         // GRDB writer config
         var config = Configuration()
@@ -49,12 +87,6 @@ final class AppDatabase {
 
     private var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
-
-        // Wipe the database on schema changes during development.
-        // Remove this line once real users exist and replace with proper migrations.
-        #if DEBUG
-        migrator.eraseDatabaseOnSchemaChange = true
-        #endif
 
         migrator.registerMigration("createTables") { db in
             // muscle_groups
@@ -314,6 +346,32 @@ final class AppDatabase {
 
         migrator.registerMigration("addProfileHeight") { _ in
             // Height column removed — kept as no-op for databases that already ran this
+        }
+
+        migrator.registerMigration("hardenMutationQueue") { db in
+            try db.alter(table: "mutation_queue") { table in
+                table.add(column: "user_id", .text)
+                table.add(column: "attempt_count", .integer).notNull().defaults(to: 0)
+                table.add(column: "last_error", .text)
+                table.add(column: "next_attempt_at", .text)
+            }
+            try db.execute(sql: """
+                UPDATE mutation_queue
+                SET user_id = CASE
+                    WHEN json_valid(payload) THEN COALESCE(
+                        json_extract(payload, '$.user_id'),
+                        json_extract(payload, '$.created_by'),
+                        CASE WHEN table_name = 'profiles'
+                            THEN json_extract(payload, '$.id')
+                        END
+                    )
+                    ELSE NULL
+                END
+            """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_mutation_queue_user_pending
+                    ON mutation_queue (user_id, next_attempt_at, id)
+            """)
         }
 
         return migrator

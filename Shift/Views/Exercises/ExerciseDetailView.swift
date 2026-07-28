@@ -74,8 +74,12 @@ struct ExerciseDetailView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
                 Task {
-                    try? await ExerciseService.deleteExercise(exercise.id)
-                    dismiss()
+                    do {
+                        try await ExerciseService.deleteExercise(exercise.id)
+                        dismiss()
+                    } catch {
+                        AppErrorCenter.shared.present(error)
+                    }
                 }
             }
         } message: {

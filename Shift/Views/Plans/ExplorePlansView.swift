@@ -418,6 +418,7 @@ struct TemplateDetailView: View {
 
             var position = 0
             var groupTagToId: [String: String] = [:]
+            var configuredExercises: [PlanExercise] = []
 
             for templateEx in day.exercises {
                 guard let exercise = exerciseMap[templateEx.slug] else { continue }
@@ -442,26 +443,10 @@ struct TemplateDetailView: View {
                     restSeconds: templateEx.restSeconds,
                     groupId: groupId
                 )
-                try await PlanRepository.insertExercise(pe)
-                try await MutationQueueRepository.enqueue(
-                    table: "plan_exercises",
-                    op: "insert",
-                    payload: [
-                        "id": peId,
-                        "plan_id": plan.id,
-                        "exercise_id": exercise.id,
-                        "position": position,
-                        "target_sets": templateEx.sets,
-                        "target_reps_min": templateEx.repsMin,
-                        "target_reps_max": templateEx.repsMax as Any,
-                        "target_weight": NSNull(),
-                        "rest_seconds": templateEx.restSeconds,
-                        "group_id": groupId.map { $0 as Any } ?? NSNull(),
-                    ]
-                )
+                configuredExercises.append(pe)
                 position += 1
             }
-            SyncService.flushInBackground()
+            try await PlanService.addConfiguredExercises(configuredExercises)
             PhoneSessionManager.shared.sendContextToWatch()
         } catch {
             print("Failed to add plan day: \(error)")

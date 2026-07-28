@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import Supabase
+@preconcurrency import GRDB
 
 private let logger = Logger(subsystem: "com.shift.app", category: "ProfileService")
 
@@ -48,9 +49,6 @@ struct ProfileService {
         if let settings = patch.settings                 { profile.settings           = settings }
         profile.updatedAt = Date()
 
-        // Persist locally
-        try await ProfileRepository.upsert(profile)
-
         // Build remote payload
         var settingsDict: [String: Any]?
         do {
@@ -71,12 +69,11 @@ struct ProfileService {
         if let url  = profile.profilePictureUrl  { payload["profile_picture_url"] = url   }
         if let s    = settingsDict               { payload["settings"]            = s     }
 
-        try await MutationQueueRepository.enqueue(
-            table: "profiles",
-            op: "update",
-            payload: payload
-        )
-        SyncService.flushInBackground()
+        let mutation = LocalMutation(table: "profiles", op: "update", payload: payload)
+        let profileToSave = profile
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try profileToSave.save(db)
+        }
 
         return profile
     }

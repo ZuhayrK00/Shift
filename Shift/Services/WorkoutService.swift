@@ -1,19 +1,12 @@
 import Foundation
 import os.log
+@preconcurrency import GRDB
 
 private let logger = Logger(subsystem: "com.shift.app", category: "WorkoutService")
 
 // MARK: - WorkoutService
 
 struct WorkoutService {
-
-    // MARK: - Internal enqueue helper
-
-    /// Appends a mutation to the local queue and kicks off a background flush.
-    private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
-        try await MutationQueueRepository.enqueue(table: table, op: op, payload: payload)
-        SyncService.flushInBackground()
-    }
 
     // MARK: - Sessions
 
@@ -31,8 +24,7 @@ struct WorkoutService {
             name: name,
             startedAt: startedAt
         )
-        try await SessionRepository.insert(session)
-        try await enqueue(table: "workout_sessions", op: "insert", payload: [
+        let mutation = LocalMutation(table: "workout_sessions", op: "insert", payload: [
             "id": id,
             "user_id": userId,
             "plan_id": NSNull(),
@@ -41,12 +33,18 @@ struct WorkoutService {
             "ended_at": NSNull(),
             "notes": NSNull()
         ])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try SessionRepository.insert(session, in: db)
+        }
         NotificationManager.scheduleIdleWorkoutNotification(sessionId: id)
         return session
     }
 
     static func getSession(_ id: String) async throws -> WorkoutSession? {
-        try await SessionRepository.findById(id)
+        let userId = try authManager.requireUserId()
+        guard let session = try await SessionRepository.findById(id),
+              session.userId == userId else { return nil }
+        return session
     }
 
     static func getLatestInProgress() async throws -> WorkoutSession? {
@@ -82,11 +80,13 @@ struct WorkoutService {
             endedAt = Date()
         }
 
-        try await SessionRepository.setEndedAt(sessionId, endedAt)
-        try await enqueue(table: "workout_sessions", op: "update", payload: [
+        let mutation = LocalMutation(table: "workout_sessions", op: "update", payload: [
             "id": sessionId,
             "ended_at": ISO8601DateFormatter.shared.string(from: endedAt)
         ])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try SessionRepository.setEndedAt(sessionId, endedAt, in: db)
+        }
 
         // Check exercise goals for completion and reschedule notifications
         do {
@@ -124,22 +124,17 @@ struct WorkoutService {
     static func resumeSession(_ sessionId: String) async throws {
         // Save the current endedAt as originalEndedAt before clearing,
         // so we can restore it when re-finishing instead of recalculating.
-        if let session = try await SessionRepository.findById(sessionId),
-           let endedAt = session.endedAt {
-            let preserve = session.originalEndedAt ?? endedAt
-            try await SessionRepository.setOriginalEndedAt(sessionId, preserve)
-        }
-
-        // Clear ended_at locally first - if this fails, don't enqueue or schedule
-        try await SessionRepository.setEndedAt(sessionId, nil)
-        do {
-            try await enqueue(table: "workout_sessions", op: "update", payload: [
-                "id": sessionId,
-                "ended_at": NSNull() as Any
-            ])
-        } catch {
-            logger.error("Failed to enqueue session resume: \(error.localizedDescription)")
-            throw error
+        let session = try await SessionRepository.findById(sessionId)
+        let mutation = LocalMutation(table: "workout_sessions", op: "update", payload: [
+            "id": sessionId,
+            "ended_at": NSNull() as Any
+        ])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            if let endedAt = session?.endedAt {
+                let preserve = session?.originalEndedAt ?? endedAt
+                try SessionRepository.setOriginalEndedAt(sessionId, preserve, in: db)
+            }
+            try SessionRepository.setEndedAt(sessionId, nil, in: db)
         }
         NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
     }
@@ -148,13 +143,14 @@ struct WorkoutService {
         NotificationManager.cancelIdleWorkoutNotification()
         // Delete all sets and enqueue deletes for each
         let setIds = try await SessionSetRepository.findSetIds(sessionId: sessionId)
-        for setId in setIds {
-            try await SessionSetRepository.delete(setId)
-            try await enqueue(table: "session_sets", op: "delete", payload: ["id": setId])
+        let mutations = setIds.map {
+            LocalMutation(table: "session_sets", op: "delete", payload: ["id": $0])
+        } + [
+            LocalMutation(table: "workout_sessions", op: "delete", payload: ["id": sessionId])
+        ]
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            try SessionRepository.delete(sessionId, in: db)
         }
-        // Delete the session itself
-        try await SessionRepository.delete(sessionId)
-        try await enqueue(table: "workout_sessions", op: "delete", payload: ["id": sessionId])
 
         // Immediately flush so the delete reaches Supabase before the app
         // is killed — prevents pullUserData from re-inserting the session.
@@ -176,15 +172,25 @@ struct WorkoutService {
             sessionId: sessionId,
             exerciseId: exerciseId
         )
-        for s in sets {
-            try await SessionSetRepository.delete(s.id)
-            try await enqueue(table: "session_sets", op: "delete", payload: ["id": s.id])
+        let mutations = sets.map {
+            LocalMutation(table: "session_sets", op: "delete", payload: ["id": $0.id])
+        }
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            for set in sets {
+                try SessionSetRepository.delete(set.id, in: db)
+            }
         }
     }
 
     // MARK: - Sets
 
-    static func addSet(sessionId: String, exerciseId: String) async throws -> SessionSet {
+    static func addSet(
+        sessionId: String,
+        exerciseId: String,
+        reps requestedReps: Int? = nil,
+        weight requestedWeight: Double?? = nil,
+        setType requestedSetType: SetType? = nil
+    ) async throws -> SessionSet {
         guard let userId = try? authManager.requireUserId() else {
             throw WorkoutServiceError.notAuthenticated
         }
@@ -199,40 +205,62 @@ struct WorkoutService {
 
         // Preserve groupId from completed sets first, then fall back to placeholders
         let inheritedGroupId = lastCompleted?.groupId ?? existing.first?.groupId
+        let resolvedReps = requestedReps ?? lastCompleted?.reps ?? 0
+        let resolvedWeight = requestedWeight ?? lastCompleted?.weight
+        let resolvedSetType = requestedSetType ?? lastCompleted?.setType ?? .normal
 
         let nextNumber = (existing.filter { $0.isCompleted }.count) + 1
 
         // If there's a placeholder, complete it in-place to preserve rowid ordering
         if let placeholder = placeholders.first {
             let patch = SetPatch(
-                reps: lastCompleted?.reps ?? 0,
-                weight: lastCompleted?.weight,
+                reps: resolvedReps,
+                weight: resolvedWeight,
                 isCompleted: true,
                 setNumber: nextNumber,
-                setType: lastCompleted?.setType ?? .normal
+                setType: resolvedSetType
             )
-            // update() already sets completed_at and returns the timestamp
-            let completedAt = try await SessionSetRepository.update(placeholder.id, patch: patch)
-            if placeholder.groupId == nil, let gid = inheritedGroupId {
-                try await SessionSetRepository.setGroupId(placeholder.id, groupId: gid)
+            let completedAt = try await AppDatabase.shared.dbPool.write { db in
+                let completedAt = try SessionSetRepository.update(placeholder.id, patch: patch, in: db)
+                if placeholder.groupId == nil, let gid = inheritedGroupId {
+                    try SessionSetRepository.setGroupId(placeholder.id, groupId: gid, in: db)
+                }
+
+                var completed = placeholder
+                completed.setNumber = nextNumber
+                completed.reps = resolvedReps
+                completed.weight = resolvedWeight
+                completed.isCompleted = true
+                completed.completedAt = completedAt
+                completed.setType = resolvedSetType
+                completed.groupId = placeholder.groupId ?? inheritedGroupId
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: setPayload(completed),
+                    in: db
+                )
+                for extra in placeholders.dropFirst() {
+                    try SessionSetRepository.delete(extra.id, in: db)
+                    try MutationQueueRepository.enqueue(
+                        table: "session_sets",
+                        op: "delete",
+                        payload: ["id": extra.id],
+                        in: db
+                    )
+                }
+                return completedAt
             }
+            SyncService.flushInBackground()
 
             var completedSet = placeholder
             completedSet.setNumber = nextNumber
-            completedSet.reps = lastCompleted?.reps ?? 0
-            completedSet.weight = lastCompleted?.weight
+            completedSet.reps = resolvedReps
+            completedSet.weight = resolvedWeight
             completedSet.isCompleted = true
             completedSet.completedAt = completedAt
-            completedSet.setType = lastCompleted?.setType ?? .normal
+            completedSet.setType = resolvedSetType
             completedSet.groupId = placeholder.groupId ?? inheritedGroupId
-
-            try await enqueue(table: "session_sets", op: "update", payload: setPayload(completedSet))
-
-            // Remove remaining extra placeholders (keep only the first one that we completed)
-            for extra in placeholders.dropFirst() {
-                try await SessionSetRepository.delete(extra.id)
-                try await enqueue(table: "session_sets", op: "delete", payload: ["id": extra.id])
-            }
 
             NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
             return completedSet
@@ -245,16 +273,22 @@ struct WorkoutService {
             sessionId: sessionId,
             exerciseId: exerciseId,
             setNumber: nextNumber,
-            reps: lastCompleted?.reps ?? 0,
-            weight: lastCompleted?.weight,
+            reps: resolvedReps,
+            weight: resolvedWeight,
             isCompleted: true,
             completedAt: Date(),
-            setType: lastCompleted?.setType ?? .normal,
+            setType: resolvedSetType,
             groupId: inheritedGroupId
         )
 
-        try await SessionSetRepository.insert(newSet)
-        try await enqueue(table: "session_sets", op: "insert", payload: setPayload(newSet))
+        let mutation = LocalMutation(
+            table: "session_sets",
+            op: "insert",
+            payload: setPayload(newSet)
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try SessionSetRepository.insert(newSet, in: db)
+        }
 
         NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
         return newSet
@@ -267,53 +301,72 @@ struct WorkoutService {
     ) async throws {
         let groupId: String? = asGroup ? UUID().uuidString.lowercased() : nil
 
-        for exerciseId in exerciseIds {
-            // Position placeholder after any existing sets
-            let existing = try await SessionSetRepository.findForExercise(
-                sessionId: sessionId,
-                exerciseId: exerciseId
-            )
-            let nextNumber = existing.count + 1
-
-            let id = UUID().uuidString.lowercased()
-            let placeholder = SessionSet(
-                id: id,
-                sessionId: sessionId,
-                exerciseId: exerciseId,
-                setNumber: nextNumber,
-                reps: 0,
-                weight: nil,
-                isCompleted: false,
-                completedAt: nil,
-                setType: .normal,
-                groupId: groupId
-            )
-            try await SessionSetRepository.insert(placeholder)
-            try await enqueue(table: "session_sets", op: "insert", payload: setPayload(placeholder))
+        try await AppDatabase.shared.dbPool.write { db in
+            for exerciseId in exerciseIds {
+                let nextNumber = (try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT COUNT(*) FROM session_sets
+                        WHERE session_id = ? AND exercise_id = ?
+                        """,
+                    arguments: [sessionId, exerciseId]
+                ) ?? 0) + 1
+                let placeholder = SessionSet(
+                    id: UUID().uuidString.lowercased(),
+                    sessionId: sessionId,
+                    exerciseId: exerciseId,
+                    setNumber: nextNumber,
+                    reps: 0,
+                    weight: nil,
+                    isCompleted: false,
+                    completedAt: nil,
+                    setType: .normal,
+                    groupId: groupId
+                )
+                try SessionSetRepository.insert(placeholder, in: db)
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "insert",
+                    payload: setPayload(placeholder),
+                    in: db
+                )
+            }
         }
+        SyncService.flushInBackground()
     }
 
     static func updateSet(_ setId: String, patch: SetPatch) async throws {
-        let completedAt = try await SessionSetRepository.update(setId, patch: patch)
-
         var remote: [String: Any] = ["id": setId]
         if let reps = patch.reps { remote["reps"] = reps }
-        if let weight = patch.weight { remote["weight"] = weight }
-        if let isCompleted = patch.isCompleted {
-            remote["is_completed"] = isCompleted
-            if isCompleted, let completedAt {
-                remote["completed_at"] = ISO8601DateFormatter.shared.string(from: completedAt)
-            } else if !isCompleted {
-                remote["completed_at"] = NSNull()
-            }
+        if let weightUpdate = patch.weight {
+            remote["weight"] = weightUpdate.map { $0 as Any } ?? NSNull()
         }
         if let setNumber = patch.setNumber { remote["set_number"] = setNumber }
         if let setType = patch.setType { remote["set_type"] = setType.rawValue }
         if let notes = patch.notes {
             remote["notes"] = notes.isEmpty ? NSNull() : notes as Any
         }
+        let baseRemote = remote
 
-        try await enqueue(table: "session_sets", op: "update", payload: remote)
+        try await AppDatabase.shared.dbPool.write { db in
+            let completedAt = try SessionSetRepository.update(setId, patch: patch, in: db)
+            var queuedPayload = baseRemote
+            if let isCompleted = patch.isCompleted {
+                queuedPayload["is_completed"] = isCompleted
+                if isCompleted, let completedAt {
+                    queuedPayload["completed_at"] = ISO8601DateFormatter.shared.string(from: completedAt)
+                } else if !isCompleted {
+                    queuedPayload["completed_at"] = NSNull()
+                }
+            }
+            try MutationQueueRepository.enqueue(
+                table: "session_sets",
+                op: "update",
+                payload: queuedPayload,
+                in: db
+            )
+        }
+        SyncService.flushInBackground()
 
         // Reset idle workout timer
         if let ownership = try? await SessionSetRepository.findOwnership(setId) {
@@ -324,9 +377,73 @@ struct WorkoutService {
     static func deleteSet(_ setId: String) async throws {
         guard let ownership = try await SessionSetRepository.findOwnership(setId) else { return }
 
-        try await SessionSetRepository.delete(setId)
-        try await enqueue(table: "session_sets", op: "delete", payload: ["id": setId])
-        try await renumberSets(sessionId: ownership.sessionId, exerciseId: ownership.exerciseId)
+        try await AppDatabase.shared.dbPool.write { db in
+            try SessionSetRepository.delete(setId, in: db)
+            try MutationQueueRepository.enqueue(
+                table: "session_sets",
+                op: "delete",
+                payload: ["id": setId],
+                in: db
+            )
+
+            let remaining = try SessionSet
+                .filter(
+                    Column("session_id") == ownership.sessionId
+                        && Column("exercise_id") == ownership.exerciseId
+                        && Column("is_completed") == true
+                )
+                .order(Column("set_number").asc)
+                .fetchAll(db)
+            for (index, set) in remaining.enumerated() {
+                let newNumber = index + 1
+                guard set.setNumber != newNumber else { continue }
+                try SessionSetRepository.update(
+                    set.id,
+                    patch: SetPatch(setNumber: newNumber),
+                    in: db
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: ["id": set.id, "set_number": newNumber],
+                    in: db
+                )
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
+    static func normalizeSetOrder(sessionId: String, exerciseId: String) async throws {
+        let changed = try await AppDatabase.shared.dbPool.write { db in
+            var didChange = false
+            let sets = try SessionSet.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM session_sets
+                    WHERE session_id = ? AND exercise_id = ?
+                    ORDER BY is_completed DESC, set_number ASC, rowid ASC
+                    """,
+                arguments: [sessionId, exerciseId]
+            )
+            for (index, set) in sets.enumerated() {
+                let setNumber = index + 1
+                guard set.setNumber != setNumber else { continue }
+                didChange = true
+                try SessionSetRepository.update(
+                    set.id,
+                    patch: SetPatch(setNumber: setNumber),
+                    in: db
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: ["id": set.id, "set_number": setNumber],
+                    in: db
+                )
+            }
+            return didChange
+        }
+        if changed { SyncService.flushInBackground() }
     }
 
     // MARK: - Exercise notes
@@ -336,16 +453,38 @@ struct WorkoutService {
     }
 
     static func setExerciseNote(sessionId: String, exerciseId: String, note: String?) async throws {
-        let setId = try await SessionSetRepository.setExerciseNote(
-            sessionId: sessionId, exerciseId: exerciseId, note: note
-        )
-        // Sync the note to Supabase on the set that holds it
-        if let setId {
-            try await enqueue(table: "session_sets", op: "update", payload: [
-                "id": setId,
-                "notes": (note ?? "") as Any
-            ])
+        try await AppDatabase.shared.dbPool.write { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT id FROM session_sets
+                    WHERE session_id = ? AND exercise_id = ?
+                    ORDER BY set_number ASC LIMIT 1
+                    """,
+                arguments: [sessionId, exerciseId]
+            )
+            guard let setId: String = row?["id"] else { return }
+            try db.execute(
+                sql: "UPDATE session_sets SET notes = NULL WHERE session_id = ? AND exercise_id = ?",
+                arguments: [sessionId, exerciseId]
+            )
+            if let note, !note.isEmpty {
+                try db.execute(
+                    sql: "UPDATE session_sets SET notes = ? WHERE id = ?",
+                    arguments: [note, setId]
+                )
+            }
+            try MutationQueueRepository.enqueue(
+                table: "session_sets",
+                op: "update",
+                payload: [
+                    "id": setId,
+                    "notes": note.map { $0 as Any } ?? NSNull()
+                ],
+                in: db
+            )
         }
+        SyncService.flushInBackground()
     }
 
     // MARK: - Calendar summaries
@@ -397,23 +536,6 @@ struct WorkoutService {
     }
 
     // MARK: - Private helpers
-
-    private static func renumberSets(sessionId: String, exerciseId: String) async throws {
-        let remaining = try await SessionSetRepository.findForExercise(
-            sessionId: sessionId,
-            exerciseId: exerciseId
-        )
-        let completed = remaining.filter { $0.isCompleted }
-        for (index, set) in completed.enumerated() {
-            let newNumber = index + 1
-            guard set.setNumber != newNumber else { continue }
-            try await SessionSetRepository.update(set.id, patch: SetPatch(setNumber: newNumber))
-            try await enqueue(table: "session_sets", op: "update", payload: [
-                "id": set.id,
-                "set_number": newNumber
-            ])
-        }
-    }
 
     private static func buildSummary(_ session: WorkoutSession) async throws -> SessionSummary {
         let exerciseSummaries = try await SessionRepository.findExerciseSummaries(

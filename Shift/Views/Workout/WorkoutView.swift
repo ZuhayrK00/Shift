@@ -38,6 +38,8 @@ struct WorkoutView: View {
     @State private var sessionAvgHeartRate: Double?
     @State private var shareImage: UIImage?
     @State private var showShareSheet = false
+    @State private var isPerformingAction = false
+    @State private var actionError: String?
 
     // True once the session has an endedAt timestamp
     private var isCompleted: Bool { session?.endedAt != nil }
@@ -58,6 +60,11 @@ struct WorkoutView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 scrollContent
+            }
+
+            if isPerformingAction {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                ProgressView().tint(colors.accent)
             }
         }
         .navigationTitle(session?.name ?? "Workout")
@@ -88,6 +95,14 @@ struct WorkoutView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("All sets will be deleted and this session will be removed.")
+        }
+        .alert("Action failed", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { actionError = nil }
+        } message: {
+            Text(actionError ?? "Please try again.")
         }
         .navigationDestination(for: ExerciseLogRoute.self) { route in
             ExerciseLogView(sessionId: route.sessionId, exerciseId: route.exerciseId)
@@ -269,8 +284,10 @@ struct WorkoutView: View {
             HStack(spacing: 0) {
                 Button {
                     Task {
-                        try? await WorkoutService.resumeSession(sessionId)
-                        await loadData()
+                        await performAction {
+                            try await WorkoutService.resumeSession(sessionId)
+                            await loadData()
+                        }
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -509,73 +526,106 @@ struct WorkoutView: View {
         loading = true
         defer { loading = false }
 
-        guard let sess = try? await WorkoutService.getSession(sessionId) else { return }
-        session = sess
-
-        // Load plan exercise templates if this session was started from a plan
-        if let planId = sess.planId,
-           let planData = try? await PlanService.getPlanWithExercises(planId) {
-            var map: [String: PlanExercise] = [:]
-            for enriched in planData.exercises {
-                map[enriched.exercise.id] = enriched.planExercise
+        do {
+            guard let sess = try await WorkoutService.getSession(sessionId) else {
+                throw WorkoutViewError.sessionNotFound
             }
-            planExerciseMap = map
-        } else {
-            planExerciseMap = [:]
-        }
+            session = sess
 
-        let exerciseIds = (try? await WorkoutService.getSessionExerciseIds(sessionId)) ?? []
-        var newBlocks: [ExerciseBlock] = []
-        for exId in exerciseIds {
-            guard let ex = try? await ExerciseService.getById(exId) else { continue }
-            let sets = (try? await WorkoutService.getSetsFor(
-                sessionId: sessionId,
-                exerciseId: exId
-            )) ?? []
-            newBlocks.append(ExerciseBlock(exercise: ex, sets: sets))
-        }
-        blocks = newBlocks
+            if let planId = sess.planId,
+               let planData = try await PlanService.getPlanWithExercises(planId) {
+                planExerciseMap = Dictionary(
+                    uniqueKeysWithValues: planData.exercises.map {
+                        ($0.exercise.id, $0.planExercise)
+                    }
+                )
+            } else {
+                planExerciseMap = [:]
+            }
 
-        // Fetch HealthKit stats for completed sessions
-        if sess.endedAt != nil,
-           authManager.user?.settings.healthKit.syncWorkouts == true {
-            let start = sess.startedAt
-            let end = sess.endedAt ?? Date()
-            async let cal = HealthKitService.fetchCalories(from: start, to: end)
-            async let hr = HealthKitService.fetchAverageHeartRate(from: start, to: end)
-            sessionCalories = await cal
-            sessionAvgHeartRate = await hr
+            let exerciseIds = try await WorkoutService.getSessionExerciseIds(sessionId)
+            async let exerciseMapTask = ExerciseService.getByIds(exerciseIds)
+            async let allSetsTask = SessionSetRepository.findAllForSession(sessionId)
+            let (exerciseMap, allSets) = try await (exerciseMapTask, allSetsTask)
+            let setsByExercise = Dictionary(grouping: allSets, by: \.exerciseId)
+            blocks = exerciseIds.compactMap { exerciseId in
+                guard let exercise = exerciseMap[exerciseId] else { return nil }
+                return ExerciseBlock(
+                    exercise: exercise,
+                    sets: setsByExercise[exerciseId] ?? []
+                )
+            }
+
+            if sess.endedAt != nil,
+               authManager.user?.settings.healthKit.syncWorkouts == true {
+                let start = sess.startedAt
+                let end = sess.endedAt ?? Date()
+                async let cal = HealthKitService.fetchCalories(from: start, to: end)
+                async let hr = HealthKitService.fetchAverageHeartRate(from: start, to: end)
+                sessionCalories = await cal
+                sessionAvgHeartRate = await hr
+            }
+        } catch {
+            actionError = error.localizedDescription
         }
     }
 
     private func addExercises(_ exercises: [Exercise], asGroup: Bool) async {
-        let ids = exercises.map { $0.id }
-        try? await WorkoutService.addExercisesToSession(sessionId, exerciseIds: ids, asGroup: asGroup)
-        await loadData()
-        PhoneSessionManager.shared.sendContextToWatch()
+        await performAction {
+            let ids = exercises.map { $0.id }
+            try await WorkoutService.addExercisesToSession(
+                sessionId,
+                exerciseIds: ids,
+                asGroup: asGroup
+            )
+            await loadData()
+            PhoneSessionManager.shared.sendContextToWatch()
+        }
     }
 
     private func removeExercise(exerciseId: String) async {
-        try? await WorkoutService.removeExercise(sessionId: sessionId, exerciseId: exerciseId)
-        await loadData()
-        PhoneSessionManager.shared.sendContextToWatch()
+        await performAction {
+            try await WorkoutService.removeExercise(
+                sessionId: sessionId,
+                exerciseId: exerciseId
+            )
+            await loadData()
+            PhoneSessionManager.shared.sendContextToWatch()
+        }
     }
 
     private func changeSetType(set: SessionSet, newType: SetType) async {
-        try? await WorkoutService.updateSet(set.id, patch: SetPatch(setType: newType))
-        await loadData()
+        await performAction {
+            try await WorkoutService.updateSet(set.id, patch: SetPatch(setType: newType))
+            await loadData()
+        }
     }
 
     private func finishWorkout() async {
-        try? await WorkoutService.finishSession(sessionId)
-        await loadData()
-        PhoneSessionManager.shared.sendContextToWatch()
+        await performAction {
+            try await WorkoutService.finishSession(sessionId)
+            await loadData()
+            PhoneSessionManager.shared.sendContextToWatch()
+        }
     }
 
     private func discardWorkout() async {
-        try? await WorkoutService.deleteSession(sessionId)
-        PhoneSessionManager.shared.sendContextToWatch()
-        dismiss()
+        await performAction {
+            try await WorkoutService.deleteSession(sessionId)
+            PhoneSessionManager.shared.sendContextToWatch()
+            dismiss()
+        }
+    }
+
+    private func performAction(_ operation: () async throws -> Void) async {
+        guard !isPerformingAction else { return }
+        isPerformingAction = true
+        defer { isPerformingAction = false }
+        do {
+            try await operation()
+        } catch {
+            actionError = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -628,6 +678,14 @@ struct WorkoutView: View {
         }
     }
 
+}
+
+private enum WorkoutViewError: LocalizedError {
+    case sessionNotFound
+
+    var errorDescription: String? {
+        "This workout could not be found for the signed-in account."
+    }
 }
 
 // MARK: - ExerciseLogRoute

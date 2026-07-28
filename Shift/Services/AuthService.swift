@@ -2,6 +2,24 @@ import Foundation
 import Supabase
 import AuthenticationServices
 
+private final class OneShotContinuation<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning value: Value) {
+        let continuation = lock.withLock {
+            let current = self.continuation
+            self.continuation = nil
+            return current
+        }
+        continuation?.resume(returning: value)
+    }
+}
+
 // MARK: - AuthManager
 
 /// Observable auth state manager. Listens for Supabase auth events, loads the
@@ -69,19 +87,21 @@ class AuthManager {
         if let cached = try? await ProfileRepository.findById(userId) {
             profile = cached
         } else {
-            // Remote fetch — wrap in a task with timeout so it never blocks the UI forever
-            profile = await withTaskGroup(of: Profile?.self) { group in
-                group.addTask {
-                    try? await ProfileService.fetchAndCacheProfile(userId)
+            // Use unstructured child tasks so returning at the deadline does not
+            // wait for a network request that is slow to honour cancellation.
+            let fetchTask = Task {
+                try? await ProfileService.fetchAndCacheProfile(userId)
+            }
+            profile = await withCheckedContinuation { continuation in
+                let gate = OneShotContinuation<Profile?>(continuation)
+                Task {
+                    gate.resume(returning: await fetchTask.value)
                 }
-                group.addTask {
+                Task {
                     try? await Task.sleep(for: .seconds(5))
-                    return nil
+                    fetchTask.cancel()
+                    gate.resume(returning: nil)
                 }
-                // Whichever finishes first wins
-                let first = await group.next() ?? nil
-                group.cancelAll()
-                return first
             }
         }
 
@@ -152,6 +172,7 @@ class AuthManager {
     func signOut() async throws {
         _ = try? await SyncService.flushQueue()
         try await supabase.auth.signOut()
+        ImageCache.shared.removeAll()
         await StoreService.shared.reset()
     }
 

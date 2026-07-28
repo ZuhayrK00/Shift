@@ -1,5 +1,16 @@
 import SwiftUI
 
+@MainActor
+@Observable
+final class AppErrorCenter {
+    static let shared = AppErrorCenter()
+    var message: String?
+
+    func present(_ error: Error) {
+        message = error.localizedDescription
+    }
+}
+
 struct ContentView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
@@ -30,16 +41,22 @@ struct ContentView: View {
             } else {
                 MainTabView()
                     .task {
-                        // pullReferenceData and pullUserData both flush the queue internally
-                        _ = try? await SyncService.pullReferenceData()
-                        try? await SyncService.pullUserData()
+                        let pullReference = SyncService.shouldPullReferenceData()
+                        let pullUser = SyncService.shouldPullUserData()
+                        if pullReference && pullUser {
+                            async let referenceSync = SyncService.pullReferenceData()
+                            async let userSync: Void = SyncService.pullUserData()
+                            _ = try? await referenceSync
+                            _ = try? await userSync
+                        } else if pullReference {
+                            _ = try? await SyncService.pullReferenceData()
+                        } else if pullUser {
+                            try? await SyncService.pullUserData()
+                        } else {
+                            SyncService.flushInBackground()
+                        }
                         // Auto-read weight from HealthKit if enabled and no weight is set
                         await autoReadHealthKitWeightIfNeeded()
-                        // Prefetch all exercise images early so they're instant everywhere
-                        if let exercises = try? await ExerciseService.listExercises() {
-                            let urls = exercises.compactMap { $0.imageUrl.flatMap(URL.init) }
-                            ImageCache.shared.prefetch(urls)
-                        }
                     }
             }
         }
@@ -59,6 +76,14 @@ struct ContentView: View {
             if newValue == true {
                 showOnboarding = false
             }
+        }
+        .alert("Something went wrong", isPresented: Binding(
+            get: { AppErrorCenter.shared.message != nil },
+            set: { if !$0 { AppErrorCenter.shared.message = nil } }
+        )) {
+            Button("OK", role: .cancel) { AppErrorCenter.shared.message = nil }
+        } message: {
+            Text(AppErrorCenter.shared.message ?? "Please try again.")
         }
     }
 

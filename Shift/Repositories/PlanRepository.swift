@@ -12,11 +12,12 @@ struct WorkoutPlanWithCount: Identifiable {
     var id: String { plan.id }
 }
 
-struct PlanExercisePatch {
+struct PlanExercisePatch: Sendable {
     var targetSets: Int?
     var targetRepsMin: Int?
     var targetRepsMax: Int?
-    var targetWeight: Double?
+    /// Outer nil leaves the value unchanged; inner nil clears it.
+    var targetWeight: Double??
     var restSeconds: Int?
 }
 
@@ -39,27 +40,46 @@ struct PlanRepository {
                 """
             let planRows = try Row.fetchAll(db, sql: planSql, arguments: [userId])
 
-            // For each plan, get muscle groups and image URLs
+            let plans = try planRows.map { try WorkoutPlan(row: $0) }
+            guard !plans.isEmpty else { return [] }
+            let planIds = plans.map(\.id)
+            let placeholders = planIds.map { _ in "?" }.joined(separator: ", ")
+
+            // Fetch details for every plan in one query.
             let detailSql = """
-                SELECT mg.name AS muscle_group, e.image_url
+                SELECT pe.plan_id, mg.name AS muscle_group, e.image_url
                 FROM plan_exercises pe
                 JOIN exercises e ON e.id = pe.exercise_id
                 JOIN muscle_groups mg ON mg.id = e.primary_muscle_id
-                WHERE pe.plan_id = ?
-                ORDER BY pe.position ASC
+                WHERE pe.plan_id IN (\(placeholders))
+                ORDER BY pe.plan_id, pe.position ASC
                 """
+            let detailRows = try Row.fetchAll(
+                db,
+                sql: detailSql,
+                arguments: StatementArguments(planIds)
+            )
+            let allPlanExercises = try PlanExercise.fetchAll(
+                db,
+                sql: "SELECT * FROM plan_exercises WHERE plan_id IN (\(placeholders))",
+                arguments: StatementArguments(planIds)
+            )
+            let detailsByPlan = Dictionary(grouping: detailRows) {
+                $0["plan_id"] as String
+            }
+            let exercisesByPlan = Dictionary(grouping: allPlanExercises, by: \.planId)
+            let countByPlan = Dictionary(uniqueKeysWithValues: planRows.map {
+                ($0["id"] as String, $0["exercise_count"] as Int? ?? 0)
+            })
 
-            return try planRows.map { row in
-                let plan = try WorkoutPlan(row: row)
-                let exerciseCount: Int = row["exercise_count"] ?? 0
-
-                let detailRows = try Row.fetchAll(db, sql: detailSql, arguments: [plan.id])
+            return plans.map { plan in
+                let exerciseCount = countByPlan[plan.id] ?? 0
 
                 var seenGroups = Set<String>()
                 var muscleGroups: [String] = []
                 var imageUrls: [String] = []
 
-                for detailRow in detailRows {
+                for detailRow in detailsByPlan[plan.id] ?? [] {
                     if let group: String = detailRow["muscle_group"], seenGroups.insert(group).inserted {
                         muscleGroups.append(group)
                     }
@@ -68,11 +88,9 @@ struct PlanRepository {
                     }
                 }
 
-                // Fetch plan exercises for duration estimate
-                let planExercises = try PlanExercise
-                    .filter(Column("plan_id") == plan.id)
-                    .fetchAll(db)
-                let estimatedMinutes = WorkoutDurationEstimator.estimate(exercises: planExercises)
+                let estimatedMinutes = WorkoutDurationEstimator.estimate(
+                    exercises: exercisesByPlan[plan.id] ?? []
+                )
 
                 return WorkoutPlanWithCount(
                     plan: plan,
@@ -191,9 +209,13 @@ struct PlanRepository {
                 setClauses.append("target_reps_max = ?")
                 args.append(targetRepsMax.databaseValue)
             }
-            if let targetWeight = patch.targetWeight {
-                setClauses.append("target_weight = ?")
-                args.append(targetWeight.databaseValue)
+            if let targetWeightUpdate = patch.targetWeight {
+                if let targetWeight = targetWeightUpdate {
+                    setClauses.append("target_weight = ?")
+                    args.append(targetWeight.databaseValue)
+                } else {
+                    setClauses.append("target_weight = NULL")
+                }
             }
             if let restSeconds = patch.restSeconds {
                 setClauses.append("rest_seconds = ?")

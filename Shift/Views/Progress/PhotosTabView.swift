@@ -74,8 +74,12 @@ struct PhotosTabView: View {
             Button("Delete", role: .destructive) {
                 if let photo = photoToDelete {
                     Task {
-                        try? await ProgressService.deletePhoto(photo)
-                        await loadData()
+                        do {
+                            try await ProgressService.deletePhoto(photo)
+                            await loadData()
+                        } catch {
+                            AppErrorCenter.shared.present(error)
+                        }
                     }
                 }
             }
@@ -287,15 +291,23 @@ struct PhotosTabView: View {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
         guard let uiImage = UIImage(data: data),
               let jpegData = uiImage.jpegData(compressionQuality: 0.8) else { return }
-        _ = try? await ProgressService.uploadPhoto(imageData: jpegData)
-        await loadData()
+        do {
+            _ = try await ProgressService.uploadPhoto(imageData: jpegData)
+            await loadData()
+        } catch {
+            AppErrorCenter.shared.present(error)
+        }
     }
 
     private func uploadCameraPhoto(_ data: Data) async {
         isUploading = true
         defer { isUploading = false }
-        _ = try? await ProgressService.uploadPhoto(imageData: data)
-        await loadData()
+        do {
+            _ = try await ProgressService.uploadPhoto(imageData: data)
+            await loadData()
+        } catch {
+            AppErrorCenter.shared.present(error)
+        }
     }
 
     private func loadData() async {

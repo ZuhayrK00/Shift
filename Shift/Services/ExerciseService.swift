@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import GRDB
 
 // MARK: - ExerciseService
 
@@ -7,11 +8,7 @@ import Foundation
 struct ExerciseService {
 
     static func listExercises() async throws -> [Exercise] {
-        let exercises = try await ExerciseRepository.findAll()
-        // Prefetch all exercise thumbnail images in the background
-        let urls = exercises.compactMap { $0.imageUrl.flatMap(URL.init) }
-        ImageCache.shared.prefetch(urls)
-        return exercises
+        try await ExerciseRepository.findAll()
     }
 
     static func getById(_ id: String) async throws -> Exercise? {
@@ -71,8 +68,14 @@ struct ExerciseService {
             bodyPart: bodyPart?.lowercased()
         )
 
-        try await ExerciseRepository.upsert(exercise)
-        try await enqueue(table: "exercises", op: "insert", payload: exercisePayload(exercise))
+        let mutation = LocalMutation(
+            table: "exercises",
+            op: "insert",
+            payload: exercisePayload(exercise)
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try exercise.save(db)
+        }
         return exercise
     }
 
@@ -102,21 +105,29 @@ struct ExerciseService {
         exercise.category = category?.lowercased()
         exercise.bodyPart = bodyPart?.lowercased()
 
-        try await ExerciseRepository.upsert(exercise)
-        try await enqueue(table: "exercises", op: "update", payload: exercisePayload(exercise))
+        let mutation = LocalMutation(
+            table: "exercises",
+            op: "update",
+            payload: exercisePayload(exercise)
+        )
+        let exerciseToSave = exercise
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try exerciseToSave.save(db)
+        }
     }
 
     static func deleteExercise(_ id: String) async throws {
-        try await ExerciseRepository.delete(id)
-        try await enqueue(table: "exercises", op: "delete", payload: ["id": id])
+        let userId = try authManager.requireUserId()
+        guard let exercise = try await ExerciseRepository.findById(id),
+              !exercise.isBuiltIn,
+              exercise.createdBy == userId else { return }
+        let mutation = LocalMutation(table: "exercises", op: "delete", payload: ["id": id])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try db.execute(sql: "DELETE FROM exercises WHERE id = ?", arguments: [id])
+        }
     }
 
     // MARK: - Private helpers
-
-    private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
-        try await MutationQueueRepository.enqueue(table: table, op: op, payload: payload)
-        SyncService.flushInBackground()
-    }
 
     private static func exercisePayload(_ ex: Exercise) -> [String: Any] {
         var payload: [String: Any] = [

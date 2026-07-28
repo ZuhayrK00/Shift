@@ -13,6 +13,7 @@ struct ExerciseLogTabView: View {
     let weightIncrement: Double
     let selectedSetId: String?
     var isBackfill: Bool = false
+    var isBusy: Bool = false
 
     @Binding var exerciseNote: String
     @Binding var weight: Double
@@ -97,6 +98,8 @@ struct ExerciseLogTabView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
+            .disabled(isBusy)
+            .opacity(isBusy ? 0.6 : 1)
 
             if selectedSetId != nil {
                 Button(action: onDelete) {
@@ -108,6 +111,7 @@ struct ExerciseLogTabView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
+                .disabled(isBusy)
             }
         }
     }

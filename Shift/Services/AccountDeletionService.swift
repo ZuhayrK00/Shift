@@ -16,28 +16,29 @@ struct AccountDeletionService {
     static func deleteAccount() async throws {
         let userId = try authManager.requireUserId()
 
-        // 1. Clear the mutation queue first so nothing re-syncs after we delete
-        try await clearMutationQueue()
+        // Account deletion intentionally discards this user's pending writes.
+        // Scope the cleanup so another account's queue is never affected.
+        try await MutationQueueRepository.clear(for: userId)
 
-        // 2. Delete from Supabase (remote) — order matters for foreign key constraints
-        await deleteRemoteData(userId: userId)
+        // Delete from Supabase (remote) — order matters for foreign key constraints.
+        try await deleteRemoteData(userId: userId)
 
-        // 3. Delete from Supabase Storage (avatars + progress photos)
-        await deleteStorageFiles(userId: userId)
+        try await deleteStorageFiles(userId: userId)
 
-        // 4. Delete from local SQLite
+        // Do not remove the local source of truth until Auth deletion succeeds.
+        try await supabase.rpc("delete_own_account").execute()
+
         try await deleteLocalData(userId: userId)
+        try await MutationQueueRepository.clear(for: userId)
 
-        // 5. Delete the Supabase Auth user via RPC
-        _ = try? await supabase.rpc("delete_own_account").execute()
-
-        // 6. Sign out
+        // Clear the now-invalid local Auth session.
         try await authManager.signOut()
     }
 
     // MARK: - Remote deletion
 
-    private static func deleteRemoteData(userId: String) async {
+    private static func deleteRemoteData(userId: String) async throws {
+        var failureMessages: [String] = []
         // Delete in dependency order: children first, then parents
 
         // Session sets (child of sessions)
@@ -64,6 +65,7 @@ struct AccountDeletionService {
             }
         } catch {
             logger.error("Failed to delete remote session_sets: \(error.localizedDescription)")
+            failureMessages.append("session sets: \(error.localizedDescription)")
         }
 
         // Workout sessions
@@ -75,6 +77,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote workout_sessions: \(error.localizedDescription)")
+            failureMessages.append("workout sessions: \(error.localizedDescription)")
         }
 
         // Plan exercises (child of plans)
@@ -99,6 +102,7 @@ struct AccountDeletionService {
             }
         } catch {
             logger.error("Failed to delete remote plan_exercises: \(error.localizedDescription)")
+            failureMessages.append("plan exercises: \(error.localizedDescription)")
         }
 
         // Workout plans
@@ -110,6 +114,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote workout_plans: \(error.localizedDescription)")
+            failureMessages.append("workout plans: \(error.localizedDescription)")
         }
 
         // Exercise goals
@@ -121,6 +126,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote exercise_goals: \(error.localizedDescription)")
+            failureMessages.append("exercise goals: \(error.localizedDescription)")
         }
 
         // Custom exercises
@@ -132,6 +138,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote custom exercises: \(error.localizedDescription)")
+            failureMessages.append("custom exercises: \(error.localizedDescription)")
         }
 
         // Weight entries
@@ -143,6 +150,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote weight_entries: \(error.localizedDescription)")
+            failureMessages.append("weight entries: \(error.localizedDescription)")
         }
 
         // Body measurements
@@ -154,6 +162,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote body_measurements: \(error.localizedDescription)")
+            failureMessages.append("body measurements: \(error.localizedDescription)")
         }
 
         // Progress photos
@@ -165,6 +174,7 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote progress_photos: \(error.localizedDescription)")
+            failureMessages.append("progress photos: \(error.localizedDescription)")
         }
 
         // Profile (last — it's the parent row)
@@ -176,13 +186,19 @@ struct AccountDeletionService {
                 .execute()
         } catch {
             logger.error("Failed to delete remote profile: \(error.localizedDescription)")
+            failureMessages.append("profile: \(error.localizedDescription)")
+        }
+
+        if !failureMessages.isEmpty {
+            throw AccountDeletionError.remoteCleanupFailed(failureMessages)
         }
     }
 
     // MARK: - Storage deletion
 
-    private static func deleteStorageFiles(userId: String) async {
+    private static func deleteStorageFiles(userId: String) async throws {
         let folder = userId.lowercased()
+        var failureMessages: [String] = []
 
         // Delete avatar files
         do {
@@ -197,6 +213,7 @@ struct AccountDeletionService {
             }
         } catch {
             logger.error("Failed to delete avatar storage: \(error.localizedDescription)")
+            failureMessages.append("avatar files: \(error.localizedDescription)")
         }
 
         // Delete progress photo files
@@ -212,6 +229,10 @@ struct AccountDeletionService {
             }
         } catch {
             logger.error("Failed to delete progress photo storage: \(error.localizedDescription)")
+            failureMessages.append("progress-photo files: \(error.localizedDescription)")
+        }
+        if !failureMessages.isEmpty {
+            throw AccountDeletionError.remoteCleanupFailed(failureMessages)
         }
     }
 
@@ -259,11 +280,15 @@ struct AccountDeletionService {
         }
     }
 
-    // MARK: - Queue cleanup
+}
 
-    private static func clearMutationQueue() async throws {
-        try await AppDatabase.shared.dbPool.write { db in
-            try db.execute(sql: "DELETE FROM mutation_queue")
+enum AccountDeletionError: LocalizedError {
+    case remoteCleanupFailed([String])
+
+    var errorDescription: String? {
+        switch self {
+        case .remoteCleanupFailed(let failures):
+            return "Account deletion could not finish: \(failures.joined(separator: "; "))."
         }
     }
 }

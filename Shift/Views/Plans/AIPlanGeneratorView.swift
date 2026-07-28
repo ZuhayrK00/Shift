@@ -1655,6 +1655,7 @@ struct AIPlanGeneratorView: View {
                 }
 
                 var position = 0
+                var configuredExercises: [PlanExercise] = []
 
                 for genEx in day.exercises {
                     guard let exercise = ExerciseMatchingService.match(
@@ -1674,26 +1675,10 @@ struct AIPlanGeneratorView: View {
                         targetRepsMax: genEx.repsMax,
                         restSeconds: genEx.restSeconds
                     )
-                    try await PlanRepository.insertExercise(pe)
-                    try await MutationQueueRepository.enqueue(
-                        table: "plan_exercises",
-                        op: "insert",
-                        payload: [
-                            "id": peId,
-                            "plan_id": savedPlan.id,
-                            "exercise_id": exercise.id,
-                            "position": position,
-                            "target_sets": genEx.sets,
-                            "target_reps_min": genEx.repsMin,
-                            "target_reps_max": genEx.repsMax,
-                            "target_weight": NSNull(),
-                            "rest_seconds": genEx.restSeconds,
-                            "group_id": NSNull(),
-                        ]
-                    )
+                    configuredExercises.append(pe)
                     position += 1
                 }
-                SyncService.flushInBackground()
+                try await PlanService.addConfiguredExercises(configuredExercises)
             } catch {
                 print("Failed to save AI plan day: \(error)")
             }

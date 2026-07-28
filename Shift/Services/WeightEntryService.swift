@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import GRDB
 
 enum WeightEntryError: LocalizedError {
     case invalidWeight
@@ -14,23 +15,30 @@ enum WeightEntryError: LocalizedError {
 
 struct WeightEntryService {
 
-    private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
-        try await MutationQueueRepository.enqueue(table: table, op: op, payload: payload)
-        SyncService.flushInBackground()
-    }
-
     static func insert(_ entry: WeightEntry) async throws {
         guard entry.weight > 0 && entry.weight < 1000 else { throw WeightEntryError.invalidWeight }
         guard entry.recordedAt <= Date().addingTimeInterval(60) else { throw WeightEntryError.futureDate }
 
-        try await WeightEntryRepository.insert(entry)
-        try await enqueue(table: "weight_entries", op: "insert", payload: entryPayload(entry))
+        let mutation = LocalMutation(
+            table: "weight_entries",
+            op: "insert",
+            payload: entryPayload(entry)
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try entry.insert(db)
+        }
         Task { await WidgetDataService.updateSnapshot() }
     }
 
     static func delete(_ id: String) async throws {
-        try await WeightEntryRepository.delete(id)
-        try await enqueue(table: "weight_entries", op: "delete", payload: ["id": id])
+        let userId = try authManager.requireUserId()
+        let mutation = LocalMutation(table: "weight_entries", op: "delete", payload: ["id": id])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try db.execute(
+                sql: "DELETE FROM weight_entries WHERE id = ? AND user_id = ?",
+                arguments: [id, userId]
+            )
+        }
     }
 
     // MARK: - Private

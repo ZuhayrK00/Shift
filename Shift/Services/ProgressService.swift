@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import Supabase
+@preconcurrency import GRDB
 
 private let logger = Logger(subsystem: "com.shift.app", category: "ProgressService")
 
@@ -24,8 +25,14 @@ struct ProgressService {
         let measurement = BodyMeasurement(
             id: id, userId: userId, type: type, value: value, unit: unit, recordedAt: recordedAt
         )
-        try await BodyMeasurementRepository.upsert(measurement)
-        try await enqueue(table: "body_measurements", op: "insert", payload: measurementPayload(measurement))
+        let mutation = LocalMutation(
+            table: "body_measurements",
+            op: "insert",
+            payload: measurementPayload(measurement)
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try measurement.save(db)
+        }
         return measurement
     }
 
@@ -36,13 +43,26 @@ struct ProgressService {
         measurement.value = value
         measurement.unit = unit
         measurement.recordedAt = recordedAt
-        try await BodyMeasurementRepository.upsert(measurement)
-        try await enqueue(table: "body_measurements", op: "update", payload: measurementPayload(measurement))
+        let mutation = LocalMutation(
+            table: "body_measurements",
+            op: "update",
+            payload: measurementPayload(measurement)
+        )
+        let measurementToSave = measurement
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try measurementToSave.save(db)
+        }
     }
 
     static func deleteMeasurement(_ id: String) async throws {
-        try await BodyMeasurementRepository.delete(id)
-        try await enqueue(table: "body_measurements", op: "delete", payload: ["id": id])
+        let userId = try authManager.requireUserId()
+        let mutation = LocalMutation(table: "body_measurements", op: "delete", payload: ["id": id])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try db.execute(
+                sql: "DELETE FROM body_measurements WHERE id = ? AND user_id = ?",
+                arguments: [id, userId]
+            )
+        }
     }
 
     // MARK: - Photos
@@ -75,12 +95,20 @@ struct ProgressService {
         let photo = ProgressPhoto(
             id: id, userId: userId, imageUrl: publicURL.absoluteString, recordedAt: recordedAt
         )
-        try await ProgressPhotoRepository.upsert(photo)
-        try await enqueue(table: "progress_photos", op: "insert", payload: photoPayload(photo))
+        let mutation = LocalMutation(
+            table: "progress_photos",
+            op: "insert",
+            payload: photoPayload(photo)
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try photo.save(db)
+        }
         return photo
     }
 
     static func deletePhoto(_ photo: ProgressPhoto) async throws {
+        let userId = try authManager.requireUserId()
+        guard photo.userId == userId else { return }
         // Delete from storage
         if let path = extractStoragePath(from: photo.imageUrl) {
             do {
@@ -91,16 +119,20 @@ struct ProgressService {
                 logger.error("Failed to delete photo from storage: \(error.localizedDescription)")
             }
         }
-        try await ProgressPhotoRepository.delete(photo.id)
-        try await enqueue(table: "progress_photos", op: "delete", payload: ["id": photo.id])
+        let mutation = LocalMutation(
+            table: "progress_photos",
+            op: "delete",
+            payload: ["id": photo.id]
+        )
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try db.execute(
+                sql: "DELETE FROM progress_photos WHERE id = ? AND user_id = ?",
+                arguments: [photo.id, userId]
+            )
+        }
     }
 
     // MARK: - Private
-
-    private static func enqueue(table: String, op: String, payload: [String: Any]) async throws {
-        try await MutationQueueRepository.enqueue(table: table, op: op, payload: payload)
-        SyncService.flushInBackground()
-    }
 
     private static func measurementPayload(_ m: BodyMeasurement) -> [String: Any] {
         [
