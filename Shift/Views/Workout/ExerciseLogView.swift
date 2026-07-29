@@ -32,8 +32,6 @@ struct ExerciseLogView: View {
     @State private var showPlateCalculator = false
     @State private var sessionExerciseIds: Set<String> = []
     @State private var sessionIsCompleted = false
-    @State private var warmupWorkingWeight: Double?
-    @State private var warmupWorkingReps: Double?
 
     // MARK: - Tab enum
 
@@ -170,10 +168,10 @@ struct ExerciseLogView: View {
                 selectedSetId: selectedSetId,
                 isBackfill: isBackfill,
                 isBusy: isSaving,
-                canAddWarmups: !sessionIsCompleted
-                    && weight > 0
-                    && !sets.contains(where: { $0.setType == .warmup })
-                    && !sets.contains(where: { $0.isCompleted && $0.setType != .warmup }),
+                canLogWarmup: !sessionIsCompleted
+                    && !sets.contains(where: {
+                        $0.isCompleted && $0.setType != .warmup
+                    }),
                 canShowPlates: supportsPlateLoading,
                 exerciseNote: $exerciseNote,
                 weight: $weight,
@@ -194,7 +192,7 @@ struct ExerciseLogView: View {
                     }
                 },
                 onSaveNote: { Task { await saveNote() } },
-                onAddWarmups: { Task { await addWarmups() } },
+                onLogWarmup: { Task { await logWarmupSet() } },
                 onShowPlates: { showPlateCalculator = true }
             )
         case .info:
@@ -265,12 +263,7 @@ struct ExerciseLogView: View {
     }
 
     private func seedStepperValues(from allSets: [SessionSet]) {
-        if let nextWarmup = allSets.first(where: {
-            !$0.isCompleted && $0.setType == .warmup
-        }) {
-            weight = convertWeight(nextWarmup.weight ?? 0, to: weightUnit)
-            reps = Double(nextWarmup.reps)
-        } else if let last = allSets.last(where: { $0.isCompleted }) {
+        if let last = allSets.last(where: { $0.isCompleted }) {
             weight = convertWeight(last.weight ?? 0, to: weightUnit)
             reps   = Double(last.reps)
         } else if let plan = planExercise {
@@ -293,6 +286,13 @@ struct ExerciseLogView: View {
         // Don't log empty sets — require at least 1 rep
         guard Int(reps) > 0 else { return }
         await performSave {
+            if sets.contains(where: { !$0.isCompleted && $0.setType == .warmup }) {
+                try await WorkoutService.discardPendingWarmupSets(
+                    sessionId: sessionId,
+                    exerciseId: exerciseId
+                )
+                try await reloadSets()
+            }
 
             // If there's a placeholder, complete it instead of creating another row.
             let loggedSet: SessionSet?
@@ -312,22 +312,8 @@ struct ExerciseLogView: View {
                 )
                 loggedSet = newSet
             }
-            let restEnabled = authManager.user?.settings.restTimer.enabled ?? true
-            if restEnabled && !isBackfill {
-                if let gid = loggedSet?.groupId {
-                    let roundDone = try await WorkoutService.isGroupRoundComplete(
-                        sessionId: sessionId,
-                        groupId: gid
-                    )
-                    if roundDone {
-                        RestTimerManager.shared.start(seconds: restDuration, sessionId: sessionId)
-                    }
-                } else {
-                    RestTimerManager.shared.start(seconds: restDuration, sessionId: sessionId)
-                }
-            }
+            try await startRestTimerIfNeeded(after: loggedSet)
             try await reloadSets()
-            prepareInputsAfterLogging(loggedSet)
             PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
@@ -355,9 +341,12 @@ struct ExerciseLogView: View {
 
     private func deleteSelectedSet() async {
         guard let id = selectedSetId else { return }
+        let selectedSet = sets.first(where: { $0.id == id })
 
         await performSave {
-            if let plan = planExercise, sets.count <= plan.targetSets {
+            if selectedSet?.setType == .warmup {
+                try await WorkoutService.deleteSet(id)
+            } else if let plan = planExercise, sets.count <= plan.targetSets {
                 try await WorkoutService.updateSet(id, patch: SetPatch(
                     reps: plan.defaultReps,
                     weight: plan.targetWeight,
@@ -394,70 +383,36 @@ struct ExerciseLogView: View {
         )
     }
 
-    private func addWarmups() async {
-        guard let workingWeightKg = weightInKg else { return }
-        let enteredWorkingWeight = weight
-        let enteredWorkingReps = reps
-        let prescriptions = WorkoutUtilityService.warmups(
-            workingWeightKg: workingWeightKg,
-            incrementKg: convertWeightToKg(weightIncrement, from: weightUnit)
-        )
-        guard !prescriptions.isEmpty else {
-            saveError = "Enter a working weight high enough to create lighter warm-up sets."
-            return
-        }
+    private func logWarmupSet() async {
+        guard Int(reps) > 0 else { return }
         await performSave {
-            try await WorkoutService.addWarmupSets(
+            let loggedSet = try await WorkoutService.logWarmupSet(
                 sessionId: sessionId,
                 exerciseId: exerciseId,
-                prescriptions: prescriptions
+                reps: Int(reps),
+                weight: weightInKg
             )
-            warmupWorkingWeight = enteredWorkingWeight
-            warmupWorkingReps = enteredWorkingReps
+            try await startRestTimerIfNeeded(after: loggedSet)
             try await reloadSets()
-            if let firstWarmup = sets.first(where: {
-                !$0.isCompleted && $0.setType == .warmup
-            }) {
-                weight = convertWeight(firstWarmup.weight ?? 0, to: weightUnit)
-                reps = Double(firstWarmup.reps)
-            }
             PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 
-    private func prepareInputsAfterLogging(_ loggedSet: SessionSet?) {
-        guard loggedSet?.setType == .warmup else { return }
+    private func startRestTimerIfNeeded(after loggedSet: SessionSet?) async throws {
+        let restEnabled = authManager.user?.settings.restTimer.enabled ?? true
+        guard restEnabled, !isBackfill else { return }
 
-        if let nextWarmup = sets.first(where: {
-            !$0.isCompleted && $0.setType == .warmup
-        }) {
-            weight = convertWeight(nextWarmup.weight ?? 0, to: weightUnit)
-            reps = Double(nextWarmup.reps)
-            return
+        if let groupId = loggedSet?.groupId {
+            let roundDone = try await WorkoutService.isGroupRoundComplete(
+                sessionId: sessionId,
+                groupId: groupId
+            )
+            if roundDone {
+                RestTimerManager.shared.start(seconds: restDuration, sessionId: sessionId)
+            }
+        } else {
+            RestTimerManager.shared.start(seconds: restDuration, sessionId: sessionId)
         }
-
-        if let workingWeight = warmupWorkingWeight {
-            weight = workingWeight
-        } else if let nextWorkingSet = sets.first(where: {
-            !$0.isCompleted && $0.setType != .warmup
-        }), let target = nextWorkingSet.weight {
-            weight = convertWeight(target, to: weightUnit)
-        } else if let target = planExercise?.targetWeight {
-            weight = convertWeight(target, to: weightUnit)
-        }
-
-        if let workingReps = warmupWorkingReps {
-            reps = workingReps
-        } else if let nextWorkingSet = sets.first(where: {
-            !$0.isCompleted && $0.setType != .warmup
-        }), nextWorkingSet.reps > 0 {
-            reps = Double(nextWorkingSet.reps)
-        } else if let planExercise {
-            reps = Double(planExercise.defaultReps)
-        }
-
-        warmupWorkingWeight = nil
-        warmupWorkingReps = nil
     }
 
     private func replaceExercise(with replacement: Exercise) async {

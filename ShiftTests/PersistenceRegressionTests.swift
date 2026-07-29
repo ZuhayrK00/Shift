@@ -129,6 +129,72 @@ final class PersistenceRegressionTests: XCTestCase {
         XCTAssertNil(stored)
     }
 
+    func testWarmupTapLogsImmediatelyWithoutConsumingWorkingSets() async throws {
+        let sessionId = "test-warmup-session-\(UUID().uuidString)"
+        let exerciseId = "test-warmup-exercise-\(UUID().uuidString)"
+        let oldPendingWarmup = SessionSet(
+            id: "test-pending-warmup-\(UUID().uuidString)",
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            setNumber: 1,
+            reps: 8,
+            weight: 30,
+            setType: .warmup
+        )
+        let workingSet = SessionSet(
+            id: "test-working-set-\(UUID().uuidString)",
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            setNumber: 2,
+            reps: 10,
+            weight: 80
+        )
+        try await SessionSetRepository.insert(oldPendingWarmup)
+        try await SessionSetRepository.insert(workingSet)
+        defer {
+            Task {
+                try? await AppDatabase.shared.dbPool.write { db in
+                    try db.execute(
+                        sql: """
+                            DELETE FROM session_sets
+                            WHERE session_id = ? AND exercise_id = ?
+                            """,
+                        arguments: [sessionId, exerciseId]
+                    )
+                }
+            }
+        }
+
+        let first = try await WorkoutService.logWarmupSet(
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            reps: 6,
+            weight: 45
+        )
+        XCTAssertTrue(first.isCompleted)
+        XCTAssertEqual(first.setType, .warmup)
+        XCTAssertEqual(first.reps, 6)
+        XCTAssertEqual(first.weight, 45)
+
+        _ = try await WorkoutService.logWarmupSet(
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            reps: 3,
+            weight: 65
+        )
+
+        let stored = try await SessionSetRepository.findForExercise(
+            sessionId: sessionId,
+            exerciseId: exerciseId
+        )
+        XCTAssertEqual(stored.map(\.setNumber), [1, 2, 3])
+        XCTAssertEqual(stored.filter { $0.setType == .warmup }.count, 2)
+        XCTAssertTrue(stored.filter { $0.setType == .warmup }.allSatisfy(\.isCompleted))
+        XCTAssertEqual(stored.last?.id, workingSet.id)
+        XCTAssertFalse(stored.last?.isCompleted ?? true)
+        XCTAssertFalse(stored.contains(where: { $0.id == oldPendingWarmup.id }))
+    }
+
     func testFreshDatabaseRunsEveryMigration() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("shift-db-test-\(UUID().uuidString)", isDirectory: true)

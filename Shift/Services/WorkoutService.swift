@@ -313,6 +313,153 @@ struct WorkoutService {
         SyncService.flushInBackground()
     }
 
+    /// Immediately logs the entered values as one completed warm-up set.
+    /// Warm-ups stay ahead of planned working-set placeholders and never consume
+    /// one of those working sets. Any unfinished placeholders from the previous
+    /// prepared-warm-up flow are removed so users can move between app versions
+    /// without being trapped in that flow.
+    static func logWarmupSet(
+        sessionId: String,
+        exerciseId: String,
+        reps: Int,
+        weight: Double?
+    ) async throws -> SessionSet {
+        let existing = try await SessionSetRepository.findForExercise(
+            sessionId: sessionId,
+            exerciseId: exerciseId
+        )
+        guard !existing.contains(where: {
+            $0.isCompleted && $0.setType != .warmup
+        }) else {
+            throw WorkoutServiceError.warmupsMustComeFirst
+        }
+
+        let completedWarmups = existing
+            .filter { $0.isCompleted && $0.setType == .warmup }
+            .sorted { $0.setNumber < $1.setNumber }
+        let pendingWarmups = existing.filter {
+            !$0.isCompleted && $0.setType == .warmup
+        }
+        let workingSets = existing
+            .filter { $0.setType != .warmup }
+            .sorted { $0.setNumber < $1.setNumber }
+        let completedAt = Date()
+        let warmup = SessionSet(
+            id: UUID().uuidString.lowercased(),
+            sessionId: sessionId,
+            exerciseId: exerciseId,
+            setNumber: completedWarmups.count + 1,
+            reps: reps,
+            weight: weight,
+            isCompleted: true,
+            completedAt: completedAt,
+            setType: .warmup
+        )
+
+        try await AppDatabase.shared.dbPool.write { db in
+            for pending in pendingWarmups {
+                try SessionSetRepository.delete(pending.id, in: db)
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "delete",
+                    payload: ["id": pending.id],
+                    in: db
+                )
+            }
+
+            for (index, existingWarmup) in completedWarmups.enumerated() {
+                let newNumber = index + 1
+                guard existingWarmup.setNumber != newNumber else { continue }
+                try SessionSetRepository.update(
+                    existingWarmup.id,
+                    patch: SetPatch(setNumber: newNumber),
+                    in: db
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: ["id": existingWarmup.id, "set_number": newNumber],
+                    in: db
+                )
+            }
+
+            for (index, workingSet) in workingSets.enumerated() {
+                let newNumber = completedWarmups.count + index + 2
+                guard workingSet.setNumber != newNumber else { continue }
+                try SessionSetRepository.update(
+                    workingSet.id,
+                    patch: SetPatch(setNumber: newNumber),
+                    in: db
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: ["id": workingSet.id, "set_number": newNumber],
+                    in: db
+                )
+            }
+
+            try SessionSetRepository.insert(warmup, in: db)
+            try MutationQueueRepository.enqueue(
+                table: "session_sets",
+                op: "insert",
+                payload: setPayload(warmup),
+                in: db
+            )
+        }
+        SyncService.flushInBackground()
+        await refreshIdleAlertIfNeeded(sessionId: sessionId)
+        return warmup
+    }
+
+    /// Removes only unfinished warm-up placeholders. Completed warm-ups and all
+    /// working sets remain untouched, then the remaining rows are renumbered.
+    static func discardPendingWarmupSets(
+        sessionId: String,
+        exerciseId: String
+    ) async throws {
+        let existing = try await SessionSetRepository.findForExercise(
+            sessionId: sessionId,
+            exerciseId: exerciseId
+        )
+        let pendingWarmups = existing.filter {
+            !$0.isCompleted && $0.setType == .warmup
+        }
+        guard !pendingWarmups.isEmpty else { return }
+
+        let remaining = existing
+            .filter { !pendingWarmups.contains($0) }
+            .sorted { $0.setNumber < $1.setNumber }
+
+        try await AppDatabase.shared.dbPool.write { db in
+            for pending in pendingWarmups {
+                try SessionSetRepository.delete(pending.id, in: db)
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "delete",
+                    payload: ["id": pending.id],
+                    in: db
+                )
+            }
+            for (index, set) in remaining.enumerated() {
+                let newNumber = index + 1
+                guard set.setNumber != newNumber else { continue }
+                try SessionSetRepository.update(
+                    set.id,
+                    patch: SetPatch(setNumber: newNumber),
+                    in: db
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: ["id": set.id, "set_number": newNumber],
+                    in: db
+                )
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
     // MARK: - Sets
 
     static func addSet(
