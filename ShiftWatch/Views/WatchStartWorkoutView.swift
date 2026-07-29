@@ -34,6 +34,7 @@ struct WatchStartWorkoutView: View {
                         Text(isStarting ? "Starting..." : "Start from Scratch")
                             .font(.system(size: 13, weight: .semibold))
                     }
+                    .foregroundStyle(WatchColors.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                 }

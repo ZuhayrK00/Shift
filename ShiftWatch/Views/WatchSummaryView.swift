@@ -33,6 +33,7 @@ struct WatchSummaryView: View {
                 } label: {
                     Text("Done")
                         .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(WatchColors.onAccent)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

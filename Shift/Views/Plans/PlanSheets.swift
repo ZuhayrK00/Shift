@@ -177,7 +177,7 @@ struct PlanExerciseConfigSheet: View {
                                 Spacer()
                                 Toggle("", isOn: $hasMaxReps)
                                     .labelsHidden()
-                                    .tint(colors.accent)
+                                    .tint(colors.controlTint)
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)

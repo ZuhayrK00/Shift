@@ -866,7 +866,7 @@ struct AIPlanGeneratorView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Toggle("Use suggested starting weights", isOn: $useProgressionRecommendations)
                                     .font(.system(size: 13, weight: .semibold))
-                                    .tint(colors.accent)
+                                    .tint(colors.controlTint)
                                 Text("Based on your latest completed sets. You can change these during the workout.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(colors.muted)

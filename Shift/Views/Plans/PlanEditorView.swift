@@ -37,6 +37,38 @@ struct PlanEditorView: View {
                     .padding(.vertical, 16)
                     .onSubmit { Task { await saveName() } }
 
+                #if canImport(FoundationModels)
+                if #available(iOS 26, *) {
+                    Button {
+                        showAIEdit = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "sparkles")
+                            Text("Edit with Apple Intelligence")
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(colors.muted)
+                        }
+                        .foregroundStyle(colors.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(colors.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(colors.border, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(exercises.isEmpty)
+                    .opacity(exercises.isEmpty ? 0.5 : 1)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 14)
+                }
+                #endif
+
                 Divider().background(colors.border)
 
                 if isLoading {
@@ -99,20 +131,6 @@ struct PlanEditorView: View {
                 .font(.system(size: 15, weight: .semibold))
             }
 
-            #if canImport(FoundationModels)
-            if #available(iOS 26, *) {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showAIEdit = true
-                    } label: {
-                        Image(systemName: "sparkles")
-                            .foregroundStyle(colors.accent)
-                    }
-                    .accessibilityLabel("Edit with Apple Intelligence")
-                    .disabled(exercises.isEmpty)
-                }
-            }
-            #endif
         }
         .task(id: plan.id) { await loadExercises() }
         .sheet(isPresented: $showExercisePicker) {

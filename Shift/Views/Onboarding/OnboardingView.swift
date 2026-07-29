@@ -419,7 +419,7 @@ struct OnboardingView: View {
                                in: Calendar.current.date(byAdding: .day, value: 1, to: Date())!...,
                                displayedComponents: .date)
                         .labelsHidden()
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
                 }
             }
             .padding(16)
@@ -434,7 +434,7 @@ struct OnboardingView: View {
                         .foregroundStyle(colors.text)
                     Spacer()
                     Toggle("", isOn: $restTimerEnabled)
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
                         .labelsHidden()
                 }
 
@@ -864,7 +864,7 @@ struct OnboardingView: View {
                 .foregroundStyle(colors.text)
             Spacer()
             Toggle("", isOn: isOn)
-                .tint(colors.accent)
+                .tint(colors.controlTint)
                 .labelsHidden()
         }
     }

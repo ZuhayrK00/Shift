@@ -298,9 +298,9 @@ struct SettingsView: View {
         HStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(iconColor)
                 .frame(width: 32, height: 32)
-                .background(iconColor)
+                .background(iconColor.opacity(0.14))
                 .clipShape(RoundedRectangle(cornerRadius: 7))
 
             VStack(alignment: .leading, spacing: 2) {
@@ -890,7 +890,7 @@ private struct WorkoutSettingsPage: View {
             Form {
                 Section("Rest Timer") {
                     Toggle("Enable rest timer", isOn: $restTimerEnabled)
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
 
                     if restTimerEnabled {
                         HStack {
@@ -1005,20 +1005,20 @@ private struct NotificationSettingsPage: View {
             Form {
                 Section("Achievements") {
                     Toggle("Exercise goal achieved", isOn: $exerciseGoalAchievements)
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
 
                     Toggle("Weekly workout goal achieved", isOn: $frequencyGoalAchievements)
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
 
                     Toggle("Daily step goal achieved", isOn: $stepGoalAchievements)
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
 
                 Section("Workout") {
                     Toggle("Inactive workout alert", isOn: $workoutIdleAlerts)
-                        .tint(colors.accent)
+                        .tint(colors.controlTint)
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
@@ -1171,7 +1171,7 @@ private struct HealthSettingsPage: View {
                                 .foregroundStyle(colors.muted)
                         }
                     }
-                    .tint(colors.accent)
+                    .tint(colors.controlTint)
                 } header: {
                     Text("Workouts")
                 }
@@ -1187,7 +1187,7 @@ private struct HealthSettingsPage: View {
                                 .foregroundStyle(colors.muted)
                         }
                     }
-                    .tint(colors.accent)
+                    .tint(colors.controlTint)
                 } header: {
                     Text("Recovery")
                 } footer: {
@@ -1205,7 +1205,7 @@ private struct HealthSettingsPage: View {
                                 .foregroundStyle(colors.muted)
                         }
                     }
-                    .tint(colors.accent)
+                    .tint(colors.controlTint)
                 } header: {
                     Text("Body Weight")
                 }
@@ -1221,7 +1221,7 @@ private struct HealthSettingsPage: View {
                                 .foregroundStyle(colors.muted)
                         }
                     }
-                    .tint(colors.accent)
+                    .tint(colors.controlTint)
                 } header: {
                     Text("Goals")
                 }
@@ -1396,7 +1396,7 @@ private struct PrivacySettingsPage: View {
                             }
                         }
                     }
-                    .tint(colors.accent)
+                    .tint(colors.controlTint)
                 }
                 .listRowBackground(colors.surface)
 

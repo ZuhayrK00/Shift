@@ -32,6 +32,8 @@ struct ExerciseLogView: View {
     @State private var showPlateCalculator = false
     @State private var sessionExerciseIds: Set<String> = []
     @State private var sessionIsCompleted = false
+    @State private var warmupWorkingWeight: Double?
+    @State private var warmupWorkingReps: Double?
 
     // MARK: - Tab enum
 
@@ -263,7 +265,12 @@ struct ExerciseLogView: View {
     }
 
     private func seedStepperValues(from allSets: [SessionSet]) {
-        if let last = allSets.last(where: { $0.isCompleted }) {
+        if let nextWarmup = allSets.first(where: {
+            !$0.isCompleted && $0.setType == .warmup
+        }) {
+            weight = convertWeight(nextWarmup.weight ?? 0, to: weightUnit)
+            reps = Double(nextWarmup.reps)
+        } else if let last = allSets.last(where: { $0.isCompleted }) {
             weight = convertWeight(last.weight ?? 0, to: weightUnit)
             reps   = Double(last.reps)
         } else if let plan = planExercise {
@@ -320,6 +327,7 @@ struct ExerciseLogView: View {
                 }
             }
             try await reloadSets()
+            prepareInputsAfterLogging(loggedSet)
             PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
@@ -388,17 +396,24 @@ struct ExerciseLogView: View {
 
     private func addWarmups() async {
         guard let workingWeightKg = weightInKg else { return }
+        let enteredWorkingWeight = weight
+        let enteredWorkingReps = reps
         let prescriptions = WorkoutUtilityService.warmups(
             workingWeightKg: workingWeightKg,
             incrementKg: convertWeightToKg(weightIncrement, from: weightUnit)
         )
-        guard !prescriptions.isEmpty else { return }
+        guard !prescriptions.isEmpty else {
+            saveError = "Enter a working weight high enough to create lighter warm-up sets."
+            return
+        }
         await performSave {
             try await WorkoutService.addWarmupSets(
                 sessionId: sessionId,
                 exerciseId: exerciseId,
                 prescriptions: prescriptions
             )
+            warmupWorkingWeight = enteredWorkingWeight
+            warmupWorkingReps = enteredWorkingReps
             try await reloadSets()
             if let firstWarmup = sets.first(where: {
                 !$0.isCompleted && $0.setType == .warmup
@@ -408,6 +423,41 @@ struct ExerciseLogView: View {
             }
             PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
+    }
+
+    private func prepareInputsAfterLogging(_ loggedSet: SessionSet?) {
+        guard loggedSet?.setType == .warmup else { return }
+
+        if let nextWarmup = sets.first(where: {
+            !$0.isCompleted && $0.setType == .warmup
+        }) {
+            weight = convertWeight(nextWarmup.weight ?? 0, to: weightUnit)
+            reps = Double(nextWarmup.reps)
+            return
+        }
+
+        if let workingWeight = warmupWorkingWeight {
+            weight = workingWeight
+        } else if let nextWorkingSet = sets.first(where: {
+            !$0.isCompleted && $0.setType != .warmup
+        }), let target = nextWorkingSet.weight {
+            weight = convertWeight(target, to: weightUnit)
+        } else if let target = planExercise?.targetWeight {
+            weight = convertWeight(target, to: weightUnit)
+        }
+
+        if let workingReps = warmupWorkingReps {
+            reps = workingReps
+        } else if let nextWorkingSet = sets.first(where: {
+            !$0.isCompleted && $0.setType != .warmup
+        }), nextWorkingSet.reps > 0 {
+            reps = Double(nextWorkingSet.reps)
+        } else if let planExercise {
+            reps = Double(planExercise.defaultReps)
+        }
+
+        warmupWorkingWeight = nil
+        warmupWorkingReps = nil
     }
 
     private func replaceExercise(with replacement: Exercise) async {

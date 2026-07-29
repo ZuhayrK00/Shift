@@ -43,6 +43,11 @@ struct ExerciseLogTabView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
 
+                if shouldShowWarmupStatus {
+                    warmupStatus
+                        .padding(.horizontal, 16)
+                }
+
                 if timer.isActive && !isBackfill {
                     RestTimerView(duration: restDuration, onDismiss: {})
                         .padding(.horizontal, 16)
@@ -69,20 +74,27 @@ struct ExerciseLogTabView: View {
     }
 
     private var utilityButtons: some View {
-        HStack(spacing: 10) {
-            if canAddWarmups {
-                utilityButton(
-                    title: "Add warm-up",
-                    icon: "flame",
-                    action: onAddWarmups
-                )
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 10) {
+                if canAddWarmups {
+                    utilityButton(
+                        title: "Prepare warm-ups",
+                        icon: "flame",
+                        action: onAddWarmups
+                    )
+                }
+                if canShowPlates {
+                    utilityButton(
+                        title: "Load plates",
+                        icon: "scalemass",
+                        action: onShowPlates
+                    )
+                }
             }
-            if canShowPlates {
-                utilityButton(
-                    title: "Load plates",
-                    icon: "scalemass",
-                    action: onShowPlates
-                )
+            if canAddWarmups {
+                Text("Uses the weight above as your working weight and prepares lighter sets.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(colors.muted)
             }
         }
     }
@@ -133,23 +145,99 @@ struct ExerciseLogTabView: View {
 
     // MARK: - Action buttons
 
+    private var warmupSets: [SessionSet] {
+        sets.filter { $0.setType == .warmup }
+    }
+
+    private var nextWarmup: SessionSet? {
+        warmupSets.first(where: { !$0.isCompleted })
+    }
+
+    private var shouldShowWarmupStatus: Bool {
+        !warmupSets.isEmpty
+            && (
+                nextWarmup != nil
+                    || !sets.contains(where: {
+                        $0.isCompleted && $0.setType != .warmup
+                    })
+            )
+    }
+
+    private var nextWarmupNumber: Int? {
+        guard let nextWarmup,
+              let index = warmupSets.firstIndex(where: { $0.id == nextWarmup.id })
+        else { return nil }
+        return index + 1
+    }
+
+    private var actionTitle: String {
+        if selectedSetId != nil { return "Update set" }
+        if let number = nextWarmupNumber {
+            return "Complete warm-up \(number) of \(warmupSets.count)"
+        }
+        if sets.contains(where: { !$0.isCompleted }) { return "Log working set" }
+        return "Add set"
+    }
+
+    private var warmupStatus: some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: nextWarmup == nil ? "checkmark.circle.fill" : "flame.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(nextWarmup == nil ? colors.success : colors.warning)
+                .frame(width: 28, height: 28)
+                .background(
+                    (nextWarmup == nil ? colors.success : colors.warning).opacity(0.12)
+                )
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                if let number = nextWarmupNumber {
+                    Text("Warm-up \(number) of \(warmupSets.count)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(colors.text)
+                    Text("Adjust the suggested values above if needed, then tap Complete warm-up.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(colors.muted)
+                } else {
+                    Text("Warm-up complete")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(colors.text)
+                    Text("Your working weight and reps are ready for the first working set.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(colors.muted)
+                }
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(colors.border, lineWidth: 1)
+        )
+    }
+
     private var actionButtons: some View {
-        HStack(spacing: 10) {
+        let isWarmupAction = selectedSetId == nil && nextWarmup != nil
+        let buttonColor = isWarmupAction ? colors.warning : colors.accent
+        let buttonForeground = isWarmupAction ? colors.onWarning : colors.onAccent
+
+        return HStack(spacing: 10) {
             Button {
                 selectedSetId != nil ? onUpdate() : onAdd()
             } label: {
-                Text(selectedSetId != nil ? "Update" :
-                     sets.contains(where: { !$0.isCompleted }) ? "Log set" : "Add set")
+                Text(actionTitle)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(colors.onAccent)
+                    .foregroundStyle(buttonForeground)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(colors.accent)
+                    .background(buttonColor)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
-            .disabled(isBusy)
-            .opacity(isBusy ? 0.6 : 1)
+            .disabled(isBusy || reps < 1)
+            .opacity(isBusy || reps < 1 ? 0.6 : 1)
 
             if selectedSetId != nil {
                 Button(action: onDelete) {
@@ -326,7 +414,7 @@ struct ExerciseLogTabView: View {
             .frame(width: 8)
             .padding(.leading, 16)
 
-            Text("Set \(set.setNumber)")
+            Text(placeholderLabel(for: set))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(colors.muted)
 
@@ -346,6 +434,16 @@ struct ExerciseLogTabView: View {
         }
         .padding(.vertical, 10)
         .opacity(0.5)
+    }
+
+    private func placeholderLabel(for set: SessionSet) -> String {
+        if set.setType == .warmup {
+            let index = warmupSets.firstIndex(where: { $0.id == set.id }) ?? 0
+            return "Warm-up \(index + 1)"
+        }
+        let workingSets = sets.filter { $0.setType != .warmup }
+        let index = workingSets.firstIndex(where: { $0.id == set.id }) ?? 0
+        return "Working set \(index + 1)"
     }
 
     @ViewBuilder

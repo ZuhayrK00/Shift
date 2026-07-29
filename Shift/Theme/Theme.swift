@@ -12,6 +12,7 @@ struct ShiftColorPalette {
     let muted: Color
     let accent: Color
     let onAccent: Color
+    let controlTint: Color
     let accentSoft: Color
     let accent2: Color
     let success: Color
@@ -36,6 +37,7 @@ struct ShiftColors {
         muted:      Color(hex: "#626262"),
         accent:     Color(hex: "#111111"),
         onAccent:   Color(hex: "#ffffff"),
+        controlTint: Color(hex: "#111111"),
         accentSoft: Color(hex: "#e6e6e2"),
         accent2:    Color(hex: "#6f6f6a"),
         success:    Color(hex: "#16803c"),
@@ -55,6 +57,7 @@ struct ShiftColors {
         muted:      Color(hex: "#a0a09b"),
         accent:     Color(hex: "#f2f2ee"),
         onAccent:   Color(hex: "#0a0a0a"),
+        controlTint: Color(hex: "#3978f6"),
         accentSoft: Color(hex: "#242424"),
         accent2:    Color(hex: "#a8a8a2"),
         success:    Color(hex: "#39c66d"),
@@ -85,6 +88,9 @@ struct ShiftColors {
     var muted:    Color { palette.muted }
     var accent:   Color { palette.accent }
     var onAccent: Color { palette.onAccent }
+    /// Interactive controls need a mid-tone track in dark mode so their white
+    /// thumb or glyph remains legible.
+    var controlTint: Color { palette.controlTint }
     var accentSoft: Color { palette.accentSoft }
     var accent2:  Color { palette.accent2 }
     var success:  Color { palette.success }

@@ -144,6 +144,7 @@ struct WatchHomeView: View {
                         } label: {
                             Label("Start Workout", systemImage: "bolt.fill")
                                 .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(WatchColors.onAccent)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(WatchColors.accent)

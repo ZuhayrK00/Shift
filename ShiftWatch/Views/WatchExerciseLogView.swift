@@ -47,6 +47,7 @@ struct WatchExerciseLogView: View {
                 } label: {
                     Text(isLogging ? "Logging..." : "Log Set")
                         .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(WatchColors.onAccent)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
