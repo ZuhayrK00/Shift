@@ -14,7 +14,7 @@ enum AIGoalType: String, CaseIterable, Identifiable {
     case generalFitness = "General Fitness"
     case improveEndurance = "Improve Endurance"
     case athleticPerformance = "Athletic Performance"
-    case rehabilitation = "Rehab & Recovery"
+    case rehabilitation = "Return to Training"
     case bodyRecomposition = "Body Recomposition"
 
     var id: String { rawValue }
@@ -73,6 +73,13 @@ struct VoicePreferences: Equatable {
     static let empty = VoicePreferences(muscleGroupNames: [], equipmentNames: [], timeBudget: nil, avoidPatterns: [], injuryNotes: [])
 }
 
+@available(iOS 26, *)
+private struct AIDraftExerciseLocation: Identifiable {
+    var dayIndex: Int
+    var exerciseIndex: Int
+    var id: String { "\(dayIndex)-\(exerciseIndex)" }
+}
+
 // MARK: - AIPlanGeneratorView
 
 @available(iOS 26, *)
@@ -82,10 +89,9 @@ struct AIPlanGeneratorView: View {
     @Environment(\.dismiss) private var dismiss
 
     var quickSession: Bool = false
+    var onSaved: ((Int) -> Void)?
 
     @State private var currentStep = 0
-    @State private var ageText = ""
-    @State private var weightText = ""
     @State private var goalType: AIGoalType? = nil
     @State private var daysPerWeek = 4
     @State private var activityLevel: AIActivityLevel = .moderatelyActive
@@ -101,17 +107,28 @@ struct AIPlanGeneratorView: View {
     @State private var parsedVoicePrefs: VoicePreferences = .empty
     @State private var showManualFilters = false
     @State private var generatedPlan: GeneratedPlan?
+    @State private var generationRepairs: [String] = []
     @State private var isGenerating = false
     @State private var generationError: String?
     @State private var isSaving = false
+    @State private var saveError: String?
     @State private var planName = ""
     @State private var isRecording = false
     @State private var audioEngine = AVAudioEngine()
     @State private var speechRecognizer = SFSpeechRecognizer()
     @State private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     @State private var recognitionTask: SFSpeechRecognitionTask?
+    @State private var editingDraftExercise: AIDraftExerciseLocation?
+    @State private var replacingDraftExercise: AIDraftExerciseLocation?
+    @State private var generationTask: Task<Void, Never>?
+    @State private var generationAttemptID: UUID?
+    @State private var pendingDraft: AIPlanDraftSnapshot?
+    @State private var showRestoreDraft = false
+    @State private var lastGenerationRequest: AIPlanGenerationRequest?
+    @State private var progressionRecommendations: [String: ProgressionRecommendation] = [:]
+    @State private var useProgressionRecommendations = false
 
-    private let totalSteps = 6
+    private let totalSteps = 5
 
     var body: some View {
         ZStack {
@@ -136,12 +153,11 @@ struct AIPlanGeneratorView: View {
                 // Content
                 Group {
                     switch currentStep {
-                    case 0: aboutYouStep
-                    case 1: goalStep
-                    case 2: scheduleStep
-                    case 3: focusStep
-                    case 4: generatingStep
-                    case 5: reviewStep
+                    case 0: goalStep
+                    case 1: scheduleStep
+                    case 2: focusStep
+                    case 3: generatingStep
+                    case 4: reviewStep
                     default: EmptyView()
                     }
                 }
@@ -152,18 +168,18 @@ struct AIPlanGeneratorView: View {
                 .animation(.easeInOut(duration: 0.3), value: currentStep)
 
                 // Sticky continue/generate button
-                if currentStep < 4 && (!quickSession || currentStep >= 3) {
+                if currentStep < 3 && (!quickSession || currentStep >= 2) {
                     VStack(spacing: 0) {
                         Divider().foregroundStyle(colors.border)
                         continueButton(
-                            label: currentStep == 3 ? "Generate" : "Continue",
-                            disabled: currentStep == 3 && selectedMuscleGroupIds.isEmpty && parsedVoicePrefs.muscleGroupNames.isEmpty
+                            label: currentStep == 2 ? (quickSession ? "Build Workout" : "Build Program") : "Continue",
+                            disabled: currentStep == 2 && selectedMuscleGroupIds.isEmpty && parsedVoicePrefs.muscleGroupNames.isEmpty
                         ) {
-                            if currentStep == 3 {
+                            if currentStep == 2 {
                                 if isRecording { stopRecording() }
                                 parseCurrentVoicePrefs()
-                                currentStep = 4
-                                Task { await generate() }
+                                currentStep = 3
+                                startGeneration()
                             } else {
                                 currentStep += 1
                             }
@@ -176,11 +192,11 @@ struct AIPlanGeneratorView: View {
                 }
             }
         }
-        .navigationTitle(quickSession ? "Quick Session" : "Generate Plan")
+        .navigationTitle(quickSession ? "Quick Workout" : "Build a Program")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                if currentStep > (quickSession ? 3 : 0) && currentStep < 4 {
+                if currentStep > (quickSession ? 2 : 0) && currentStep < 3 {
                     Button("Back") {
                         withAnimation { currentStep -= 1 }
                     }
@@ -189,7 +205,6 @@ struct AIPlanGeneratorView: View {
             }
         }
         .task {
-            populateFromProfile()
             muscleGroups = (try? await MuscleGroupRepository.findAll()) ?? []
             selectedMuscleGroupIds = Set(muscleGroups.map(\.id))
             allExercises = (try? await ExerciseRepository.findAll()) ?? []
@@ -205,100 +220,62 @@ struct AIPlanGeneratorView: View {
 
             if quickSession {
                 daysPerWeek = 1
-                currentStep = 3
+                currentStep = 2
+            }
+            if let userID = authManager.currentUserId,
+               let snapshot = AIPlanDraftStore.load(userID: userID, quickSession: quickSession) {
+                pendingDraft = snapshot
+                showRestoreDraft = true
             }
         }
-    }
-
-    // MARK: - Step 0: About You
-
-    private var hasAge: Bool { authManager.user?.age != nil }
-    private var hasWeight: Bool { authManager.user?.weight != nil }
-    private var allProfileFieldsFilled: Bool { hasAge && hasWeight }
-
-    private var aboutYouStep: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                if allProfileFieldsFilled {
-                    stepHeader(icon: "checkmark.circle.fill", title: "You're All Set", subtitle: "We've got your details from your profile.")
-
-                    VStack(spacing: 10) {
-                        if let age = authManager.user?.age {
-                            profileRow(label: "Age", value: "\(age)")
-                        }
-                        if let w = authManager.user?.weight {
-                            let unit = authManager.user?.settings.weightUnit ?? "kg"
-                            profileRow(label: "Weight", value: "\(formatWeight(w)) \(unit)")
-                        }
-                    }
-                    .padding(16)
-                    .background(colors.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                } else {
-                    stepHeader(icon: "person.fill", title: "About You", subtitle: "Fill in what's missing, or skip to continue.")
-
-                    VStack(spacing: 16) {
-                        if !hasAge {
-                            labeledField(label: "Age") {
-                                TextField("e.g. 25", text: $ageText)
-                                    .keyboardType(.numberPad)
-                                    .foregroundStyle(colors.text)
-                            }
-                        }
-                        if !hasWeight {
-                            labeledField(label: "Weight (\(authManager.user?.settings.weightUnit ?? "kg"))") {
-                                TextField("e.g. 75", text: $weightText)
-                                    .keyboardType(.decimalPad)
-                                    .foregroundStyle(colors.text)
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .background(colors.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+        .onDisappear {
+            generationAttemptID = nil
+            generationTask?.cancel()
+            if isRecording { stopRecording() }
+        }
+        .alert("Continue your draft?", isPresented: $showRestoreDraft) {
+            Button("Continue") {
+                if let snapshot = pendingDraft {
+                    generatedPlan = snapshot.plan
+                    planName = snapshot.plan.planName
+                    currentStep = 4
+                    Task { await loadProgressionRecommendations() }
+                }
+                pendingDraft = nil
+            }
+            Button("Discard", role: .destructive) {
+                clearCachedDraft()
+                pendingDraft = nil
+            }
+        } message: {
+            Text("Shift kept the unsaved draft from your previous visit.")
+        }
+        .sheet(item: $editingDraftExercise) { location in
+            if let exercise = generatedExercise(at: location) {
+                AIDraftTargetsSheet(exercise: exercise) { updated in
+                    updateGeneratedExercise(updated, at: location)
                 }
             }
-            .padding(20)
+        }
+        .sheet(item: $replacingDraftExercise) { location in
+            if let generated = generatedExercise(at: location),
+               let current = allExercises.first(where: { $0.id == generated.exerciseID }) {
+                AIExerciseReplacementSheet(
+                    current: current,
+                    suggestions: replacementSuggestions(for: current)
+                ) { replacement in
+                    replaceGeneratedExercise(at: location, with: replacement)
+                }
+            }
         }
     }
 
-    private func profileRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(colors.muted)
-            Spacer()
-            Text(value)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(colors.text)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(colors.surface2)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    // MARK: - Step 1: Goal
+    // MARK: - Step 0: Goal
 
     private var goalStep: some View {
         ScrollView {
             VStack(spacing: 24) {
                 stepHeader(icon: "target", title: "Your Goal", subtitle: "What are you working towards?")
-
-                if let tw = authManager.user?.settings.targetWeight {
-                    let unit = authManager.user?.settings.weightUnit ?? "kg"
-                    HStack(spacing: 10) {
-                        Image(systemName: "scalemass.fill")
-                            .foregroundStyle(colors.accent2)
-                        Text("Target: \(formatWeight(tw)) \(unit)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(colors.text)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(colors.accent2.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                     ForEach(AIGoalType.allCases) { goal in
@@ -333,7 +310,7 @@ struct AIPlanGeneratorView: View {
         }
     }
 
-    // MARK: - Step 2: Schedule & Experience
+    // MARK: - Step 1: Schedule & Experience
 
     private var scheduleStep: some View {
         ScrollView {
@@ -438,7 +415,7 @@ struct AIPlanGeneratorView: View {
         }
     }
 
-    // MARK: - Step 3: Focus Areas & Personalization
+    // MARK: - Step 2: Focus Areas & Personalization
 
     private var focusStep: some View {
         ScrollView {
@@ -500,13 +477,13 @@ struct AIPlanGeneratorView: View {
     private var voiceInputSection: some View {
         VStack(spacing: quickSession ? 20 : 16) {
             if quickSession {
-                Text("\"I want to work on chest with dumbbells for 30 minutes\"")
+                Text("Type or say something like “chest, dumbbells, 30 minutes”.")
                     .font(.system(size: 13).italic())
                     .foregroundStyle(colors.muted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             } else {
-                Text("Tap the mic and tell us about injuries, preferences, equipment, or areas to focus on.")
+                Text("Type or speak any injuries, preferences, equipment, or areas to focus on.")
                     .font(.system(size: 13))
                     .foregroundStyle(colors.muted)
             }
@@ -544,14 +521,13 @@ struct AIPlanGeneratorView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
 
-            // Transcribed text display
-            if !personalNotes.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Your notes")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(colors.muted)
-                        Spacer()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Preferences")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(colors.muted)
+                    Spacer()
+                    if !personalNotes.isEmpty {
                         Button {
                             personalNotes = ""
                             parsedVoicePrefs = .empty
@@ -561,15 +537,22 @@ struct AIPlanGeneratorView: View {
                                 .foregroundStyle(colors.muted)
                         }
                     }
-                    Text(personalNotes)
-                        .font(.system(size: 14))
-                        .foregroundStyle(colors.text)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(12)
-                .background(colors.surface2)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                TextField(
+                    "e.g. avoid overhead press; dumbbells only; 45 minutes",
+                    text: $personalNotes,
+                    axis: .vertical
+                )
+                .font(.system(size: 14))
+                .foregroundStyle(colors.text)
+                .lineLimit(2...4)
+                .onChange(of: personalNotes) { _, _ in
+                    parseCurrentVoicePrefs()
+                }
             }
+            .padding(12)
+            .background(colors.surface2)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .padding(16)
         .background(colors.surface)
@@ -747,7 +730,7 @@ struct AIPlanGeneratorView: View {
         }
     }
 
-    // MARK: - Step 4: Generating
+    // MARK: - Step 3: Generating
 
     private var generatingStep: some View {
         VStack(spacing: 24) {
@@ -759,21 +742,31 @@ struct AIPlanGeneratorView: View {
                     .tint(colors.accent)
                     .padding(.bottom, 8)
 
-                Text("Generating your plan...")
+                Text(quickSession ? "Building your workout…" : "Designing your program…")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(colors.text)
 
-                Text("Your AI trainer is building a personalized program based on your preferences.")
+                Text("Apple Intelligence is reasoning over your preferences and Shift exercise catalogue. You'll review everything before it is saved.")
                     .font(.system(size: 14))
                     .foregroundStyle(colors.muted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
+
+                Button("Cancel") {
+                    generationAttemptID = nil
+                    generationTask?.cancel()
+                    generationTask = nil
+                    isGenerating = false
+                    withAnimation { currentStep = 2 }
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(colors.muted)
             } else if let error = generationError {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 40))
                     .foregroundStyle(colors.warning)
 
-                Text("Generation Failed")
+                Text("Couldn't build a valid draft")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(colors.text)
 
@@ -785,7 +778,7 @@ struct AIPlanGeneratorView: View {
 
                 HStack(spacing: 12) {
                     Button("Try Again") {
-                        Task { await generate() }
+                        startGeneration()
                     }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
@@ -795,7 +788,7 @@ struct AIPlanGeneratorView: View {
                     .clipShape(Capsule())
 
                     Button("Back") {
-                        withAnimation { currentStep = 3 }
+                        withAnimation { currentStep = 2 }
                     }
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(colors.muted)
@@ -804,33 +797,30 @@ struct AIPlanGeneratorView: View {
                     .background(colors.surface)
                     .clipShape(Capsule())
                 }
+
+                Button("Build a reliable basic draft") {
+                    buildFallbackDraft()
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(colors.accent)
             }
 
             Spacer()
         }
     }
 
-    // MARK: - Step 5: Review & Save
+    // MARK: - Step 4: Review & Save
 
     private var reviewStep: some View {
         ScrollView {
             VStack(spacing: 20) {
-                stepHeader(icon: "checkmark.circle.fill", title: "Your Plan", subtitle: "Review and save your generated plan.")
+                stepHeader(
+                    icon: "checkmark.shield.fill",
+                    title: planName.isEmpty ? "Your Draft" : planName,
+                    subtitle: "Catalogue-checked and ready for your review. Nothing is saved yet."
+                )
 
                 if let plan = generatedPlan {
-                    // Plan name editor
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Plan Name")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(colors.muted)
-                        TextField("Plan name", text: $planName)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(colors.text)
-                            .padding(12)
-                            .background(colors.surface2)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-
                     // AI summary
                     if !plan.summary.isEmpty {
                         HStack(alignment: .top, spacing: 10) {
@@ -846,6 +836,45 @@ struct AIPlanGeneratorView: View {
                         .padding(14)
                         .background(colors.accent.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "checkmark.shield")
+                            .foregroundStyle(colors.success)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Checked before saving")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(colors.text)
+                            Text(
+                                generationRepairs.isEmpty
+                                    ? "Every exercise matches your Shift catalogue and all targets are within safe app limits."
+                                    : "Shift corrected \(generationRepairs.count) model detail\(generationRepairs.count == 1 ? "" : "s") before showing this draft."
+                            )
+                            .font(.system(size: 12))
+                            .foregroundStyle(colors.muted)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(colors.success.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    if !progressionRecommendations.isEmpty {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .foregroundStyle(colors.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Toggle("Use suggested starting weights", isOn: $useProgressionRecommendations)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .tint(colors.accent)
+                                Text("Based on your latest completed sets. You can change these during the workout.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(colors.muted)
+                            }
+                        }
+                        .padding(12)
+                        .background(colors.accent.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
 
                     // Time budget indicator
@@ -888,7 +917,7 @@ struct AIPlanGeneratorView: View {
                     }
 
                     // Days preview
-                    ForEach(Array(plan.days.enumerated()), id: \.offset) { _, day in
+                    ForEach(Array(plan.days.enumerated()), id: \.offset) { dayIndex, day in
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text(day.dayName)
@@ -924,8 +953,59 @@ struct AIPlanGeneratorView: View {
                                         Text("\(genExercise.sets) sets × \(genExercise.repsMin)-\(genExercise.repsMax) reps · \(genExercise.restSeconds)s rest")
                                             .font(.system(size: 12))
                                             .foregroundStyle(colors.muted)
+                                        if useProgressionRecommendations,
+                                           let recommendation = progressionRecommendations[genExercise.exerciseID] {
+                                            Text("Start at \(formatWeight(recommendation.weight)) \(authManager.user?.settings.weightUnit ?? "kg")")
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundStyle(colors.accent)
+                                        }
                                     }
                                     Spacer()
+                                    Menu {
+                                        Button {
+                                            editingDraftExercise = AIDraftExerciseLocation(
+                                                dayIndex: dayIndex,
+                                                exerciseIndex: idx
+                                            )
+                                        } label: {
+                                            Label("Edit Targets", systemImage: "slider.horizontal.3")
+                                        }
+                                        Button {
+                                            replacingDraftExercise = AIDraftExerciseLocation(
+                                                dayIndex: dayIndex,
+                                                exerciseIndex: idx
+                                            )
+                                        } label: {
+                                            Label("Replace Exercise", systemImage: "arrow.triangle.2.circlepath")
+                                        }
+                                        if idx > 0 {
+                                            Button {
+                                                moveGeneratedExercise(dayIndex: dayIndex, from: idx, to: idx - 1)
+                                            } label: {
+                                                Label("Move Up", systemImage: "arrow.up")
+                                            }
+                                        }
+                                        if idx + 1 < day.exercises.count {
+                                            Button {
+                                                moveGeneratedExercise(dayIndex: dayIndex, from: idx, to: idx + 1)
+                                            } label: {
+                                                Label("Move Down", systemImage: "arrow.down")
+                                            }
+                                        }
+                                        Divider()
+                                        Button(role: .destructive) {
+                                            removeGeneratedExercise(dayIndex: dayIndex, exerciseIndex: idx)
+                                        } label: {
+                                            Label("Remove", systemImage: "trash")
+                                        }
+                                        .disabled(day.exercises.count <= 2)
+                                    } label: {
+                                        Image(systemName: "ellipsis")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(colors.muted)
+                                            .frame(width: 32, height: 32)
+                                            .contentShape(Rectangle())
+                                    }
                                 }
                             }
                         }
@@ -940,6 +1020,33 @@ struct AIPlanGeneratorView: View {
 
                     // Actions
                     VStack(spacing: 12) {
+                        Menu {
+                            Button {
+                                applyDraftAdjustment(.shorter)
+                            } label: {
+                                Label("Shorter Workouts", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            }
+                            Button {
+                                applyDraftAdjustment(.lessVolume)
+                            } label: {
+                                Label("Reduce Volume", systemImage: "minus.circle")
+                            }
+                            Button {
+                                applyDraftAdjustment(.moreRecovery)
+                            } label: {
+                                Label("More Recovery", systemImage: "timer")
+                            }
+                        } label: {
+                            Label("Quick Adjustments", systemImage: "slider.horizontal.3")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(colors.text)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(colors.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(colors.border, lineWidth: 1))
+                        }
+
                         Button {
                             Task { await savePlan() }
                         } label: {
@@ -948,7 +1055,7 @@ struct AIPlanGeneratorView: View {
                                     ProgressView().tint(.white)
                                 } else {
                                     Image(systemName: "checkmark")
-                                    Text("Save Plan")
+                                    Text(quickSession ? "Save Workout" : "Save \(plan.days.count) Workouts")
                                 }
                             }
                             .font(.system(size: 16, weight: .bold))
@@ -960,10 +1067,17 @@ struct AIPlanGeneratorView: View {
                         }
                         .disabled(isSaving)
 
+                        if let saveError {
+                            Text(saveError)
+                                .font(.system(size: 13))
+                                .foregroundStyle(colors.danger)
+                                .multilineTextAlignment(.center)
+                        }
+
                         Button("Regenerate") {
                             generatedPlan = nil
-                            currentStep = 4
-                            Task { await generate() }
+                            currentStep = 3
+                            startGeneration()
                         }
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(colors.muted)
@@ -991,21 +1105,6 @@ struct AIPlanGeneratorView: View {
                 .multilineTextAlignment(.center)
         }
         .padding(.bottom, 8)
-    }
-
-    private func labeledField(label: String, @ViewBuilder content: () -> some View) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(colors.muted)
-            Spacer()
-            content()
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(colors.surface2)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func optionButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -1044,17 +1143,6 @@ struct AIPlanGeneratorView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .disabled(disabled)
-    }
-
-    // MARK: - Data
-
-    private func populateFromProfile() {
-        guard let user = authManager.user else { return }
-        ageText = user.age.map { "\($0)" } ?? ""
-        weightText = user.weight.map { "\($0)" } ?? ""
-        if let target = user.settings.targetWeight, let current = user.weight {
-            goalType = target < current ? .toneAndDefine : .buildMuscle
-        }
     }
 
     // MARK: - Speech Recognition
@@ -1214,7 +1302,25 @@ struct AIPlanGeneratorView: View {
             .map { "\($0.key): \($0.value.joined(separator: ", "))" }
             .joined(separator: "\n")
 
-        return (exerciseString, filtered)
+        // Keep the structured generation context small enough for the on-device
+        // model while preserving choices across every selected muscle group.
+        let orderedGroups = Dictionary(grouping: filtered, by: \.primaryMuscleId)
+            .sorted { lhs, rhs in
+                let lhsName = muscleGroupMap[lhs.key] ?? lhs.key
+                let rhsName = muscleGroupMap[rhs.key] ?? rhs.key
+                return lhsName < rhsName
+            }
+            .map { _, exercises in Array(exercises.prefix(12)) }
+        var groundedCatalogue: [Exercise] = []
+        for index in 0..<12 {
+            for exercises in orderedGroups where index < exercises.count {
+                groundedCatalogue.append(exercises[index])
+                if groundedCatalogue.count == 60 { break }
+            }
+            if groundedCatalogue.count == 60 { break }
+        }
+
+        return (exerciseString, groundedCatalogue)
     }
 
     /// Extracts exercise names/types the user wants to avoid from their notes.
@@ -1250,62 +1356,19 @@ struct AIPlanGeneratorView: View {
         return parts.joined(separator: "/")
     }
 
-    /// Maps user-facing goal names to abstract scheduling parameters
-    /// that avoid triggering Apple's content safety filter.
-    static func safeGoalDescription(for goal: AIGoalType?) -> String {
-        guard let goal = goal else { return "balanced variety" }
-        switch goal {
-        case .buildMuscle: return "high volume, moderate repetitions"
-        case .increaseStrength: return "low repetitions, high load parameters"
-        case .toneAndDefine: return "high repetitions, short pauses"
-        case .generalFitness: return "balanced variety"
-        case .improveEndurance: return "high repetitions, minimal pauses"
-        case .athleticPerformance: return "power-focused, explosive movements first"
-        case .rehabilitation: return "low load, high repetitions, mobility focus"
-        case .bodyRecomposition: return "high volume across all categories"
-        }
-    }
-
     /// Provides specific rep/set/rest ranges per goal so the model has concrete numbers.
     static func repScheme(for goal: AIGoalType?) -> String {
-        guard let goal = goal else { return "3 rounds, 8-12 reps, 60-90s pause" }
+        guard let goal = goal else { return "3 sets, 8-12 reps, 60-90 seconds rest" }
         switch goal {
-        case .buildMuscle: return "3-4 rounds, 8-12 reps, 60-90s pause"
-        case .increaseStrength: return "4-5 rounds, 3-6 reps, 120-180s pause"
-        case .toneAndDefine: return "3 rounds, 12-15 reps, 45-60s pause"
-        case .generalFitness: return "3 rounds, 8-12 reps, 60-90s pause"
-        case .improveEndurance: return "2-3 rounds, 15-20 reps, 30-45s pause"
-        case .athleticPerformance: return "4 rounds, 5-8 reps, 90-120s pause"
-        case .rehabilitation: return "2-3 rounds, 12-15 reps, 60-90s pause"
-        case .bodyRecomposition: return "3-4 rounds, 10-15 reps, 60s pause"
+        case .buildMuscle: return "3-4 sets, 8-12 reps, 60-90 seconds rest"
+        case .increaseStrength: return "4-5 sets, 3-6 reps, 120-180 seconds rest"
+        case .toneAndDefine: return "3 sets, 12-15 reps, 45-60 seconds rest"
+        case .generalFitness: return "3 sets, 8-12 reps, 60-90 seconds rest"
+        case .improveEndurance: return "2-3 sets, 15-20 reps, 30-45 seconds rest"
+        case .athleticPerformance: return "4 sets, 5-8 reps, 90-120 seconds rest"
+        case .rehabilitation: return "2-3 sets, 12-15 reps, 60-90 seconds rest"
+        case .bodyRecomposition: return "3-4 sets, 10-15 reps, 60 seconds rest"
         }
-    }
-
-    /// Maps experience level to volume guidance for the prompt.
-    static func volumeGuidance(for level: AIExperienceLevel) -> String {
-        switch level {
-        case .beginner: return "Lower volume: 2-3 rounds per module. Prioritize fundamental compound modules."
-        case .intermediate: return "Moderate volume: 3-4 rounds per module."
-        case .advanced: return "Higher volume: 4-5 rounds per module with varied configurations."
-        }
-    }
-
-    /// Sanitizes user-provided notes to remove words that could trigger
-    /// Apple's content safety filter.
-    static func sanitizeNotes(_ notes: String) -> String {
-        let blocked = [
-            "weight loss", "lose weight", "fat loss", "burn fat", "body fat",
-            "diet", "calorie", "bmi", "obesity", "overweight", "underweight",
-            "skinny", "lean out", "shred", "cutting", "bulking",
-        ]
-        var result = notes
-        for word in blocked {
-            result = result.replacingOccurrences(of: word, with: "", options: .caseInsensitive)
-        }
-        while result.contains("  ") {
-            result = result.replacingOccurrences(of: "  ", with: " ")
-        }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Parses a time budget from the user's voice notes.
@@ -1350,6 +1413,9 @@ struct AIPlanGeneratorView: View {
     /// Calculates the maximum number of exercises that fit in the time budget.
     /// Uses average set duration (including rest) to estimate.
     static func maxExercisesForBudget(minutes: Int, setsPerExercise: Int = 3, avgRestSeconds: Int = 90) -> Int {
+        if setsPerExercise == 3 && avgRestSeconds == 90 {
+            return AIPlanQualityService.maximumExerciseCount(for: minutes)
+        }
         let secondsPerSet = 45 + avgRestSeconds // ~45s working + rest
         let secondsPerExercise = secondsPerSet * setsPerExercise
         let warmupSeconds = 300 // 5 min warmup
@@ -1478,120 +1544,126 @@ struct AIPlanGeneratorView: View {
         }
     }
 
-    private func generate() async {
-        isGenerating = true
-        generationError = nil
-
+    private func generate(attemptID: UUID) async {
         // Ensure voice prefs are parsed (safety net)
         if parsedVoicePrefs.isEmpty && !personalNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             parseCurrentVoicePrefs()
         }
 
-        let (exerciseListString, _) = buildSmartExerciseList()
-        let safeGoal = Self.safeGoalDescription(for: goalType)
-        let volume = Self.volumeGuidance(for: experienceLevel)
-        let reps = Self.repScheme(for: goalType)
-        let split = splitStrategy()
+        let (_, filteredExercises) = buildSmartExerciseList()
 
         // Use time budget from voice prefs
         if let parsed = parsedVoicePrefs.timeBudget {
             timeBudgetMinutes = parsed
         }
 
-        // Build prompt with rich context but safe terminology
-        var prompt = """
-            Organize these movement modules into \(daysPerWeek) sequential sessions.
-            Optimization: \(safeGoal).
-            \(volume)
-            Default parameters: \(reps).
-            Suggested structure: \(split)
-
-            Modules are tagged: [C] = compound/multi-joint, [I] = isolation/single-joint, [F] = familiar (previously used).
-            Tags like [C/push,F] or [I/pull] indicate the movement pattern and familiarity.
-            Prefer modules tagged [F] when available — the user is familiar with these.
-
-            Available modules by category:
-            \(exerciseListString)
-
-            Constraints:
-            - Exactly \(daysPerWeek) sessions, no more, no less
-            - Use ONLY module names from the list above, exactly as written (strip the [...] tags)
-            - 6-8 modules per session (aim for sessions lasting 45-60 minutes)
-            - Each session should start with 3-4 compound [C] modules, then 3-4 isolation [I] modules
-            - Do not repeat the same module across different sessions
-            - Group related categories together in the same session (e.g. all push or all pull)
-            - Label each session descriptively (e.g. "Upper A", "Push", "Legs")
-            """
-
-        // Add time budget constraint if parsed — overrides the default 45-60 min target
-        if let budget = timeBudgetMinutes {
-            let maxEx = Self.maxExercisesForBudget(minutes: budget)
-            prompt += "\n- IMPORTANT: Each session must fit within \(budget) minutes. Use \(maxEx) modules per session maximum. Use shorter pause times if needed."
+        guard filteredExercises.count >= max(2, daysPerWeek * 2) else {
+            generationError = "There aren't enough matching exercises for those filters. Add equipment or select more muscle groups."
+            isGenerating = false
+            return
         }
 
-        // Add injury/recovery constraints
-        if !parsedVoicePrefs.injuryNotes.isEmpty {
-            for note in parsedVoicePrefs.injuryNotes {
-                prompt += "\n- CAUTION for \(note): use only isolation [I] modules for this area, fewer rounds (2), higher repetitions (12-15), and longer pauses (90-120s)"
+        do {
+            let request = AIPlanGenerationRequest(
+                days: daysPerWeek,
+                goal: goalType?.rawValue ?? "General Fitness",
+                experience: "\(experienceLevel.rawValue); \(activityLevel.rawValue) outside training",
+                split: splitStrategy(),
+                targetScheme: Self.repScheme(for: goalType),
+                timeBudgetMinutes: timeBudgetMinutes,
+                notes: personalNotes.trimmingCharacters(in: .whitespacesAndNewlines),
+                injuryNotes: parsedVoicePrefs.injuryNotes,
+                catalogue: filteredExercises,
+                familiarExerciseIDs: recentExerciseIds
+            )
+            lastGenerationRequest = request
+            let result = try await AppleIntelligencePlanService.generate(request)
+            guard generationAttemptID == attemptID, !Task.isCancelled else { return }
+            guard let plan = result.plan, result.errors.isEmpty else {
+                throw AIPlanGenerationError.invalidDraft(result.errors)
             }
-        }
-
-        let trimmedNotes = personalNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedNotes.isEmpty {
-            let sanitized = Self.sanitizeNotes(trimmedNotes)
-            if !sanitized.isEmpty {
-                prompt += "\n- Scheduling notes: \(sanitized)"
-            }
-        }
-
-        // Attempt generation with automatic retry on safety filter
-        for attempt in 1...2 {
-            do {
-                let session = LanguageModelSession(
-                    instructions: "You are a scheduling and inventory engine. Organize the provided modules into sessions using the tags and constraints. Output only structured data — no commentary."
-                )
-                let response = try await session.respond(to: prompt, generating: GeneratedPlan.self)
-                var plan = response.content
-                // Enforce exact day count
-                plan.days = Array(plan.days.prefix(daysPerWeek))
-                generatedPlan = plan
-                planName = plan.planName
-                withAnimation { currentStep = 5 }
+            let recommendations = await progressionRecommendations(for: plan)
+            guard generationAttemptID == attemptID, !Task.isCancelled else { return }
+            generatedPlan = plan
+            generationRepairs = result.repairs
+            planName = plan.planName
+            progressionRecommendations = recommendations
+            cacheCurrentDraft()
+            withAnimation { currentStep = 4 }
+        } catch {
+            guard generationAttemptID == attemptID else { return }
+            if error is CancellationError || Task.isCancelled {
                 isGenerating = false
                 return
-            } catch {
-                let msg = "\(error)"
-                let isSafetyError = msg.localizedCaseInsensitiveContains("unsafe")
-                    || msg.localizedCaseInsensitiveContains("guardrail")
-                    || msg.localizedCaseInsensitiveContains("safety")
+            }
+            generationError = error.localizedDescription
+        }
+        if generationAttemptID == attemptID {
+            isGenerating = false
+        }
+    }
 
-                if isSafetyError && attempt == 1 {
-                    // Retry with absolute minimum prompt
-                    prompt = """
-                        Sort these items into \(daysPerWeek) groups of 6-8.
-
-                        Items by category:
-                        \(exerciseListString)
-
-                        Constraints:
-                        - Exactly \(daysPerWeek) groups
-                        - Use ONLY item names from the list (strip [...] tags)
-                        - Items tagged [C] before items tagged [I]
-                        - Label each group (e.g. "Group A", "Group B")
-                        """
-                    continue
-                }
-
-                if isSafetyError {
-                    generationError = "Apple Intelligence couldn't process this request. Try selecting fewer muscle groups or changing your goal."
-                } else {
-                    generationError = error.localizedDescription
-                }
-                break
+    private func startGeneration() {
+        generationTask?.cancel()
+        let attemptID = UUID()
+        generationAttemptID = attemptID
+        isGenerating = true
+        generationError = nil
+        generationRepairs = []
+        generationTask = Task {
+            await generate(attemptID: attemptID)
+            if generationAttemptID == attemptID {
+                generationTask = nil
             }
         }
+    }
 
-        isGenerating = false
+    private func buildFallbackDraft() {
+        let request: AIPlanGenerationRequest
+        if let lastGenerationRequest {
+            request = lastGenerationRequest
+        } else {
+            if parsedVoicePrefs.isEmpty
+                && !personalNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parseCurrentVoicePrefs()
+            }
+            let (_, filteredExercises) = buildSmartExerciseList()
+            request = AIPlanGenerationRequest(
+                days: daysPerWeek,
+                goal: goalType?.rawValue ?? "General Fitness",
+                experience: "\(experienceLevel.rawValue); \(activityLevel.rawValue) outside training",
+                split: splitStrategy(),
+                targetScheme: Self.repScheme(for: goalType),
+                timeBudgetMinutes: parsedVoicePrefs.timeBudget ?? timeBudgetMinutes,
+                notes: personalNotes.trimmingCharacters(in: .whitespacesAndNewlines),
+                injuryNotes: parsedVoicePrefs.injuryNotes,
+                catalogue: filteredExercises,
+                familiarExerciseIDs: recentExerciseIds
+            )
+            lastGenerationRequest = request
+        }
+
+        let result = AIPlanFallbackBuilder.build(request)
+        guard let plan = result.plan else {
+            generationError = result.errors.joined(separator: " ")
+            return
+        }
+        generatedPlan = plan
+        generationRepairs = ["Used Shift's catalogue-based fallback because Apple Intelligence was unavailable."]
+        planName = plan.planName
+        cacheCurrentDraft()
+        Task { await loadProgressionRecommendations() }
+        withAnimation { currentStep = 4 }
+    }
+
+    private func cacheCurrentDraft() {
+        guard let plan = generatedPlan, let userID = authManager.currentUserId else { return }
+        AIPlanDraftStore.save(plan, userID: userID, quickSession: quickSession)
+    }
+
+    private func clearCachedDraft() {
+        guard let userID = authManager.currentUserId else { return }
+        AIPlanDraftStore.clear(userID: userID, quickSession: quickSession)
     }
 
     /// Analyzes which muscle groups are covered as primary/secondary across the plan.
@@ -1634,64 +1706,194 @@ struct AIPlanGeneratorView: View {
         return WorkoutDurationEstimator.formatDuration(minutes: minutes)
     }
 
+    private func generatedExercise(at location: AIDraftExerciseLocation) -> GeneratedExercise? {
+        guard let plan = generatedPlan,
+              plan.days.indices.contains(location.dayIndex),
+              plan.days[location.dayIndex].exercises.indices.contains(location.exerciseIndex) else {
+            return nil
+        }
+        return plan.days[location.dayIndex].exercises[location.exerciseIndex]
+    }
+
+    private func updateGeneratedExercise(
+        _ exercise: GeneratedExercise,
+        at location: AIDraftExerciseLocation
+    ) {
+        guard var plan = generatedPlan,
+              plan.days.indices.contains(location.dayIndex),
+              plan.days[location.dayIndex].exercises.indices.contains(location.exerciseIndex) else {
+            return
+        }
+        plan.days[location.dayIndex].exercises[location.exerciseIndex] = exercise
+        generatedPlan = plan
+        cacheCurrentDraft()
+    }
+
+    private func replaceGeneratedExercise(
+        at location: AIDraftExerciseLocation,
+        with replacement: Exercise
+    ) {
+        guard var item = generatedExercise(at: location) else { return }
+        item.exerciseID = replacement.id
+        item.exerciseName = replacement.name
+        updateGeneratedExercise(item, at: location)
+        Task { await loadProgressionRecommendations() }
+    }
+
+    private func removeGeneratedExercise(dayIndex: Int, exerciseIndex: Int) {
+        guard var plan = generatedPlan,
+              plan.days.indices.contains(dayIndex),
+              plan.days[dayIndex].exercises.count > 2,
+              plan.days[dayIndex].exercises.indices.contains(exerciseIndex) else { return }
+        plan.days[dayIndex].exercises.remove(at: exerciseIndex)
+        generatedPlan = plan
+        cacheCurrentDraft()
+    }
+
+    private func moveGeneratedExercise(dayIndex: Int, from source: Int, to destination: Int) {
+        guard var plan = generatedPlan,
+              plan.days.indices.contains(dayIndex),
+              plan.days[dayIndex].exercises.indices.contains(source),
+              plan.days[dayIndex].exercises.indices.contains(destination) else { return }
+        let item = plan.days[dayIndex].exercises.remove(at: source)
+        plan.days[dayIndex].exercises.insert(item, at: destination)
+        generatedPlan = plan
+        cacheCurrentDraft()
+    }
+
+    private func replacementSuggestions(for exercise: Exercise) -> [Exercise] {
+        let selectedIDs = Set(
+            generatedPlan?.days.flatMap(\.exercises).map(\.exerciseID) ?? []
+        )
+        return ExerciseSubstitutionService.suggestions(
+            for: exercise,
+            from: allExercises,
+            excluding: selectedIDs
+        )
+    }
+
+    private enum DraftAdjustment {
+        case shorter
+        case lessVolume
+        case moreRecovery
+    }
+
+    private func applyDraftAdjustment(_ adjustment: DraftAdjustment) {
+        guard var plan = generatedPlan else { return }
+        for dayIndex in plan.days.indices {
+            switch adjustment {
+            case .shorter:
+                while plan.days[dayIndex].exercises.count > 4 {
+                    plan.days[dayIndex].exercises.removeLast()
+                }
+            case .lessVolume:
+                for exerciseIndex in plan.days[dayIndex].exercises.indices {
+                    plan.days[dayIndex].exercises[exerciseIndex].sets = max(
+                        2,
+                        plan.days[dayIndex].exercises[exerciseIndex].sets - 1
+                    )
+                }
+            case .moreRecovery:
+                for exerciseIndex in plan.days[dayIndex].exercises.indices {
+                    plan.days[dayIndex].exercises[exerciseIndex].restSeconds = min(
+                        300,
+                        plan.days[dayIndex].exercises[exerciseIndex].restSeconds + 30
+                    )
+                }
+            }
+        }
+        generatedPlan = plan
+        cacheCurrentDraft()
+        Task { await loadProgressionRecommendations() }
+    }
+
+    private func loadProgressionRecommendations() async {
+        guard let plan = generatedPlan, let userID = authManager.currentUserId else {
+            progressionRecommendations = [:]
+            return
+        }
+        progressionRecommendations = await progressionRecommendations(for: plan, userID: userID)
+    }
+
+    private func progressionRecommendations(
+        for plan: GeneratedPlan,
+        userID explicitUserID: String? = nil
+    ) async -> [String: ProgressionRecommendation] {
+        guard let userID = explicitUserID ?? authManager.currentUserId else { return [:] }
+        let exercises = plan.days.flatMap(\.exercises)
+        let targets = Dictionary(
+            exercises.map { ($0.exerciseID, (repsMin: $0.repsMin, repsMax: $0.repsMax)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        do {
+            let latest = try await SessionSetRepository.findLatestCompletedSets(
+                userId: userID,
+                exerciseIds: Array(targets.keys)
+            )
+            return ProgressionRecommendationService.recommendations(
+                latestSets: latest,
+                targets: targets,
+                increment: authManager.user?.settings.defaultWeightIncrement ?? 2.5
+            )
+        } catch {
+            return [:]
+        }
+    }
+
     // MARK: - Save Plan
 
     private func savePlan() async {
         guard let plan = generatedPlan else { return }
         isSaving = true
+        saveError = nil
 
-        var usedIds: Set<String> = []
-
-        for day in plan.days {
-            do {
-                let savedPlan = try await PlanService.createPlan(name: day.dayName)
-
-                // Save AI summary + day focus as plan notes
-                let dayNotes = [plan.summary, day.focus]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: "\n\n")
-                if !dayNotes.isEmpty {
-                    try? await PlanService.updatePlan(savedPlan.id, name: nil, notes: dayNotes)
-                }
-
-                var position = 0
-                var configuredExercises: [PlanExercise] = []
-
-                for genEx in day.exercises {
-                    guard let exercise = ExerciseMatchingService.match(
-                        genEx.exerciseName,
-                        against: allExercises,
-                        usedIds: &usedIds
-                    ) else { continue }
-
-                    let peId = UUID().uuidString.lowercased()
-                    let pe = PlanExercise(
-                        id: peId,
-                        planId: savedPlan.id,
-                        exerciseId: exercise.id,
-                        position: position,
-                        targetSets: genEx.sets,
-                        targetRepsMin: genEx.repsMin,
-                        targetRepsMax: genEx.repsMax,
-                        restSeconds: genEx.restSeconds
+        let catalogueIDs = Set(allExercises.map(\.id))
+        let drafts = plan.days.map { day in
+            PlanDraftDay(
+                name: day.dayName,
+                notes: [plan.summary, day.focus].filter { !$0.isEmpty }.joined(separator: "\n\n"),
+                exercises: day.exercises.compactMap { item in
+                    guard catalogueIDs.contains(item.exerciseID) else { return nil }
+                    return PlanExercise(
+                        id: UUID().uuidString.lowercased(),
+                        planId: "",
+                        exerciseId: item.exerciseID,
+                        position: 0,
+                        targetSets: item.sets,
+                        targetRepsMin: item.repsMin,
+                        targetRepsMax: item.repsMax,
+                        targetWeight: useProgressionRecommendations
+                            ? progressionRecommendations[item.exerciseID]?.weight
+                            : nil,
+                        restSeconds: item.restSeconds
                     )
-                    configuredExercises.append(pe)
-                    position += 1
                 }
-                try await PlanService.addConfiguredExercises(configuredExercises)
-            } catch {
-                print("Failed to save AI plan day: \(error)")
-            }
+            )
         }
 
-        PhoneSessionManager.shared.sendContextToWatch()
-        isSaving = false
-        dismiss()
+        do {
+            _ = try await PlanService.createProgram(
+                drafts,
+                programName: plan.days.count > 1 ? plan.planName : nil,
+                source: "ai"
+            )
+            clearCachedDraft()
+            PhoneSessionManager.shared.sendContextToWatch()
+            onSaved?(plan.days.count)
+            isSaving = false
+            dismiss()
+        } catch {
+            saveError = "Nothing was saved. \(error.localizedDescription)"
+            isSaving = false
+        }
     }
 
-    private func formatWeight(_ w: Double) -> String {
-        w == w.rounded() ? String(format: "%.0f", w) : String(format: "%.1f", w)
+    private func formatWeight(_ value: Double) -> String {
+        value == value.rounded()
+            ? String(format: "%.0f", value)
+            : String(format: "%.1f", value)
     }
+
 }
 
 // MARK: - AIFlowLayout

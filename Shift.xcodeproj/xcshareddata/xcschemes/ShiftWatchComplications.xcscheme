@@ -111,7 +111,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "CC000010CCCC000000000010"
             BuildableName = "ShiftWatchComplications.appex"
-            BlueprintName = "ShiftWatchComplications"
             ReferencedContainer = "container:Shift.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

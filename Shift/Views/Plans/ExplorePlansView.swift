@@ -404,25 +404,40 @@ struct TemplateDetailView: View {
 
     private func addAllDays() async {
         addError = nil
-        let missingCount = template.days.filter { !addedDays.contains($0.id) }.count
+        let missingDays = template.days.filter { !addedDays.contains($0.id) }
+        let missingCount = missingDays.count
+        guard missingCount > 0 else { return }
         guard await canAddPlans(missingCount) else {
             showPaywall = true
             return
         }
         isAdding = true
-        for day in template.days {
-            if !addedDays.contains(day.id) {
-                if await addDayToPlan(day) {
-                    addedDays.insert(day.id)
-                } else {
-                    break
-                }
+        do {
+            let drafts = missingDays.map(makeDraft)
+            let plans = try await PlanService.createProgram(
+                drafts,
+                programName: template.name,
+                source: "template"
+            )
+            for (day, plan) in zip(missingDays, plans) {
+                addedDays.insert(day.id)
+                addedPlanIds[day.id] = plan.id
+                existingPlans.append(
+                    WorkoutPlanWithCount(
+                        plan: plan,
+                        exerciseCount: drafts.first(where: { $0.name == day.name })?.exercises.count ?? 0,
+                        muscleGroups: [],
+                        exerciseImageUrls: [],
+                        estimatedMinutes: 0
+                    )
+                )
             }
+            PhoneSessionManager.shared.sendContextToWatch()
+            onAdded?(template.name)
+        } catch {
+            addError = "Nothing was added. \(error.localizedDescription)"
         }
         isAdding = false
-        if addError == nil {
-            onAdded?(template.name)
-        }
     }
 
     private func addSingleDay(_ day: PlanTemplateDay) async {
@@ -497,6 +512,32 @@ struct TemplateDetailView: View {
             addError = error.localizedDescription
             return false
         }
+    }
+
+    private func makeDraft(_ day: PlanTemplateDay) -> PlanDraftDay {
+        var groupTagToID: [String: String] = [:]
+        let exercises = day.exercises.enumerated().compactMap { index, templateExercise -> PlanExercise? in
+            guard let exercise = exerciseMap[templateExercise.slug] else { return nil }
+            let groupID: String? = {
+                guard let tag = templateExercise.groupTag else { return nil }
+                if let existing = groupTagToID[tag] { return existing }
+                let newID = UUID().uuidString.lowercased()
+                groupTagToID[tag] = newID
+                return newID
+            }()
+            return PlanExercise(
+                id: UUID().uuidString.lowercased(),
+                planId: "",
+                exerciseId: exercise.id,
+                position: index,
+                targetSets: templateExercise.sets,
+                targetRepsMin: templateExercise.repsMin,
+                targetRepsMax: templateExercise.repsMax,
+                restSeconds: templateExercise.restSeconds,
+                groupId: groupID
+            )
+        }
+        return PlanDraftDay(name: day.name, notes: template.description, exercises: exercises)
     }
 
     private func canAddPlans(_ count: Int) async -> Bool {

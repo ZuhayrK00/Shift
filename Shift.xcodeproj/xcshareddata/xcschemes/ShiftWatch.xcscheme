@@ -61,7 +61,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "BB000010BBBB000000000010"
             BuildableName = "ShiftWatch.app"
-            BlueprintName = "ShiftWatch"
             ReferencedContainer = "container:Shift.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -81,7 +80,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "BB000010BBBB000000000010"
             BuildableName = "ShiftWatch.app"
-            BlueprintName = "ShiftWatch"
             ReferencedContainer = "container:Shift.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

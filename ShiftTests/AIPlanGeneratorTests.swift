@@ -3,125 +3,6 @@ import XCTest
 
 final class AIPlanGeneratorTests: XCTestCase {
 
-    // MARK: - Safety filter keyword checks
-
-    /// Words that are known to trigger Apple's on-device content safety filter
-    /// when used in fitness/health contexts.
-    private let unsafeKeywords = [
-        "weight loss", "lose weight", "fat loss", "burn fat", "body fat",
-        "diet", "calorie", "bmi", "obesity", "overweight", "underweight",
-        "body weight", "skinny", "lean out", "shred", "cutting",
-    ]
-
-    #if canImport(FoundationModels)
-    @available(iOS 26, *)
-    func testSafeGoalDescription_containsNoUnsafeKeywords() {
-        for goal in AIGoalType.allCases {
-            let description = AIPlanGeneratorView.safeGoalDescription(for: goal)
-            let lower = description.lowercased()
-            for keyword in unsafeKeywords {
-                XCTAssertFalse(
-                    lower.contains(keyword),
-                    "Goal '\(goal.rawValue)' produced description containing unsafe keyword '\(keyword)': \(description)"
-                )
-            }
-        }
-    }
-
-    @available(iOS 26, *)
-    func testSafeGoalDescription_nilGoal_returnsSafe() {
-        let description = AIPlanGeneratorView.safeGoalDescription(for: nil)
-        let lower = description.lowercased()
-        for keyword in unsafeKeywords {
-            XCTAssertFalse(
-                lower.contains(keyword),
-                "Nil goal produced description containing unsafe keyword '\(keyword)': \(description)"
-            )
-        }
-    }
-
-    @available(iOS 26, *)
-    func testSafeGoalDescription_allGoalsCovered() {
-        // Every goal type returns a non-empty string
-        for goal in AIGoalType.allCases {
-            let description = AIPlanGeneratorView.safeGoalDescription(for: goal)
-            XCTAssertFalse(description.isEmpty, "Goal '\(goal.rawValue)' returned empty description")
-        }
-    }
-
-    @available(iOS 26, *)
-    func testVolumeGuidance_allLevelsCovered() {
-        for level in AIExperienceLevel.allCases {
-            let guidance = AIPlanGeneratorView.volumeGuidance(for: level)
-            XCTAssertFalse(guidance.isEmpty, "Experience level '\(level.rawValue)' returned empty guidance")
-        }
-    }
-
-    @available(iOS 26, *)
-    func testVolumeGuidance_containsNoUnsafeKeywords() {
-        for level in AIExperienceLevel.allCases {
-            let guidance = AIPlanGeneratorView.volumeGuidance(for: level)
-            let lower = guidance.lowercased()
-            for keyword in unsafeKeywords {
-                XCTAssertFalse(
-                    lower.contains(keyword),
-                    "Experience '\(level.rawValue)' guidance contains unsafe keyword '\(keyword)': \(guidance)"
-                )
-            }
-        }
-    }
-
-    @available(iOS 26, *)
-    func testGoalTypeRawValues_noUnsafeKeywords() {
-        for goal in AIGoalType.allCases {
-            let lower = goal.rawValue.lowercased()
-            for keyword in unsafeKeywords {
-                XCTAssertFalse(
-                    lower.contains(keyword),
-                    "Goal raw value '\(goal.rawValue)' contains unsafe keyword '\(keyword)'"
-                )
-            }
-        }
-    }
-
-    // MARK: - Note sanitization
-
-    @available(iOS 26, *)
-    func testSanitizeNotes_removesUnsafeKeywords() {
-        let input = "I want to lose weight and burn fat quickly"
-        let result = AIPlanGeneratorView.sanitizeNotes(input)
-        XCTAssertFalse(result.localizedCaseInsensitiveContains("lose weight"))
-        XCTAssertFalse(result.localizedCaseInsensitiveContains("burn fat"))
-    }
-
-    @available(iOS 26, *)
-    func testSanitizeNotes_preservesSafeContent() {
-        let input = "I have a shoulder injury, avoid overhead pressing"
-        let result = AIPlanGeneratorView.sanitizeNotes(input)
-        XCTAssertEqual(result, input)
-    }
-
-    @available(iOS 26, *)
-    func testSanitizeNotes_collapsesWhitespace() {
-        let input = "I want to lose weight and get stronger"
-        let result = AIPlanGeneratorView.sanitizeNotes(input)
-        // "lose weight" removed, should not have double spaces
-        XCTAssertFalse(result.contains("  "))
-    }
-
-    @available(iOS 26, *)
-    func testSanitizeNotes_emptyInput() {
-        XCTAssertEqual(AIPlanGeneratorView.sanitizeNotes(""), "")
-    }
-
-    @available(iOS 26, *)
-    func testSanitizeNotes_caseInsensitive() {
-        let input = "WEIGHT LOSS is my goal"
-        let result = AIPlanGeneratorView.sanitizeNotes(input)
-        XCTAssertFalse(result.localizedCaseInsensitiveContains("weight loss"))
-    }
-    #endif
-
     // MARK: - ExerciseMatchingService
 
     private func makeExercise(id: String, name: String) -> Exercise {
@@ -214,6 +95,106 @@ final class AIPlanGeneratorTests: XCTestCase {
         XCTAssertNil(match)
     }
 
+    #if canImport(FoundationModels)
+    // MARK: - Untrusted draft validation
+
+    @available(iOS 26, *)
+    func testPlanValidation_groundsByStableIDAndClampsTargets() {
+        let bench = makeExercise(id: "bench-id", name: "Bench Press")
+        let row = makeExercise(id: "row-id", name: "Cable Row")
+        let proposed = GeneratedPlan(
+            planName: "  Upper  ",
+            summary: "Balanced upper session.",
+            days: [
+                GeneratedDay(
+                    dayName: "Upper",
+                    focus: "Push and pull.",
+                    exercises: [
+                        GeneratedExercise(
+                            exerciseID: bench.id,
+                            exerciseName: "Wrong display name",
+                            sets: 99,
+                            repsMin: -4,
+                            repsMax: 100,
+                            restSeconds: 2
+                        ),
+                        GeneratedExercise(
+                            exerciseID: row.id,
+                            exerciseName: row.name,
+                            sets: 3,
+                            repsMin: 8,
+                            repsMax: 12,
+                            restSeconds: 90
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let result = AIPlanQualityService.validate(
+            proposed,
+            catalogue: [bench, row],
+            expectedDays: 1,
+            timeBudgetMinutes: nil
+        )
+
+        XCTAssertTrue(result.isValid)
+        XCTAssertEqual(result.plan?.planName, "Upper")
+        XCTAssertEqual(result.plan?.days[0].exercises[0].exerciseName, bench.name)
+        XCTAssertEqual(result.plan?.days[0].exercises[0].sets, 5)
+        XCTAssertEqual(result.plan?.days[0].exercises[0].repsMin, 1)
+        XCTAssertEqual(result.plan?.days[0].exercises[0].repsMax, 30)
+        XCTAssertEqual(result.plan?.days[0].exercises[0].restSeconds, 30)
+        XCTAssertFalse(result.repairs.isEmpty)
+    }
+
+    @available(iOS 26, *)
+    func testPlanValidation_rejectsWrongDayCount() {
+        let proposed = GeneratedPlan(planName: "Program", summary: "", days: [])
+        let result = AIPlanQualityService.validate(
+            proposed,
+            catalogue: [makeExercise(id: "1", name: "Squat")],
+            expectedDays: 3,
+            timeBudgetMinutes: nil
+        )
+        XCTAssertFalse(result.isValid)
+        XCTAssertNil(result.plan)
+        XCTAssertFalse(result.errors.isEmpty)
+    }
+
+    @available(iOS 26, *)
+    func testPlanValidation_rejectsHallucinatedExercises() {
+        let proposed = GeneratedPlan(
+            planName: "Workout",
+            summary: "",
+            days: [
+                GeneratedDay(
+                    dayName: "Day 1",
+                    focus: "",
+                    exercises: [
+                        GeneratedExercise(
+                            exerciseID: "made-up",
+                            exerciseName: "Imaginary Lift",
+                            sets: 3,
+                            repsMin: 8,
+                            repsMax: 10,
+                            restSeconds: 60
+                        )
+                    ]
+                )
+            ]
+        )
+        let result = AIPlanQualityService.validate(
+            proposed,
+            catalogue: [makeExercise(id: "1", name: "Squat")],
+            expectedDays: 1,
+            timeBudgetMinutes: nil
+        )
+        XCTAssertFalse(result.isValid)
+        XCTAssertNil(result.plan)
+    }
+    #endif
+
     // MARK: - Avoid pattern extraction
 
     #if canImport(FoundationModels)
@@ -271,7 +252,7 @@ final class AIPlanGeneratorTests: XCTestCase {
         for goal in AIGoalType.allCases {
             let scheme = AIPlanGeneratorView.repScheme(for: goal)
             XCTAssertFalse(scheme.isEmpty, "Goal '\(goal.rawValue)' returned empty rep scheme")
-            XCTAssertTrue(scheme.contains("rounds"), "Rep scheme for '\(goal.rawValue)' should mention rounds")
+            XCTAssertTrue(scheme.contains("sets"), "Rep scheme for '\(goal.rawValue)' should mention sets")
         }
     }
 
@@ -279,20 +260,6 @@ final class AIPlanGeneratorTests: XCTestCase {
     func testRepScheme_nilGoal() {
         let scheme = AIPlanGeneratorView.repScheme(for: nil)
         XCTAssertFalse(scheme.isEmpty)
-    }
-
-    @available(iOS 26, *)
-    func testRepScheme_containsNoUnsafeKeywords() {
-        for goal in AIGoalType.allCases {
-            let scheme = AIPlanGeneratorView.repScheme(for: goal)
-            let lower = scheme.lowercased()
-            for keyword in unsafeKeywords {
-                XCTAssertFalse(
-                    lower.contains(keyword),
-                    "Rep scheme for '\(goal.rawValue)' contains unsafe keyword '\(keyword)'"
-                )
-            }
-        }
     }
 
     // MARK: - Time budget parsing

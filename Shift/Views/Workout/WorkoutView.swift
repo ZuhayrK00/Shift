@@ -40,6 +40,8 @@ struct WorkoutView: View {
     @State private var showShareSheet = false
     @State private var isPerformingAction = false
     @State private var actionError: String?
+    @State private var suggestedPlanWeights: [String: Double] = [:]
+    @State private var showProgressionSuggestion = false
 
     // True once the session has an endedAt timestamp
     private var isCompleted: Bool { session?.endedAt != nil }
@@ -84,6 +86,16 @@ struct WorkoutView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will mark the session as complete.")
+        }
+        .alert("Update your next workout?", isPresented: $showProgressionSuggestion) {
+            Button("Update \(suggestedPlanWeights.count) target\(suggestedPlanWeights.count == 1 ? "" : "s")") {
+                Task { await applyProgressionSuggestions() }
+            }
+            Button("Not Now", role: .cancel) {
+                suggestedPlanWeights = [:]
+            }
+        } message: {
+            Text("You reached the top of the rep range comfortably. Shift can apply a small weight increase to the saved workout.")
         }
         .sheet(isPresented: $showShareSheet) {
             if let shareImage {
@@ -605,6 +617,48 @@ struct WorkoutView: View {
         await performAction {
             try await WorkoutService.finishSession(sessionId)
             await loadData()
+            PhoneSessionManager.shared.sendContextToWatch()
+            prepareProgressionSuggestions()
+        }
+    }
+
+    private func prepareProgressionSuggestions() {
+        guard session?.planId != nil else { return }
+        let latestSets = Dictionary(
+            uniqueKeysWithValues: blocks.map { ($0.exercise.id, $0.sets) }
+        )
+        let targets: [String: (repsMin: Int, repsMax: Int)] = Dictionary(
+            planExerciseMap.compactMap { exerciseID, planExercise -> (String, (repsMin: Int, repsMax: Int))? in
+                guard let repsMax = planExercise.targetRepsMax ?? planExercise.targetRepsMin,
+                      repsMax > 0 else { return nil }
+                return (
+                    exerciseID,
+                    (
+                        repsMin: planExercise.targetRepsMin ?? repsMax,
+                        repsMax: repsMax
+                    )
+                )
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let recommendations = ProgressionRecommendationService.recommendations(
+            latestSets: latestSets,
+            targets: targets,
+            increment: authManager.user?.settings.defaultWeightIncrement ?? 2.5
+        )
+        suggestedPlanWeights = recommendations.reduce(into: [:]) { result, entry in
+            guard entry.value.isIncrease,
+                  let planExercise = planExerciseMap[entry.key] else { return }
+            result[planExercise.id] = entry.value.weight
+        }
+        showProgressionSuggestion = !suggestedPlanWeights.isEmpty
+    }
+
+    private func applyProgressionSuggestions() async {
+        let updates = suggestedPlanWeights
+        suggestedPlanWeights = [:]
+        await performAction {
+            try await PlanService.updateTargetWeights(updates)
             PhoneSessionManager.shared.sendContextToWatch()
         }
     }

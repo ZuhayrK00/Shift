@@ -10,6 +10,7 @@ struct TodayView: View {
     @State private var completedDates: Set<String> = []
     @State private var inProgressDates: Set<String> = []
     @State private var plans: [WorkoutPlan] = []
+    @State private var nextProgramPlan: WorkoutPlan?
     @State private var showPlanPicker = false
     @State private var isLoading = false
     @State private var starting = false
@@ -226,39 +227,68 @@ struct TodayView: View {
 
     @ViewBuilder
     private var startButtons: some View {
-        HStack(spacing: 12) {
-            Button {
-                Task { await startWorkout(plan: nil) }
-            } label: {
-                Text("From scratch")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(colors.text)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(colors.surface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(colors.border, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .disabled(starting)
-            .opacity(starting ? 0.5 : 1)
-
-            if !plans.isEmpty {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button {
-                    showPlanPicker = true
+                    Task { await startWorkout(plan: nil) }
                 } label: {
-                    Text("Select plan")
+                    Text("From scratch")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.text)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(colors.accent)
+                        .background(colors.surface2)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(colors.border, lineWidth: 1)
+                        )
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(starting)
                 .opacity(starting ? 0.5 : 1)
+
+                if let nextProgramPlan {
+                    Button {
+                        Task { await startWorkout(plan: nextProgramPlan) }
+                    } label: {
+                        VStack(spacing: 1) {
+                            Text("Next workout")
+                                .font(.system(size: 11, weight: .medium))
+                            Text(nextProgramPlan.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(colors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(starting)
+                    .opacity(starting ? 0.5 : 1)
+                } else if !plans.isEmpty {
+                    Button {
+                        showPlanPicker = true
+                    } label: {
+                        Text("Select plan")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(colors.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(starting)
+                    .opacity(starting ? 0.5 : 1)
+                }
+            }
+
+            if nextProgramPlan != nil && plans.count > 1 {
+                Button("Choose another workout") {
+                    showPlanPicker = true
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(colors.muted)
             }
         }
     }
@@ -459,6 +489,18 @@ struct TodayView: View {
         completedDates = fetchedCompleted
         inProgressDates = fetchedInProgress
         isLoading = false
+
+        if let userID = authManager.currentUserId {
+            let completedSessions = (try? await SessionRepository.findCompleted(userId: userID)) ?? []
+            let grouped = WorkoutProgramService.summaries(
+                plans: fetchedPlans,
+                completedSessions: completedSessions,
+                userID: userID
+            )
+            nextProgramPlan = grouped.programs.first(where: \.isActive)?.nextWorkout?.plan
+        } else {
+            nextProgramPlan = nil
+        }
 
         await loadSessionsForDate()
         await loadStreak()

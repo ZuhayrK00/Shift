@@ -192,6 +192,39 @@ struct SessionSetRepository {
         }
     }
 
+    /// Completed sets from the most recent finished session for each exercise.
+    static func findLatestCompletedSets(
+        userId: String,
+        exerciseIds: [String]
+    ) async throws -> [String: [SessionSet]] {
+        guard !exerciseIds.isEmpty else { return [:] }
+        return try await AppDatabase.shared.dbPool.read { db in
+            let placeholders = exerciseIds.map { _ in "?" }.joined(separator: ", ")
+            let sql = """
+                SELECT ss.*
+                FROM session_sets ss
+                JOIN workout_sessions ws ON ws.id = ss.session_id
+                WHERE ss.is_completed = 1
+                  AND ws.ended_at IS NOT NULL
+                  AND ws.user_id = ?
+                  AND ss.exercise_id IN (\(placeholders))
+                  AND ws.started_at = (
+                      SELECT MAX(ws2.started_at)
+                      FROM session_sets ss2
+                      JOIN workout_sessions ws2 ON ws2.id = ss2.session_id
+                      WHERE ss2.exercise_id = ss.exercise_id
+                        AND ss2.is_completed = 1
+                        AND ws2.ended_at IS NOT NULL
+                        AND ws2.user_id = ?
+                  )
+                ORDER BY ss.exercise_id, ss.set_number
+                """
+            let arguments = [userId] + exerciseIds + [userId]
+            let sets = try SessionSet.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
+            return Dictionary(grouping: sets, by: \.exerciseId)
+        }
+    }
+
     /// Full set history for an exercise, newest sessions first.
     static func findHistory(
         exerciseId: String

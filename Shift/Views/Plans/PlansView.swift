@@ -6,6 +6,8 @@ struct PlansView: View {
     @Environment(StoreService.self) private var store
 
     @State private var planItems: [WorkoutPlanWithCount] = []
+    @State private var programs: [WorkoutProgramSummary] = []
+    @State private var standalonePlans: [WorkoutPlanWithCount] = []
     @State private var isLoading = false
     @State private var showNewPlan = false
     @State private var showExplore = false
@@ -14,6 +16,12 @@ struct PlansView: View {
     @State private var showPaywall = false
     @State private var toastMessage: String?
     @State private var showToast = false
+    @State private var selectedProgram: WorkoutProgramSummary?
+    @State private var showProgramDetail = false
+    @State private var startedSessionID: String?
+    @State private var showStartedWorkout = false
+    @State private var isStartingWorkout = false
+    @State private var actionError: String?
 
     private let freePlanLimit = ProFeaturePolicy.freePlanLimit
 
@@ -25,10 +33,8 @@ struct PlansView: View {
                 if isLoading {
                     ProgressView()
                         .tint(colors.accent)
-                } else if planItems.isEmpty {
-                    emptyState
                 } else {
-                    planList
+                    plansContent
                 }
             }
         }
@@ -72,31 +78,6 @@ struct PlansView: View {
                             Label("Blank Plan", systemImage: "doc")
                         }
                     }
-
-                    #if canImport(FoundationModels)
-                    if #available(iOS 26, *) {
-                        Section("AI-Powered") {
-                            Button {
-                                if store.isPro {
-                                    showAIGenerator = true
-                                } else {
-                                    showPaywall = true
-                                }
-                            } label: {
-                                Label("Full Program", systemImage: "sparkles")
-                            }
-                            Button {
-                                if store.isPro {
-                                    showQuickSession = true
-                                } else {
-                                    showPaywall = true
-                                }
-                            } label: {
-                                Label("Quick Session", systemImage: "bolt.fill")
-                            }
-                        }
-                    }
-                    #endif
                 } label: {
                     Image(systemName: "plus")
                         .foregroundStyle(colors.accent)
@@ -109,12 +90,22 @@ struct PlansView: View {
                 .onDisappear { Task { await loadPlans() } }
         }
         #if canImport(FoundationModels)
-        .modifier(AIGeneratorDestination(isPresented: $showAIGenerator, quickSession: false, onDisappear: {
-            Task { await loadPlans() }
-        }))
-        .modifier(AIGeneratorDestination(isPresented: $showQuickSession, quickSession: true, onDisappear: {
-            Task { await loadPlans() }
-        }))
+        .modifier(
+            AIGeneratorDestination(
+                isPresented: $showAIGenerator,
+                quickSession: false,
+                onSaved: showAISaveConfirmation,
+                onDisappear: { Task { await loadPlans() } }
+            )
+        )
+        .modifier(
+            AIGeneratorDestination(
+                isPresented: $showQuickSession,
+                quickSession: true,
+                onSaved: showAISaveConfirmation,
+                onDisappear: { Task { await loadPlans() } }
+            )
+        )
         #endif
         .navigationDestination(isPresented: $showNewPlan) {
             NewPlanView(
@@ -139,9 +130,33 @@ struct PlansView: View {
                 Task { await loadPlans() }
             }
         }
+        .navigationDestination(isPresented: $showProgramDetail) {
+            if let selectedProgram {
+                WorkoutProgramDetailView(program: selectedProgram) {
+                    WorkoutProgramService.setActiveProgram(
+                        selectedProgram.id,
+                        userID: selectedProgram.workouts.first?.plan.userId ?? ""
+                    )
+                    Task { await loadPlans() }
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showStartedWorkout) {
+            if let startedSessionID {
+                WorkoutView(sessionId: startedSessionID)
+            }
+        }
         .task { await loadPlans() }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView()
+        }
+        .alert("Couldn't start workout", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
         }
         .overlay(alignment: .bottom) {
             if showToast, let message = toastMessage {
@@ -160,16 +175,76 @@ struct PlansView: View {
         .animation(.spring(duration: 0.4), value: showToast)
     }
 
-    // MARK: - Plan list
+    // MARK: - Plans hub
 
-    private var planList: some View {
+    private var plansContent: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(planItems) { item in
-                    NavigationLink(value: item.plan) {
-                        PlanCard(item: item)
+            VStack(alignment: .leading, spacing: 24) {
+                creationHub
+
+                if planItems.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                            .font(.system(size: 32))
+                            .foregroundStyle(colors.muted)
+                        Text("Your saved workouts will appear here")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(colors.text)
+                        Text("Build a program, start from a template, or create one yourself.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.muted)
+                            .multilineTextAlignment(.center)
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
+                    .padding(.horizontal, 24)
+                } else {
+                    if !programs.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Programs")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(colors.text)
+
+                            ForEach(programs) { program in
+                                WorkoutProgramCard(
+                                    program: program,
+                                    isStarting: isStartingWorkout,
+                                    onOpen: {
+                                        selectedProgram = program
+                                        showProgramDetail = true
+                                    },
+                                    onStart: {
+                                        if let next = program.nextWorkout {
+                                            Task { await startWorkout(next.plan) }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if !standalonePlans.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Workouts")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(colors.text)
+                                Spacer()
+                                Text(pluralise(standalonePlans.count, "workout"))
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(colors.muted)
+                            }
+
+                            LazyVStack(spacing: 10) {
+                                ForEach(standalonePlans) { item in
+                                    NavigationLink(value: item.plan) {
+                                        PlanCard(item: item)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -178,100 +253,202 @@ struct PlansView: View {
         }
     }
 
-    // MARK: - Empty state
+    @ViewBuilder
+    private var creationHub: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Build your next workout")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(colors.text)
+                Text("Start with a private AI draft, a proven template, or a blank canvas.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(colors.muted)
+            }
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "list.bullet.rectangle")
-                .font(.system(size: 48))
-                .foregroundStyle(colors.muted)
+            #if canImport(FoundationModels)
+            if #available(iOS 26, *) {
+                let availability = AppleIntelligencePlanService.availability
+                VStack(spacing: 0) {
+                    Button {
+                        openAIBuilder(quickSession: false)
+                    } label: {
+                        creationRow(
+                            icon: "sparkles",
+                            title: "Build a program",
+                            subtitle: "A complete \(store.isPro ? "goal-aware" : "Pro") training split",
+                            badge: "AI",
+                            enabled: true
+                        )
+                    }
+                    .buttonStyle(.plain)
 
-            Text("No plans yet")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(colors.text)
+                    Divider().overlay(colors.border).padding(.leading, 54)
 
-            Text("Create a plan to organize your workouts.")
-                .font(.system(size: 14))
-                .foregroundStyle(colors.muted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                    Button {
+                        openAIBuilder(quickSession: true)
+                    } label: {
+                        creationRow(
+                            icon: "bolt.fill",
+                            title: "Make a quick workout",
+                            subtitle: "One session for the time and equipment you have",
+                            badge: "AI",
+                            enabled: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(colors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(colors.border, lineWidth: 1))
 
-            HStack(spacing: 12) {
+                if availability != .available {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(availability.title)
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(availability.message)
+                                .font(.system(size: 11))
+                        }
+                    } icon: {
+                        Image(systemName: "info.circle")
+                    }
+                    .foregroundStyle(colors.muted)
+                } else {
+                    Label(
+                        "Runs privately with Apple Intelligence. You'll review the draft before anything is saved.",
+                        systemImage: "lock.shield"
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(colors.muted)
+                }
+            }
+            #endif
+
+            HStack(spacing: 10) {
                 Button {
                     showExplore = true
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "compass")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Explore")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundStyle(colors.accent)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(colors.accent.opacity(0.12))
-                    .clipShape(Capsule())
+                    compactCreationButton(icon: "square.grid.2x2", title: "Templates")
                 }
+                .buttonStyle(.plain)
 
-                Menu {
-                    Button {
-                        if !store.isPro && planItems.count >= freePlanLimit {
-                            showPaywall = true
-                        } else {
-                            showNewPlan = true
-                        }
-                    } label: {
-                        Label("Blank Plan", systemImage: "doc")
+                Button {
+                    if !store.isPro && planItems.count >= freePlanLimit {
+                        showPaywall = true
+                    } else {
+                        showNewPlan = true
                     }
-
-                    #if canImport(FoundationModels)
-                    if #available(iOS 26, *) {
-                        Section("AI-Powered") {
-                            Button {
-                                if store.isPro {
-                                    showAIGenerator = true
-                                } else {
-                                    showPaywall = true
-                                }
-                            } label: {
-                                Label("Full Program", systemImage: "sparkles")
-                            }
-                            Button {
-                                if store.isPro {
-                                    showQuickSession = true
-                                } else {
-                                    showPaywall = true
-                                }
-                            } label: {
-                                Label("Quick Session", systemImage: "bolt.fill")
-                            }
-                        }
-                    }
-                    #endif
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Create")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(colors.accent)
-                    .clipShape(Capsule())
+                    compactCreationButton(icon: "plus", title: "Blank workout")
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.top, 4)
         }
+    }
+
+    private func openAIBuilder(quickSession: Bool) {
+        guard store.isPro else {
+            showPaywall = true
+            return
+        }
+        if quickSession {
+            showQuickSession = true
+        } else {
+            showAIGenerator = true
+        }
+    }
+
+    private func creationRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        badge: String,
+        enabled: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(enabled ? colors.accent : colors.muted)
+                .frame(width: 34, height: 34)
+                .background((enabled ? colors.accent : colors.muted).opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(enabled ? colors.text : colors.muted)
+                    Text(badge)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(colors.accent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(colors.accent.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(colors.muted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(colors.muted)
+        }
+        .padding(14)
+        .contentShape(Rectangle())
+    }
+
+    private func compactCreationButton(icon: String, title: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(colors.text)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(colors.border, lineWidth: 1))
     }
 
     // MARK: - Data loading
 
     private func loadPlans() async {
         isLoading = planItems.isEmpty
-        planItems = (try? await PlanService.listPlans()) ?? []
+        async let plansResult = PlanService.listPlans()
+        let userID = authManager.currentUserId ?? ""
+        async let sessionsResult = SessionRepository.findCompleted(userId: userID)
+        planItems = (try? await plansResult) ?? []
+        let sessions = (try? await sessionsResult) ?? []
+        let grouped = WorkoutProgramService.summaries(
+            plans: planItems,
+            completedSessions: sessions,
+            userID: userID
+        )
+        programs = grouped.programs
+        standalonePlans = grouped.standalone
         isLoading = false
+    }
+
+    private func startWorkout(_ plan: WorkoutPlan) async {
+        guard !isStartingWorkout else { return }
+        isStartingWorkout = true
+        defer { isStartingWorkout = false }
+        do {
+            if let existing = try await WorkoutService.getLatestInProgress() {
+                startedSessionID = existing.id
+                showStartedWorkout = true
+                return
+            }
+            let session = try await PlanService.createSessionFromPlan(plan.id)
+            startedSessionID = session.id
+            showStartedWorkout = true
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func showAISaveConfirmation(_ count: Int) {
+        toastMessage = count == 1 ? "Saved workout" : "Saved \(count) workouts"
+        showToast = true
     }
 }
 
@@ -407,12 +584,13 @@ private struct PlanToast: View {
 private struct AIGeneratorDestination: ViewModifier {
     @Binding var isPresented: Bool
     var quickSession: Bool
+    var onSaved: (Int) -> Void
     var onDisappear: () -> Void
 
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
             content.navigationDestination(isPresented: $isPresented) {
-                AIPlanGeneratorView(quickSession: quickSession)
+                AIPlanGeneratorView(quickSession: quickSession, onSaved: onSaved)
                     .onDisappear { onDisappear() }
             }
         } else {

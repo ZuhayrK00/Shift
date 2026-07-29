@@ -14,6 +14,12 @@ struct PlanWithExercises {
     var exercises: [EnrichedPlanExercise]
 }
 
+struct PlanDraftDay: Sendable {
+    var name: String
+    var notes: String?
+    var exercises: [PlanExercise]
+}
+
 // MARK: - PlanService
 
 struct PlanService {
@@ -70,6 +76,88 @@ struct PlanService {
             try plan.insert(db)
         }
         return plan
+    }
+
+    /// Saves a generated/template program as one local transaction. A failure
+    /// cannot leave the user with only some of the requested workout days.
+    static func createProgram(
+        _ drafts: [PlanDraftDay],
+        programName: String? = nil,
+        source: String = "manual"
+    ) async throws -> [WorkoutPlan] {
+        guard !drafts.isEmpty else { return [] }
+        guard drafts.allSatisfy({
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.exercises.isEmpty
+        }) else {
+            throw PlanServiceError.invalidDraft("Every workout needs a name and at least one catalogue exercise.")
+        }
+        let userId = try authManager.requireUserId()
+        let existing = try await PlanRepository.findPlansWithCount(userId: userId)
+        if existing.count + drafts.count > ProFeaturePolicy.freePlanLimit {
+            let isPro = await StoreService.verifyProEntitlement()
+            guard isPro else { throw PlanServiceError.freePlanLimitReached }
+        }
+
+        let startPosition = (existing.map { $0.plan.position }.max() ?? -1) + 1
+        let now = Date()
+        let programID = programName.map { _ in UUID().uuidString.lowercased() }
+        let plans = drafts.enumerated().map { index, draft in
+            let metadata: WorkoutProgramMetadata?
+            if let programID, let programName {
+                metadata = WorkoutProgramMetadata(
+                    id: programID,
+                    name: programName,
+                    dayIndex: index,
+                    totalDays: drafts.count,
+                    source: source
+                )
+            } else {
+                metadata = nil
+            }
+            return WorkoutPlan(
+                id: UUID().uuidString.lowercased(),
+                userId: userId,
+                name: draft.name,
+                notes: PlanNotesCodec.encode(metadata: metadata, userNotes: draft.notes),
+                position: startPosition + index,
+                createdAt: now
+            )
+        }
+        let exercises = zip(plans, drafts).flatMap { plan, draft in
+            draft.exercises.enumerated().map { index, exercise in
+                var configured = exercise
+                configured.id = UUID().uuidString.lowercased()
+                configured.planId = plan.id
+                configured.position = index
+                return configured
+            }
+        }
+
+        let planMutations = plans.map { plan in
+            LocalMutation(table: "workout_plans", op: "insert", payload: [
+                "id": plan.id,
+                "user_id": plan.userId,
+                "name": plan.name,
+                "notes": plan.notes.map { $0 as Any } ?? NSNull(),
+                "position": plan.position,
+                "created_at": ISO8601DateFormatter.shared.string(from: plan.createdAt)
+            ])
+        }
+        let exerciseMutations = exercises.map {
+            LocalMutation(table: "plan_exercises", op: "insert", payload: planExercisePayload($0))
+        }
+
+        let saved = try await MutationQueueRepository.performAtomically(
+            mutations: planMutations + exerciseMutations
+        ) { db in
+            for plan in plans { try plan.insert(db) }
+            for exercise in exercises { try exercise.insert(db) }
+            return plans
+        }
+        if let programID {
+            WorkoutProgramService.setActiveProgram(programID, userID: userId)
+        }
+        return saved
     }
 
     static func updatePlan(_ id: String, name: String?, notes: String?) async throws {
@@ -180,6 +268,24 @@ struct PlanService {
             if let value = patch.targetWeight { exercise.targetWeight = value }
             if let value = patch.restSeconds { exercise.restSeconds = value }
             try exercise.update(db)
+        }
+    }
+
+    static func updateTargetWeights(_ updates: [String: Double]) async throws {
+        guard !updates.isEmpty else { return }
+        let mutations = updates.map { id, weight in
+            LocalMutation(table: "plan_exercises", op: "update", payload: [
+                "id": id,
+                "target_weight": weight
+            ])
+        }
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            for (id, weight) in updates {
+                try db.execute(
+                    sql: "UPDATE plan_exercises SET target_weight = ? WHERE id = ?",
+                    arguments: [weight, id]
+                )
+            }
         }
     }
 
@@ -336,12 +442,15 @@ struct PlanService {
 enum PlanServiceError: LocalizedError {
     case planNotFound(String)
     case freePlanLimitReached
+    case invalidDraft(String)
 
     var errorDescription: String? {
         switch self {
         case .planNotFound(let id): return "Plan \(id) not found."
         case .freePlanLimitReached:
             return "Free accounts can create up to \(ProFeaturePolicy.freePlanLimit) plans. Upgrade to Shift Pro for unlimited plans."
+        case .invalidDraft(let reason):
+            return reason
         }
     }
 }
