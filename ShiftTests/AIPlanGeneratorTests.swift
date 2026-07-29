@@ -1,5 +1,8 @@
 import XCTest
 @testable import Shift
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 final class AIPlanGeneratorTests: XCTestCase {
 
@@ -193,6 +196,22 @@ final class AIPlanGeneratorTests: XCTestCase {
         XCTAssertFalse(result.isValid)
         XCTAssertNil(result.plan)
     }
+
+    #if compiler(>=6.4)
+    @available(iOS 27, *)
+    func testUnsupportedReasoningCapabilityUsesStandardGenerationFallback() {
+        let error = LanguageModelError.unsupportedCapability(
+            .init(
+                capability: .reasoning,
+                debugDescription: "Reasoning is unavailable on this model."
+            )
+        )
+
+        XCTAssertTrue(
+            AppleIntelligencePlanService.shouldRetryWithoutEnhancedReasoning(error)
+        )
+    }
+    #endif
     #endif
 
     // MARK: - Avoid pattern extraction

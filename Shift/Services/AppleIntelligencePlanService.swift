@@ -74,23 +74,20 @@ enum AppleIntelligencePlanService {
 
         #if compiler(>=6.4)
         if #available(iOS 27, *) {
-            let profile = LanguageModelSession.Profile {
-                EmptyDynamicInstructions()
+            let model = SystemLanguageModel.default
+            if model.capabilities.contains(.reasoning) {
+                do {
+                    proposed = try await enhancedGenerate(
+                        prompt: prompt,
+                        quickSession: request.days == 1
+                    )
+                } catch {
+                    guard shouldRetryWithoutEnhancedReasoning(error) else { throw error }
+                    proposed = try await legacyGenerate(prompt: prompt)
+                }
+            } else {
+                proposed = try await legacyGenerate(prompt: prompt)
             }
-            .reasoningLevel(request.days == 1 ? .moderate : .deep)
-            .temperature(0.25)
-            .maximumResponseTokens(request.days == 1 ? 1_200 : 3_000)
-
-            let session = LanguageModelSession(profile: profile)
-            proposed = try await session.respond(
-                to: prompt,
-                generating: GeneratedPlan.self,
-                options: GenerationOptions(samplingMode: .greedy),
-                contextOptions: ContextOptions(
-                    includeSchemaInPrompt: true,
-                    reasoningLevel: request.days == 1 ? .moderate : .deep
-                )
-            ).content
         } else {
             proposed = try await legacyGenerate(prompt: prompt)
         }
@@ -105,6 +102,39 @@ enum AppleIntelligencePlanService {
             timeBudgetMinutes: request.timeBudgetMinutes
         )
     }
+
+    #if compiler(>=6.4)
+    @available(iOS 27, *)
+    private static func enhancedGenerate(
+        prompt: String,
+        quickSession: Bool
+    ) async throws -> GeneratedPlan {
+        let reasoningLevel: ContextOptions.ReasoningLevel = quickSession ? .moderate : .deep
+        let profile = LanguageModelSession.Profile {
+            EmptyDynamicInstructions()
+        }
+        .reasoningLevel(reasoningLevel)
+        .temperature(0.25)
+        .maximumResponseTokens(quickSession ? 1_200 : 3_000)
+
+        let session = LanguageModelSession(profile: profile)
+        return try await session.respond(
+            to: prompt,
+            generating: GeneratedPlan.self,
+            options: GenerationOptions(samplingMode: .greedy),
+            contextOptions: ContextOptions(
+                includeSchemaInPrompt: true,
+                reasoningLevel: reasoningLevel
+            )
+        ).content
+    }
+
+    @available(iOS 27, *)
+    static func shouldRetryWithoutEnhancedReasoning(_ error: any Error) -> Bool {
+        guard case LanguageModelError.unsupportedCapability = error else { return false }
+        return true
+    }
+    #endif
 
     private static func legacyGenerate(prompt: String) async throws -> GeneratedPlan {
         let session = LanguageModelSession(
