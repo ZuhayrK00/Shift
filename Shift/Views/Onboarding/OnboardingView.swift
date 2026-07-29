@@ -37,10 +37,10 @@ struct OnboardingView: View {
     @State private var syncWorkouts = false
     @State private var syncBodyWeight = false
     @State private var countExternal = false
-    @State private var exerciseGoalReminders = true
-    @State private var frequencyReminders = true
-    @State private var stepGoalReminders = true
-    @State private var progressReminders = true
+    @State private var exerciseGoalAchievements = true
+    @State private var frequencyGoalAchievements = true
+    @State private var stepGoalAchievements = true
+    @State private var workoutIdleAlerts = true
     @State private var lockPhotos = false
 
     // Plan
@@ -491,10 +491,10 @@ struct OnboardingView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(colors.text)
 
-                toggleRow(icon: "dumbbell.fill", label: "Exercise goal reminders", isOn: $exerciseGoalReminders)
-                toggleRow(icon: "flame.fill", label: "Frequency reminders", isOn: $frequencyReminders)
-                toggleRow(icon: "figure.walk", label: "Step goal reminders", isOn: $stepGoalReminders)
-                toggleRow(icon: "chart.line.uptrend.xyaxis", label: "Progress reminders", isOn: $progressReminders)
+                toggleRow(icon: "dumbbell.fill", label: "Exercise goal achievements", isOn: $exerciseGoalAchievements)
+                toggleRow(icon: "flame.fill", label: "Weekly goal achievements", isOn: $frequencyGoalAchievements)
+                toggleRow(icon: "figure.walk", label: "Step goal achievements", isOn: $stepGoalAchievements)
+                toggleRow(icon: "hourglass", label: "Inactive workout alerts", isOn: $workoutIdleAlerts)
             }
             .padding(16)
             .background(colors.surface)
@@ -947,10 +947,10 @@ struct OnboardingView: View {
         settings.dailyStepGoal = stepGoal
         settings.notifications = {
             var n = NotificationSettings()
-            n.exerciseGoalReminders = exerciseGoalReminders
-            n.frequencyReminders = frequencyReminders
-            n.stepGoalReminders = stepGoalReminders
-            n.progressReminders = progressReminders
+            n.exerciseGoalAchievements = exerciseGoalAchievements
+            n.frequencyGoalAchievements = frequencyGoalAchievements
+            n.stepGoalAchievements = stepGoalAchievements
+            n.workoutIdleAlerts = workoutIdleAlerts
             return n
         }()
         settings.healthKit = HealthKitSettings(
@@ -961,8 +961,16 @@ struct OnboardingView: View {
         settings.lockPhotos = lockPhotos
 
         // Request HealthKit authorization if any toggle enabled
-        if syncWorkouts || syncBodyWeight || countExternal {
+        if syncWorkouts || syncBodyWeight || countExternal || (stepGoal != nil && stepGoalAchievements) {
             _ = try? await HealthKitService.requestAuthorization()
+        }
+
+        if exerciseGoalAchievements
+            || frequencyGoalAchievements
+            || stepGoalAchievements
+            || workoutIdleAlerts
+            || restTimerEnabled {
+            _ = await NotificationManager.requestAuthorizationIfNeeded()
         }
 
         // Save profile
@@ -989,6 +997,7 @@ struct OnboardingView: View {
 
         _ = try? await ProfileService.updateProfile(patch)
         savedSettings = settings
+        await authManager.refreshUser()
 
         // Create plan if name provided
         if !planName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1002,8 +1011,7 @@ struct OnboardingView: View {
             }
         }
 
-        // Schedule notifications
-        Task { await GoalNotificationService.scheduleAllNotifications() }
+        await GoalNotificationService.refreshConfiguration()
 
         isSaving = false
         step = totalSteps - 1

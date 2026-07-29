@@ -44,8 +44,6 @@ struct GoalService {
             try goal.insert(db)
         }
 
-        Task { await GoalNotificationService.scheduleAllNotifications() }
-
         return goal
     }
 
@@ -70,7 +68,6 @@ struct GoalService {
         try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
             try goalToSave.update(db)
         }
-        Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
     static func deleteGoal(_ goalId: String) async throws {
@@ -85,7 +82,6 @@ struct GoalService {
         try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
             try db.execute(sql: "DELETE FROM exercise_goals WHERE id = ?", arguments: [goalId])
         }
-        Task { await GoalNotificationService.scheduleAllNotifications() }
     }
 
     /// Checks if a goal's target has been met. If so, marks it completed.

@@ -1,5 +1,6 @@
 import SwiftUI
 import WatchKit
+import UserNotifications
 
 struct WatchRestTimerView: View {
     let duration: Int
@@ -9,6 +10,9 @@ struct WatchRestTimerView: View {
     @State private var remaining: Int = 0
     @State private var timer: Timer?
     @State private var endTime: Date?
+    @State private var notificationToken = UUID()
+
+    private let notificationIdentifier = "shift.watch.rest-timer-complete"
 
     private var progress: Double {
         guard duration > 0 else { return 0 }
@@ -50,7 +54,7 @@ struct WatchRestTimerView: View {
             Spacer()
 
             Button {
-                cleanup()
+                cleanup(cancelNotification: true)
                 dismiss()
             } label: {
                 Text("Skip")
@@ -60,12 +64,35 @@ struct WatchRestTimerView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear { start() }
-        .onDisappear { cleanup() }
+        .onDisappear {
+            // The view timer can stop, but the system-owned notification must
+            // remain so rest completion still works after navigation/suspension.
+            timer?.invalidate()
+            timer = nil
+        }
     }
 
     private func start() {
+        if let endTime {
+            let resumedRemaining = Int(ceil(endTime.timeIntervalSinceNow))
+            guard resumedRemaining > 0 else {
+                cleanup(cancelNotification: true)
+                dismiss()
+                return
+            }
+            remaining = resumedRemaining
+            startTicker()
+            return
+        }
+
         remaining = duration
         endTime = Date().addingTimeInterval(Double(duration))
+        scheduleCompletionNotification()
+        startTicker()
+    }
+
+    private func startTicker() {
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             Task { @MainActor in
                 guard let endTime else { return }
@@ -73,16 +100,59 @@ struct WatchRestTimerView: View {
                 remaining = max(0, diff)
 
                 if remaining <= 0 {
+                    cleanup(cancelNotification: true)
                     WKInterfaceDevice.current().play(.notification)
-                    cleanup()
                     dismiss()
                 }
             }
         }
     }
 
-    private func cleanup() {
+    private func cleanup(cancelNotification: Bool) {
         timer?.invalidate()
         timer = nil
+        if cancelNotification {
+            notificationToken = UUID()
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
+            center.removeDeliveredNotifications(withIdentifiers: [notificationIdentifier])
+        }
+    }
+
+    private func scheduleCompletionNotification() {
+        let token = UUID()
+        notificationToken = token
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
+        center.removeDeliveredNotifications(withIdentifiers: [notificationIdentifier])
+
+        Task {
+            let settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            }
+            let updatedSettings = await center.notificationSettings()
+            guard [.authorized, .provisional].contains(updatedSettings.authorizationStatus),
+                  notificationToken == token else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Rest complete"
+            content.body = "Ready for your next set?"
+            content.sound = .default
+            let request = UNNotificationRequest(
+                identifier: notificationIdentifier,
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(
+                    timeInterval: Double(max(duration, 1)),
+                    repeats: false
+                )
+            )
+            try? await center.add(request)
+
+            if notificationToken != token {
+                center.removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
+                center.removeDeliveredNotifications(withIdentifiers: [notificationIdentifier])
+            }
+        }
     }
 }

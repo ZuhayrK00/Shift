@@ -1,6 +1,19 @@
 import Foundation
 import HealthKit
 
+private final class HealthObserverRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var observedTypes: Set<String> = []
+
+    func beginObserving(_ identifier: String) -> Bool {
+        lock.withLock {
+            guard !observedTypes.contains(identifier) else { return false }
+            observedTypes.insert(identifier)
+            return true
+        }
+    }
+}
+
 // MARK: - ActivityData
 
 struct ActivityData {
@@ -28,6 +41,7 @@ struct HealthKitService {
     private static let stepCountType = HKQuantityType(.stepCount)
     private static let distanceType = HKQuantityType(.distanceWalkingRunning)
     private static let heartRateType = HKQuantityType(.heartRate)
+    private static let observerRegistry = HealthObserverRegistry()
 
     private static let readTypes: Set<HKObjectType> = [
         workoutType, bodyMassType,
@@ -46,43 +60,65 @@ struct HealthKitService {
     static func requestAuthorization() async throws {
         guard isAvailable else { return }
         try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
+        configureBackgroundDelivery()
     }
 
     // MARK: - Background delivery
 
-    /// Sets up a HealthKit observer query for step count and enables background delivery.
-    /// When steps update (even while app is closed), iOS wakes the app briefly to run the handler.
-    /// Call once at app launch.
-    static func enableStepCountBackgroundDelivery() {
+    /// Installs event observers as early as possible during launch. HealthKit can
+    /// wake the app for matching saves/deletes, subject to system frequency caps
+    /// (step count is capped at hourly on iPhone even when `.immediate` is used).
+    static func configureBackgroundDelivery() {
         guard isAvailable else { return }
 
-        let query = HKObserverQuery(sampleType: stepCountType, predicate: nil) { _, completionHandler, _ in
-            // HealthKit woke us in the background. iOS gives ~30s before suspending.
-            // Prioritise the time-sensitive notification check, then do heavier work.
-            Task {
-                // 1. Check step goal FIRST — lightweight (one HealthKit query + cached goal)
-                await GoalNotificationService.checkAndNotifyGoalCompletion()
-
-                // 2. Update widget snapshot (heavier: Pro check + DB + HealthKit)
-                await WidgetDataService.updateSnapshot()
-
-                // 3. Reschedule any expired notifications
-                await GoalNotificationService.scheduleAllNotifications()
-
-                // 4. Push updated snapshot to watch complications
-                PhoneSessionManager.shared.sendSnapshotToWatch()
-
-                // 5. Done — tell HealthKit we processed the data
-                completionHandler()
+        if observerRegistry.beginObserving(HKQuantityTypeIdentifier.stepCount.rawValue) {
+            let query = HKObserverQuery(
+                sampleType: stepCountType,
+                predicate: nil
+            ) { _, completionHandler, error in
+                guard error == nil else {
+                    completionHandler()
+                    return
+                }
+                Task {
+                    // Complete the essential event check first, acknowledge
+                    // HealthKit promptly, then perform nonessential refreshes.
+                    await GoalNotificationService.handleStepCountChange()
+                    completionHandler()
+                    await WidgetDataService.updateSnapshot()
+                    PhoneSessionManager.shared.sendSnapshotToWatch()
+                }
             }
+            store.execute(query)
         }
-        store.execute(query)
 
-        // .immediate ensures iOS wakes us as soon as new step data arrives
-        // Requires UIBackgroundModes "fetch" in Info.plist
-        store.enableBackgroundDelivery(for: stepCountType, frequency: .immediate) { _, error in
+        if observerRegistry.beginObserving(workoutType.identifier) {
+            let query = HKObserverQuery(
+                sampleType: workoutType,
+                predicate: nil
+            ) { _, completionHandler, error in
+                guard error == nil else {
+                    completionHandler()
+                    return
+                }
+                Task {
+                    await GoalNotificationService.notifyFrequencyGoalIfReached()
+                    completionHandler()
+                }
+            }
+            store.execute(query)
+        }
+
+        enableBackgroundDelivery(for: stepCountType, label: "step count")
+        enableBackgroundDelivery(for: workoutType, label: "workouts")
+    }
+
+    private static func enableBackgroundDelivery(for type: HKObjectType, label: String) {
+        store.enableBackgroundDelivery(for: type, frequency: .immediate) { success, error in
             if let error {
-                print("[HealthKit] Failed to enable background delivery: \(error.localizedDescription)")
+                print("[HealthKit] Failed to enable \(label) background delivery: \(error.localizedDescription)")
+            } else if !success {
+                print("[HealthKit] \(label) background delivery was not enabled.")
             }
         }
     }
@@ -285,7 +321,7 @@ struct HealthKitService {
     }
 
     /// Reads total step count for a given date.
-    private static func fetchSteps(for date: Date) async -> Int {
+    static func fetchSteps(for date: Date) async -> Int {
         let cal = Calendar.current
         let startOfDay = cal.startOfDay(for: date)
         let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay) ?? date

@@ -136,7 +136,7 @@ Home screen widgets keep you on track without opening the app:
 
 ## Smart Notifications
 
-An intelligent notification engine schedules reminders based on your goals — exercise targets, weekly frequency nudges, step milestones (50%, 75%, 100%), and progress tracking prompts for weight, measurements, and photos.
+Event-driven notifications celebrate completed exercise, weekly workout, and daily step goals. Rest completion and inactive-workout alerts use system-owned timers so they remain reliable while the app is suspended; Shift does not schedule future goal or progress reminders.
 
 <br>
 

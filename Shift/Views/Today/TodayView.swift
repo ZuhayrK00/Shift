@@ -107,12 +107,23 @@ struct TodayView: View {
                 ActivityDetailView(activityData: activityData ?? ActivityData())
             }
         }
-        .task { await loadData() }
+        .task {
+            await loadData()
+            if let sessionId = ShiftDeepLinkStore.consumeWorkoutSessionId() {
+                openWorkout(sessionId)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .watchDidUpdateWorkout)) { _ in
             Task { await loadData() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkStartWorkout)) { _ in
             Task { await startWorkout(plan: nil) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkOpenWorkout)) { notification in
+            if let sessionId = notification.userInfo?["sessionId"] as? String {
+                ShiftDeepLinkStore.storeWorkoutSessionId(sessionId)
+                openWorkout(sessionId)
+            }
         }
         .onChange(of: navigationPath) {
             // Fires when popping back from a workout — refresh sessions + calendar
@@ -136,6 +147,12 @@ struct TodayView: View {
         } message: {
             Text(workoutError ?? "")
         }
+    }
+
+    private func openWorkout(_ sessionId: String) {
+        _ = ShiftDeepLinkStore.consumeWorkoutSessionId()
+        guard navigationPath.isEmpty else { return }
+        navigationPath.append(sessionId)
     }
 
     // MARK: - Session list

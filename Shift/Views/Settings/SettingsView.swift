@@ -142,7 +142,7 @@ struct SettingsView: View {
                             icon: "bell.fill",
                             iconColor: colors.danger,
                             title: "Notifications",
-                            subtitle: "Goals, steps, progress reminders"
+                            subtitle: "Achievements and workout alerts"
                         )
                     }
 
@@ -786,6 +786,11 @@ private struct WorkoutSettingsPage: View {
             enabled: restTimerEnabled,
             durationSeconds: restTimerDuration
         )
+        if restTimerEnabled {
+            _ = await NotificationManager.requestAuthorizationIfNeeded()
+        } else {
+            RestTimerManager.shared.stop()
+        }
         do {
             _ = try await ProfileService.updateSettings(settings)
         } catch {
@@ -814,13 +819,15 @@ private struct NotificationSettingsPage: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     var onSaved: (() -> Void)?
 
-    @State private var exerciseGoalReminders = true
-    @State private var frequencyReminders = true
-    @State private var stepGoalReminders = true
-    @State private var progressReminders = true
+    @State private var exerciseGoalAchievements = true
+    @State private var frequencyGoalAchievements = true
+    @State private var stepGoalAchievements = true
+    @State private var workoutIdleAlerts = true
+    @State private var permissionState: NotificationPermissionState = .notDetermined
     @State private var isSaving = false
     @State private var saveError: String?
 
@@ -829,26 +836,49 @@ private struct NotificationSettingsPage: View {
             colors.bg.ignoresSafeArea()
 
             Form {
-                Section("Goal Reminders") {
-                    Toggle("Exercise goal reminders", isOn: $exerciseGoalReminders)
+                Section("Achievements") {
+                    Toggle("Exercise goal achieved", isOn: $exerciseGoalAchievements)
                         .tint(colors.accent)
 
-                    Toggle("Frequency reminders", isOn: $frequencyReminders)
+                    Toggle("Weekly workout goal achieved", isOn: $frequencyGoalAchievements)
                         .tint(colors.accent)
 
-                    Toggle("Step goal reminders", isOn: $stepGoalReminders)
+                    Toggle("Daily step goal achieved", isOn: $stepGoalAchievements)
                         .tint(colors.accent)
+                }
+                .listRowBackground(colors.surface)
+                .foregroundStyle(colors.text)
 
-                    Toggle("Progress reminders", isOn: $progressReminders)
+                Section("Workout") {
+                    Toggle("Inactive workout alert", isOn: $workoutIdleAlerts)
                         .tint(colors.accent)
                 }
                 .listRowBackground(colors.surface)
                 .foregroundStyle(colors.text)
 
                 Section {
-                    Text("When enabled, you'll receive notifications to help you stay on track with your exercise weight goals, weekly gym frequency targets, daily step goals, and progress tracking.")
+                    Text("Achievement alerts are sent only when a goal is completed. Shift does not schedule future goal or progress reminders. iOS may batch step updates while Shift is in the background. Rest-timer alerts are controlled in Workout settings.")
                         .font(.system(size: 13))
                         .foregroundStyle(colors.muted)
+                }
+                .listRowBackground(colors.surface)
+
+                Section("System Permission") {
+                    HStack {
+                        Text("Notifications")
+                        Spacer()
+                        Text(permissionLabel)
+                            .foregroundStyle(permissionState == .enabled ? colors.success : colors.muted)
+                    }
+
+                    if permissionState == .denied {
+                        Button("Open iOS Settings") {
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                                openURL(url)
+                            }
+                        }
+                        .foregroundStyle(colors.accent)
+                    }
                 }
                 .listRowBackground(colors.surface)
 
@@ -883,10 +913,19 @@ private struct NotificationSettingsPage: View {
         }
         .onAppear {
             let s = authManager.user?.settings ?? .default
-            exerciseGoalReminders = s.notifications.exerciseGoalReminders
-            frequencyReminders = s.notifications.frequencyReminders
-            stepGoalReminders = s.notifications.stepGoalReminders
-            progressReminders = s.notifications.progressReminders
+            exerciseGoalAchievements = s.notifications.exerciseGoalAchievements
+            frequencyGoalAchievements = s.notifications.frequencyGoalAchievements
+            stepGoalAchievements = s.notifications.stepGoalAchievements
+            workoutIdleAlerts = s.notifications.workoutIdleAlerts
+            Task { permissionState = await NotificationManager.permissionState() }
+        }
+    }
+
+    private var permissionLabel: String {
+        switch permissionState {
+        case .enabled: return "Allowed"
+        case .denied: return "Off in iOS Settings"
+        case .notDetermined: return "Not requested"
         }
     }
 
@@ -895,11 +934,23 @@ private struct NotificationSettingsPage: View {
         saveError = nil
         var settings = authManager.user?.settings ?? .default
         var notifs = NotificationSettings()
-        notifs.exerciseGoalReminders = exerciseGoalReminders
-        notifs.frequencyReminders = frequencyReminders
-        notifs.stepGoalReminders = stepGoalReminders
-        notifs.progressReminders = progressReminders
+        notifs.exerciseGoalAchievements = exerciseGoalAchievements
+        notifs.frequencyGoalAchievements = frequencyGoalAchievements
+        notifs.stepGoalAchievements = stepGoalAchievements
+        notifs.workoutIdleAlerts = workoutIdleAlerts
         settings.notifications = notifs
+
+        if exerciseGoalAchievements
+            || frequencyGoalAchievements
+            || stepGoalAchievements
+            || workoutIdleAlerts {
+            _ = await NotificationManager.requestAuthorizationIfNeeded()
+            permissionState = await NotificationManager.permissionState()
+        }
+        if stepGoalAchievements, settings.dailyStepGoal != nil {
+            _ = try? await HealthKitService.requestAuthorization()
+        }
+
         do {
             _ = try await ProfileService.updateSettings(settings)
         } catch {
@@ -908,7 +959,13 @@ private struct NotificationSettingsPage: View {
             return
         }
         await authManager.refreshUser()
-        Task { await GoalNotificationService.scheduleAllNotifications() }
+        await GoalNotificationService.refreshConfiguration()
+        if !workoutIdleAlerts {
+            await NotificationManager.cancelAllIdleWorkoutNotifications()
+        }
+        if stepGoalAchievements {
+            await GoalNotificationService.handleStepCountChange()
+        }
         isSaving = false
         onSaved?()
         dismiss()
@@ -1446,4 +1503,3 @@ private struct ChangePasswordSheet: View {
         isLoading = false
     }
 }
-

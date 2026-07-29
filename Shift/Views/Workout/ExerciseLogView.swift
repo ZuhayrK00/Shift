@@ -261,10 +261,10 @@ struct ExerciseLogView: View {
                         groupId: gid
                     )
                     if roundDone {
-                        RestTimerManager.shared.start(seconds: restDuration)
+                        RestTimerManager.shared.start(seconds: restDuration, sessionId: sessionId)
                     }
                 } else {
-                    RestTimerManager.shared.start(seconds: restDuration)
+                    RestTimerManager.shared.start(seconds: restDuration, sessionId: sessionId)
                 }
             }
             try await reloadSets()

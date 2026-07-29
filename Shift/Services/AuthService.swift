@@ -170,8 +170,10 @@ class AuthManager {
     }
 
     func signOut() async throws {
+        let signedOutUserId = currentUserId
         _ = try? await SyncService.flushQueue()
         try await supabase.auth.signOut()
+        await GoalNotificationService.clearUserState(userId: signedOutUserId)
         ImageCache.shared.removeAll()
         await StoreService.shared.reset()
     }

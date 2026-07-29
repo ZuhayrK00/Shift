@@ -6,6 +6,21 @@ import WatchConnectivity
 
 extension Notification.Name {
     static let shiftDeepLinkStartWorkout = Notification.Name("shiftDeepLinkStartWorkout")
+    static let shiftDeepLinkOpenWorkout = Notification.Name("shiftDeepLinkOpenWorkout")
+}
+
+enum ShiftDeepLinkStore {
+    private static let workoutKey = "shift.deepLink.workoutSessionId"
+
+    static func storeWorkoutSessionId(_ sessionId: String) {
+        UserDefaults.standard.set(sessionId, forKey: workoutKey)
+    }
+
+    static func consumeWorkoutSessionId() -> String? {
+        let sessionId = UserDefaults.standard.string(forKey: workoutKey)
+        UserDefaults.standard.removeObject(forKey: workoutKey)
+        return sessionId
+    }
 }
 
 // MARK: - Notification Delegate
@@ -15,15 +30,19 @@ class ShiftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        if response.actionIdentifier == NotificationManager.finishWorkoutAction {
-            let sessionId = response.notification.request.content.userInfo["sessionId"] as? String
-            if let sessionId {
-                try? await WorkoutService.finishSession(sessionId)
-                await MainActor.run {
-                    NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
-                }
-                PhoneSessionManager.shared.sendContextToWatch()
-            }
+        let isOpenAction = response.actionIdentifier == NotificationManager.openWorkoutAction
+            || response.actionIdentifier == UNNotificationDefaultActionIdentifier
+        guard isOpenAction,
+              let sessionId = response.notification.request.content.userInfo["sessionId"] as? String
+        else { return }
+
+        await MainActor.run {
+            ShiftDeepLinkStore.storeWorkoutSessionId(sessionId)
+            NotificationCenter.default.post(
+                name: .shiftDeepLinkOpenWorkout,
+                object: nil,
+                userInfo: ["sessionId": sessionId]
+            )
         }
     }
 
@@ -31,7 +50,10 @@ class ShiftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        if notification.request.content.userInfo["shiftNotificationKind"] as? String == "achievement" {
+            return [.banner]
+        }
+        return [.banner, .sound]
     }
 }
 
@@ -47,12 +69,11 @@ struct ShiftApp: App {
 
     init() {
         setAuthManager(authManager)
-        NotificationManager.requestPermissionIfNeeded()
         NotificationManager.registerCategories()
         UNUserNotificationCenter.current().delegate = notificationDelegate
-        HealthKitService.enableStepCountBackgroundDelivery()
+        HealthKitService.configureBackgroundDelivery()
         PhoneSessionManager.shared.activate()
-        Task { await GoalNotificationService.scheduleAllNotifications() }
+        Task { await NotificationManager.removeLegacyGoalNotifications() }
     }
 
     private var preferredScheme: ColorScheme? {
@@ -83,7 +104,10 @@ struct ShiftApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await StoreService.shared.updatePurchasedProducts() }
-                Task { await GoalNotificationService.checkAndNotifyGoalCompletion() }
+                Task {
+                    await GoalNotificationService.checkAndNotifyGoalCompletion()
+                    await GoalNotificationService.notifyFrequencyGoalIfReached()
+                }
                 Task { await WidgetDataService.updateSnapshot() }
                 PhoneSessionManager.shared.sendContextToWatch()
             }

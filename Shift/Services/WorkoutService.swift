@@ -36,7 +36,7 @@ struct WorkoutService {
         try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
             try SessionRepository.insert(session, in: db)
         }
-        NotificationManager.scheduleIdleWorkoutNotification(sessionId: id)
+        await refreshIdleAlertIfNeeded(sessionId: id)
         return session
     }
 
@@ -53,8 +53,6 @@ struct WorkoutService {
     }
 
     static func finishSession(_ sessionId: String) async throws {
-        NotificationManager.cancelIdleWorkoutNotification()
-
         // Determine ended-at:
         // 1. If this session was previously completed (has originalEndedAt), restore it.
         // 2. For live sessions (< 12h old), use current time.
@@ -87,20 +85,23 @@ struct WorkoutService {
         try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
             try SessionRepository.setEndedAt(sessionId, endedAt, in: db)
         }
+        NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
 
-        // Check exercise goals for completion and reschedule notifications
+        // Check exercise goals and notify only for goals completed by this event.
         do {
             let exerciseIds = try await SessionSetRepository.findExerciseIds(sessionId: sessionId)
             for exerciseId in exerciseIds {
                 let goals = (try? await ExerciseGoalRepository.findByExercise(exerciseId)) ?? []
                 for goal in goals where !goal.isCompleted {
-                    _ = try? await GoalService.checkGoalCompletion(goal.id)
+                    if (try? await GoalService.checkGoalCompletion(goal.id)) == true {
+                        await GoalNotificationService.notifyExerciseGoalCompleted(goal)
+                    }
                 }
             }
         } catch {
             logger.error("Failed to check goal completion after finishing session: \(error.localizedDescription)")
         }
-        await GoalNotificationService.scheduleAllNotifications()
+        await GoalNotificationService.notifyFrequencyGoalIfReached()
 
         // Save workout to HealthKit if enabled
         if authManager.user?.settings.healthKit.syncWorkouts == true {
@@ -136,11 +137,10 @@ struct WorkoutService {
             }
             try SessionRepository.setEndedAt(sessionId, nil, in: db)
         }
-        NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
+        await refreshIdleAlertIfNeeded(sessionId: sessionId)
     }
 
     static func deleteSession(_ sessionId: String) async throws {
-        NotificationManager.cancelIdleWorkoutNotification()
         // Delete all sets and enqueue deletes for each
         let setIds = try await SessionSetRepository.findSetIds(sessionId: sessionId)
         let mutations = setIds.map {
@@ -151,6 +151,7 @@ struct WorkoutService {
         try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
             try SessionRepository.delete(sessionId, in: db)
         }
+        NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
 
         // Immediately flush so the delete reaches Supabase before the app
         // is killed — prevents pullUserData from re-inserting the session.
@@ -262,7 +263,7 @@ struct WorkoutService {
             completedSet.setType = resolvedSetType
             completedSet.groupId = placeholder.groupId ?? inheritedGroupId
 
-            NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
+            await refreshIdleAlertIfNeeded(sessionId: sessionId)
             return completedSet
         }
 
@@ -290,7 +291,7 @@ struct WorkoutService {
             try SessionSetRepository.insert(newSet, in: db)
         }
 
-        NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
+        await refreshIdleAlertIfNeeded(sessionId: sessionId)
         return newSet
     }
 
@@ -368,9 +369,11 @@ struct WorkoutService {
         }
         SyncService.flushInBackground()
 
-        // Reset idle workout timer
-        if let ownership = try? await SessionSetRepository.findOwnership(setId) {
-            NotificationManager.scheduleIdleWorkoutNotification(sessionId: ownership.sessionId)
+        // A completed set is the activity this alert measures. Editing an old
+        // set or changing its type must not make a finished workout look active.
+        if patch.isCompleted == true,
+           let ownership = try? await SessionSetRepository.findOwnership(setId) {
+            await refreshIdleAlertIfNeeded(sessionId: ownership.sessionId)
         }
     }
 
@@ -536,6 +539,32 @@ struct WorkoutService {
     }
 
     // MARK: - Private helpers
+
+    private static func refreshIdleAlertIfNeeded(sessionId: String) async {
+        guard let userId = authManager.currentUserId else {
+            NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
+            return
+        }
+
+        let alertsEnabled: Bool
+        if let user = authManager.user, user.id == userId {
+            alertsEnabled = user.settings.notifications.workoutIdleAlerts
+        } else {
+            alertsEnabled =
+                (try? await ProfileRepository.findById(userId))?
+                    .settings.notifications.workoutIdleAlerts
+                ?? false
+        }
+
+        guard alertsEnabled,
+              let session = try? await SessionRepository.findById(sessionId),
+              session.userId == userId,
+              session.endedAt == nil else {
+            NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
+            return
+        }
+        NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)
+    }
 
     private static func buildSummary(_ session: WorkoutSession) async throws -> SessionSummary {
         let exerciseSummaries = try await SessionRepository.findExerciseSummaries(

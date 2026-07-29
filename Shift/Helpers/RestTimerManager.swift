@@ -38,8 +38,9 @@ final class RestTimerManager {
             self.recalculateRemaining()
             // Timer expired while app was in background — clean up
             if self.isActive && self.remaining <= 0 {
-                self.fireCompletionHaptics()
                 self.stop()
+                // The system notification already represented completion while
+                // backgrounded, so avoid a second completion haptic on return.
             }
             // Clean up any zombie Live Activities that outlived the timer
             if !self.isActive {
@@ -48,21 +49,21 @@ final class RestTimerManager {
         }
     }
 
-    func start(seconds: Int) {
+    func start(seconds: Int, sessionId: String? = nil) {
         stop()
         duration = seconds
         remaining = seconds
         endTime = Date().addingTimeInterval(Double(seconds))
         isActive = true
         LiveActivityManager.start(durationSeconds: seconds)
-        NotificationManager.scheduleRestTimerNotification(seconds: seconds)
+        NotificationManager.scheduleRestTimerNotification(seconds: seconds, sessionId: sessionId)
 
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.recalculateRemaining()
             if self.remaining <= 0 {
-                self.fireCompletionHaptics()
                 self.stop()
+                self.fireCompletionHaptics()
             }
         }
     }

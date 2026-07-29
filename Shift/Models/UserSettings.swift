@@ -29,27 +29,52 @@ struct HealthKitSettings: Codable, Hashable {
 // MARK: - NotificationSettings
 
 struct NotificationSettings: Codable, Hashable {
-    var exerciseGoalReminders: Bool = true
-    var frequencyReminders: Bool = true
-    var stepGoalReminders: Bool = true
-    var progressReminders: Bool = true
+    var exerciseGoalAchievements: Bool = true
+    var frequencyGoalAchievements: Bool = true
+    var stepGoalAchievements: Bool = true
+    var workoutIdleAlerts: Bool = true
 
     enum CodingKeys: String, CodingKey {
-        case exerciseGoalReminders = "exercise_goal_reminders"
-        case frequencyReminders = "frequency_reminders"
-        case stepGoalReminders = "step_goal_reminders"
-        case progressReminders = "progress_reminders"
+        case exerciseGoalAchievements = "exercise_goal_achievements"
+        case frequencyGoalAchievements = "frequency_goal_achievements"
+        case stepGoalAchievements = "step_goal_achievements"
+        case workoutIdleAlerts = "workout_idle_alerts"
+
+        // Legacy keys retained for a one-way migration from the old scheduled
+        // reminder system.
+        case legacyExerciseGoalReminders = "exercise_goal_reminders"
+        case legacyFrequencyReminders = "frequency_reminders"
+        case legacyStepGoalReminders = "step_goal_reminders"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        exerciseGoalReminders = (try? container.decode(Bool.self, forKey: .exerciseGoalReminders)) ?? true
-        frequencyReminders = (try? container.decode(Bool.self, forKey: .frequencyReminders)) ?? true
-        stepGoalReminders = (try? container.decode(Bool.self, forKey: .stepGoalReminders)) ?? true
-        progressReminders = (try? container.decode(Bool.self, forKey: .progressReminders)) ?? true
+        exerciseGoalAchievements =
+            (try? container.decode(Bool.self, forKey: .exerciseGoalAchievements))
+            ?? (try? container.decode(Bool.self, forKey: .legacyExerciseGoalReminders))
+            ?? true
+        frequencyGoalAchievements =
+            (try? container.decode(Bool.self, forKey: .frequencyGoalAchievements))
+            ?? (try? container.decode(Bool.self, forKey: .legacyFrequencyReminders))
+            ?? true
+        stepGoalAchievements =
+            (try? container.decode(Bool.self, forKey: .stepGoalAchievements))
+            ?? (try? container.decode(Bool.self, forKey: .legacyStepGoalReminders))
+            ?? true
+        workoutIdleAlerts =
+            (try? container.decode(Bool.self, forKey: .workoutIdleAlerts))
+            ?? true
     }
 
     init() {}
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(exerciseGoalAchievements, forKey: .exerciseGoalAchievements)
+        try container.encode(frequencyGoalAchievements, forKey: .frequencyGoalAchievements)
+        try container.encode(stepGoalAchievements, forKey: .stepGoalAchievements)
+        try container.encode(workoutIdleAlerts, forKey: .workoutIdleAlerts)
+    }
 }
 
 // MARK: - UserSettings

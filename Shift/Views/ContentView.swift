@@ -77,6 +77,10 @@ struct ContentView: View {
                 showOnboarding = false
             }
         }
+        .task(id: authManager.user?.id) {
+            guard authManager.user != nil else { return }
+            await GoalNotificationService.prepareForCurrentUser()
+        }
         .alert("Something went wrong", isPresented: Binding(
             get: { AppErrorCenter.shared.message != nil },
             set: { if !$0 { AppErrorCenter.shared.message = nil } }
@@ -210,6 +214,9 @@ struct MainTabView: View {
             if oldTab == 1 && !plansPath.isEmpty {
                 plansPath = NavigationPath()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkOpenWorkout)) { _ in
+            selectedTab = 0
         }
     }
 }

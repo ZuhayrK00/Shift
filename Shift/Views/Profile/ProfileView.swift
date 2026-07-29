@@ -100,7 +100,10 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showStepGoalEditor) {
             StepGoalEditorSheet {
-                Task { await GoalNotificationService.scheduleAllNotifications() }
+                Task {
+                    await GoalNotificationService.refreshConfiguration()
+                    await GoalNotificationService.handleStepCountChange()
+                }
             }
         }
         .sheet(isPresented: $showFrequencyEditor) {
@@ -1053,7 +1056,6 @@ struct FrequencyGoalEditorSheet: View {
             return
         }
         await authManager.refreshUser()
-        Task { await GoalNotificationService.scheduleAllNotifications() }
         PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
@@ -1073,7 +1075,6 @@ struct FrequencyGoalEditorSheet: View {
             return
         }
         await authManager.refreshUser()
-        Task { await GoalNotificationService.scheduleAllNotifications() }
         PhoneSessionManager.shared.sendContextToWatch()
         isSaving = false
         onSaved?()
@@ -1234,6 +1235,10 @@ struct StepGoalEditorSheet: View {
         saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.dailyStepGoal = stepGoal
+        if settings.notifications.stepGoalAchievements {
+            _ = try? await HealthKitService.requestAuthorization()
+            _ = await NotificationManager.requestAuthorizationIfNeeded()
+        }
         do {
             _ = try await ProfileService.updateSettings(settings)
         } catch {
