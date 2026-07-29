@@ -19,6 +19,7 @@ struct TodayView: View {
     @State private var showActivityDetail = false
     @State private var currentStreak: Int = 0
     @State private var workoutError: String?
+    @State private var weeklySummary: WeeklyTrainingSummary?
 
     private var todayKey: String { toLocalDateKey(Date()) }
     private var selectedKey: String { toLocalDateKey(selectedDate) }
@@ -86,6 +87,12 @@ struct TodayView: View {
                             sessionList
                         }
 
+                        if isToday, let weeklySummary, weeklySummary.workoutCount > 0 {
+                            weeklyTrainingCard(weeklySummary)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 16)
+                        }
+
                         // HealthKit activity (below workouts)
                         if !isFuture, let activity = activityData {
                             Button {
@@ -119,6 +126,16 @@ struct TodayView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkStartWorkout)) { _ in
             Task { await startWorkout(plan: nil) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftShortcutStartNextWorkout)) { _ in
+            Task {
+                if nextProgramPlan == nil { await loadData() }
+                if let nextProgramPlan {
+                    await startWorkout(plan: nextProgramPlan)
+                } else {
+                    showPlanPicker = !plans.isEmpty
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkOpenWorkout)) { notification in
             if let sessionId = notification.userInfo?["sessionId"] as? String {
@@ -258,7 +275,7 @@ struct TodayView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.onAccent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(colors.accent)
@@ -272,7 +289,7 @@ struct TodayView: View {
                     } label: {
                         Text("Select plan")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(colors.onAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .background(colors.accent)
@@ -341,6 +358,66 @@ struct TodayView: View {
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func weeklyTrainingCard(_ summary: WeeklyTrainingSummary) -> some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack {
+                Text("This week")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(colors.text)
+                Spacer()
+                if let change = summary.volumeChangePercent {
+                    Text("\(change >= 0 ? "+" : "")\(change)% volume")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(change >= 0 ? colors.success : colors.muted)
+                }
+            }
+
+            HStack(spacing: 0) {
+                weeklyStat("\(summary.workoutCount)", "Workouts")
+                weeklyStat("\(summary.workingSetCount)", "Working sets")
+                weeklyStat(formattedWeeklyVolume(summary.volume), weightUnit)
+            }
+
+            if !summary.muscleNames.isEmpty {
+                Text(summary.muscleNames.prefix(5).joined(separator: " · "))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(colors.muted)
+                    .lineLimit(2)
+            } else {
+                Text("Your trained muscle groups will appear here.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(colors.muted)
+            }
+        }
+        .padding(14)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(colors.border, lineWidth: 1))
+    }
+
+    private func weeklyStat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(colors.text)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(colors.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var weightUnit: String {
+        authManager.user?.settings.weightUnit ?? "kg"
+    }
+
+    private func formattedWeeklyVolume(_ kg: Double) -> String {
+        let converted = convertWeight(kg, to: weightUnit)
+        return converted >= 1000
+            ? String(format: "%.1fk", converted / 1000)
+            : "\(Int(converted.rounded()))"
     }
 
     // MARK: - Activity card
@@ -500,10 +577,17 @@ struct TodayView: View {
             nextProgramPlan = grouped.programs.first(where: \.isActive)?.nextWorkout?.plan
         } else {
             nextProgramPlan = nil
+            weeklySummary = nil
         }
 
         await loadSessionsForDate()
         await loadStreak()
+        if let userID = authManager.currentUserId {
+            weeklySummary = try? await WeeklyTrainingSummaryService.load(
+                userID: userID,
+                weekStartsOn: authManager.user?.settings.weekStartsOn ?? "monday"
+            )
+        }
 
         // Load HealthKit activity in background
         if HealthKitService.isAvailable {
@@ -539,6 +623,12 @@ struct TodayView: View {
         }
 
         await loadStreak()
+        if let userID = authManager.currentUserId {
+            weeklySummary = try? await WeeklyTrainingSummaryService.load(
+                userID: userID,
+                weekStartsOn: authManager.user?.settings.weekStartsOn ?? "monday"
+            )
+        }
     }
 
     private func loadStreak() async {
@@ -667,7 +757,7 @@ private struct InProgressSessionCard: View {
                 Text("Resume")
                     .font(.system(size: 15, weight: .semibold))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(colors.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(colors.accent)

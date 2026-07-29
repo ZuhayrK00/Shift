@@ -14,6 +14,8 @@ struct GoalEditorSheet: View {
     @State private var currentMax: Double?
     @State private var isLoading = true
     @State private var isSaving = false
+    @State private var isDeleting = false
+    @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
 
     private var isEditing: Bool { existingGoal != nil }
@@ -92,6 +94,27 @@ struct GoalEditorSheet: View {
                         }
                         .listRowBackground(colors.surface)
                     }
+
+                    if isEditing {
+                        Section {
+                            Button(role: .destructive) {
+                                showDeleteConfirmation = true
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    if isDeleting {
+                                        ProgressView()
+                                            .tint(colors.danger)
+                                    } else {
+                                        Label("Delete Goal", systemImage: "trash")
+                                    }
+                                    Spacer()
+                                }
+                            }
+                            .disabled(isSaving || isDeleting)
+                        }
+                        .listRowBackground(colors.surface)
+                    }
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -114,10 +137,18 @@ struct GoalEditorSheet: View {
                                 .foregroundStyle(colors.accent)
                         }
                     }
-                    .disabled(isSaving || isLoading)
+                    .disabled(isSaving || isDeleting || isLoading)
                 }
             }
             .task { await loadCurrentMax() }
+            .alert("Delete Goal?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    Task { await deleteGoal() }
+                }
+            } message: {
+                Text("This will permanently remove this goal. This cannot be undone.")
+            }
         }
     }
 
@@ -157,6 +188,21 @@ struct GoalEditorSheet: View {
         } catch {
             errorMessage = error.localizedDescription
             isSaving = false
+        }
+    }
+
+    private func deleteGoal() async {
+        guard let goal = existingGoal else { return }
+        isDeleting = true
+        errorMessage = nil
+
+        do {
+            try await GoalService.deleteGoal(goal.id)
+            await onSaved?()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            isDeleting = false
         }
     }
 

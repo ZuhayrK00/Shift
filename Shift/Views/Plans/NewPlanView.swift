@@ -52,7 +52,7 @@ struct NewPlanView: View {
                 } label: {
                     HStack {
                         if isCreating {
-                            ProgressView().tint(.white).scaleEffect(0.9)
+                            ProgressView().tint(colors.onAccent).scaleEffect(0.9)
                         } else {
                             Text("Create plan")
                                 .font(.system(size: 16, weight: .semibold))
@@ -61,7 +61,7 @@ struct NewPlanView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
                     .background(planName.trimmingCharacters(in: .whitespaces).isEmpty ? colors.accent.opacity(0.4) : colors.accent)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onAccent)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .disabled(planName.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)

@@ -201,6 +201,63 @@ final class PlanEnhancementTests: XCTestCase {
         XCTAssertEqual(result["row"]?.isIncrease, false)
     }
 
+    func testProgressionRecommendation_suggestsResetAfterRepeatedMisses() {
+        let firstMiss = [
+            SessionSet(
+                id: "1",
+                sessionId: "s1",
+                exerciseId: "press",
+                setNumber: 1,
+                reps: 5,
+                weight: 40,
+                rpe: 9.5,
+                isCompleted: true
+            )
+        ]
+        let secondMiss = [
+            SessionSet(
+                id: "2",
+                sessionId: "s2",
+                exerciseId: "press",
+                setNumber: 1,
+                reps: 6,
+                weight: 40,
+                isCompleted: true
+            )
+        ]
+        let result = ProgressionRecommendationService.recommendations(
+            latestSets: ["press": firstMiss],
+            targets: ["press": (repsMin: 8, repsMax: 10)],
+            increment: 2.5,
+            recentSessions: ["press": [firstMiss, secondMiss]]
+        )
+
+        XCTAssertEqual(result["press"]?.action, .decrease)
+        XCTAssertEqual(result["press"]?.weight, 35)
+    }
+
+    func testWarmups_areBelowWorkingWeightAndDoNotDuplicateRoundedStages() {
+        let warmups = WorkoutUtilityService.warmups(
+            workingWeightKg: 100,
+            incrementKg: 2.5
+        )
+
+        XCTAssertEqual(warmups.map(\.weightKg), [40, 60, 80])
+        XCTAssertEqual(warmups.map(\.reps), [8, 5, 3])
+        XCTAssertTrue(warmups.allSatisfy { $0.weightKg < 100 })
+    }
+
+    func testPlateLoading_supportsStoredLbsUnit() {
+        let loading = WorkoutUtilityService.plateLoading(
+            targetWeight: 225,
+            barWeight: 45,
+            unit: "lbs"
+        )
+
+        XCTAssertEqual(loading.platesPerSide, [45, 45])
+        XCTAssertEqual(loading.actualWeight, 225)
+    }
+
     #if canImport(FoundationModels)
     @available(iOS 26, *)
     func testFallbackBuilder_producesGroundedUniqueDraft() {

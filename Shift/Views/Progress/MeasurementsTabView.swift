@@ -68,7 +68,7 @@ struct MeasurementsTabView: View {
                     Text("Add Measurement")
                         .font(.system(size: 14, weight: .semibold))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(colors.onAccent)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(colors.accent)
@@ -240,7 +240,7 @@ struct AddMeasurementSheet: View {
                                                     .lineLimit(1)
                                                     .minimumScaleFactor(0.8)
                                             }
-                                            .foregroundStyle(selectedType == type ? .white : colors.text)
+                                            .foregroundStyle(selectedType == type ? colors.onAccent : colors.text)
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 12)
                                             .background(selectedType == type ? colors.accent : colors.surface)

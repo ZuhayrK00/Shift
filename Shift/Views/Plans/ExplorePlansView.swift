@@ -240,7 +240,7 @@ struct TemplateDetailView: View {
                         HStack {
                             if isAdding {
                                 ProgressView()
-                                    .tint(.white)
+                                    .tint(colors.onAccent)
                                     .scaleEffect(0.9)
                             } else {
                                 Image(systemName: "plus")
@@ -251,7 +251,7 @@ struct TemplateDetailView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.onAccent)
                         .background(colors.accent)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }

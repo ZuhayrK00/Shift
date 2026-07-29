@@ -35,15 +35,15 @@ struct WorkoutShareCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     // Dynamic palette
-    private var bg: Color       { colorScheme == .dark ? Color(hex: "#0b0b0f") : Color(hex: "#f5f5f7") }
-    private var surface: Color  { colorScheme == .dark ? Color(hex: "#16161d") : Color(hex: "#e8e8ed") }
-    private var surface2: Color { colorScheme == .dark ? Color(hex: "#1f1f29") : Color(hex: "#dddde3") }
-    private var border: Color   { colorScheme == .dark ? Color(hex: "#2a2a36") : Color(hex: "#d0d0d8") }
-    private var text: Color     { colorScheme == .dark ? Color(hex: "#f5f5f7") : Color(hex: "#1a1a1f") }
-    private var muted: Color    { colorScheme == .dark ? Color(hex: "#9a9aae") : Color(hex: "#6e6e80") }
-    private let accent   = Color(hex: "#7c5cff")
-    private let accent2  = Color(hex: "#22d3ee")
-    private let success  = Color(hex: "#22c55e")
+    private var bg: Color       { colorScheme == .dark ? Color(hex: "#050505") : Color(hex: "#f6f6f4") }
+    private var surface: Color  { colorScheme == .dark ? Color(hex: "#101010") : Color(hex: "#ffffff") }
+    private var surface2: Color { colorScheme == .dark ? Color(hex: "#191919") : Color(hex: "#ececea") }
+    private var border: Color   { colorScheme == .dark ? Color(hex: "#2a2a2a") : Color(hex: "#d8d8d4") }
+    private var text: Color     { colorScheme == .dark ? Color(hex: "#f4f4f2") : Color(hex: "#0a0a0a") }
+    private var muted: Color    { colorScheme == .dark ? Color(hex: "#a0a09b") : Color(hex: "#626262") }
+    private var accent: Color   { colorScheme == .dark ? Color(hex: "#f2f2ee") : Color(hex: "#111111") }
+    private var accent2: Color  { colorScheme == .dark ? Color(hex: "#a8a8a2") : Color(hex: "#6f6f6a") }
+    private var success: Color  { colorScheme == .dark ? Color(hex: "#39c66d") : Color(hex: "#16803c") }
 
     // 9:16 story dimensions
     private let cardWidth: CGFloat  = 390

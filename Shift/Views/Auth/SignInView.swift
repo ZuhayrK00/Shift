@@ -71,7 +71,7 @@ struct SignInView: View {
                         HStack {
                             if isLoading {
                                 ProgressView()
-                                    .tint(.white)
+                                    .tint(colors.onAccent)
                                     .scaleEffect(0.9)
                             } else {
                                 Text("Sign in")
@@ -81,7 +81,7 @@ struct SignInView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(colors.accent)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.onAccent)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .disabled(isLoading || email.isEmpty || password.isEmpty)
@@ -345,7 +345,7 @@ struct ForgotPasswordSheet: View {
                             HStack {
                                 if isLoading {
                                     ProgressView()
-                                        .tint(.white)
+                                        .tint(colors.onAccent)
                                         .scaleEffect(0.9)
                                 } else {
                                     Text("Send reset link")
@@ -355,7 +355,7 @@ struct ForgotPasswordSheet: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
                             .background(colors.accent)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(colors.onAccent)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .disabled(email.isEmpty || isLoading)

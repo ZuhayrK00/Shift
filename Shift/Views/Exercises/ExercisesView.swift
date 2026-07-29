@@ -126,7 +126,7 @@ struct ExercisesView: View {
                                     Text("Clear")
                                         .font(.system(size: 13, weight: .semibold))
                                 }
-                                .foregroundStyle(.white)
+                                .foregroundStyle(colors.onDanger)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
                                 .background(colors.danger.opacity(0.85))
@@ -379,7 +379,7 @@ private struct FilterChip: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .bold))
             }
-            .foregroundStyle(isActive ? .white : colors.text)
+            .foregroundStyle(isActive ? colors.onAccent : colors.text)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(

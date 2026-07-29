@@ -35,11 +35,11 @@ struct SettingsView: View {
                         HStack(spacing: 14) {
                             Image(systemName: "crown.fill")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(colors.onAccent)
                                 .frame(width: 32, height: 32)
                                 .background(
                                     LinearGradient(
-                                        colors: [colors.accent, Color(hex: "#6344e0")],
+                                        colors: [colors.accent, colors.accent2],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -73,11 +73,11 @@ struct SettingsView: View {
                             HStack(spacing: 14) {
                                 Image(systemName: "crown.fill")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(colors.onAccent)
                                     .frame(width: 32, height: 32)
                                     .background(
                                         LinearGradient(
-                                            colors: [colors.accent, Color(hex: "#6344e0")],
+                                            colors: [colors.accent, colors.accent2],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
@@ -191,6 +191,17 @@ struct SettingsView: View {
                             iconColor: .indigo,
                             title: "Watch & Widgets",
                             subtitle: "Installation, access and sync status"
+                        )
+                    }
+
+                    NavigationLink {
+                        DataExportSettingsPage()
+                    } label: {
+                        settingsRow(
+                            icon: "square.and.arrow.up.fill",
+                            iconColor: .teal,
+                            title: "Export Data",
+                            subtitle: "JSON backup and workout CSV"
                         )
                     }
                 }
@@ -472,7 +483,7 @@ private struct ProfileSettingsPage: View {
                                         .overlay(
                                             Image(systemName: "camera.fill")
                                                 .font(.system(size: 12))
-                                                .foregroundStyle(.white)
+                                                .foregroundStyle(colors.onAccent)
                                         )
                                         .offset(x: 28, y: 28)
                                 }
@@ -1562,7 +1573,7 @@ private struct ChangePasswordSheet: View {
                             } label: {
                                 Text("Done")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(colors.onAccent)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 52)
                                     .background(colors.accent)
@@ -1588,13 +1599,13 @@ private struct ChangePasswordSheet: View {
                                 HStack(spacing: 8) {
                                     if isLoading {
                                         ProgressView()
-                                            .tint(.white)
+                                            .tint(colors.onAccent)
                                             .scaleEffect(0.8)
                                     }
                                     Text("Update Password")
                                         .font(.system(size: 16, weight: .semibold))
                                 }
-                                .foregroundStyle(.white)
+                                .foregroundStyle(colors.onAccent)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 52)
                                 .background(isValid ? colors.accent : colors.accent.opacity(0.4))

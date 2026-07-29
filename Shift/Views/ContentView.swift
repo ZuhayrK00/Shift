@@ -154,12 +154,13 @@ struct ContentView: View {
 
     private var loadingView: some View {
         ZStack {
-            colors.accent.ignoresSafeArea()
+            Color(hex: "#050505").ignoresSafeArea()
             VStack(spacing: 16) {
                 Image("ShiftLogo")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 80, height: 80)
+                    .environment(\.colorScheme, .dark)
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.2)
@@ -172,6 +173,8 @@ struct ContentView: View {
 
 struct MainTabView: View {
     @Environment(\.shiftColors) private var colors
+    @Environment(AuthManager.self) private var authManager
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var selectedTab = 0
     @State private var plansPath = NavigationPath()
@@ -217,6 +220,57 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkOpenWorkout)) { _ in
             selectedTab = 0
+        }
+        .task {
+            await Task.yield()
+            if let pending = ShiftShortcutStore.consume() {
+                await handleShortcut(pending.action, value: pending.value)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let pending = ShiftShortcutStore.consume() else { return }
+            Task { await handleShortcut(pending.action, value: pending.value) }
+        }
+    }
+
+    @MainActor
+    private func handleShortcut(_ action: ShiftShortcutAction, value: Double?) async {
+        switch action {
+        case .startNextWorkout:
+            selectedTab = 0
+            NotificationCenter.default.post(name: .shiftShortcutStartNextWorkout, object: nil)
+        case .startQuickWorkout:
+            selectedTab = 0
+            NotificationCenter.default.post(name: .shiftDeepLinkStartWorkout, object: nil)
+        case .showToday:
+            selectedTab = 0
+        case .startRestTimer:
+            selectedTab = 0
+            let seconds = min(3600, max(10, Int(value ?? 90)))
+            RestTimerManager.shared.start(seconds: seconds)
+        case .logWeight:
+            guard let value, value > 0,
+                  let userID = authManager.currentUserId else { return }
+            do {
+                let unit = authManager.user?.settings.weightUnit ?? "kg"
+                try await WeightEntryService.insert(WeightEntry(
+                    id: UUID().uuidString.lowercased(),
+                    userId: userID,
+                    weight: value,
+                    unit: unit,
+                    source: "shortcut",
+                    recordedAt: Date()
+                ))
+                try await ProfileService.updateProfile(ProfilePatch(weight: value))
+                if authManager.user?.settings.healthKit.syncBodyWeight == true {
+                    let kilograms = unit == "lbs" ? value / 2.20462 : value
+                    _ = try? await HealthKitService.writeBodyWeight(kilograms, date: Date())
+                }
+                await authManager.refreshUser()
+                selectedTab = 3
+            } catch {
+                AppErrorCenter.shared.present(error)
+            }
         }
     }
 }
@@ -277,7 +331,7 @@ struct ResetPasswordSheet: View {
                             } label: {
                                 Text("Done")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(colors.onAccent)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 52)
                                     .background(colors.accent)
@@ -303,13 +357,13 @@ struct ResetPasswordSheet: View {
                                 HStack(spacing: 8) {
                                     if isLoading {
                                         ProgressView()
-                                            .tint(.white)
+                                            .tint(colors.onAccent)
                                             .scaleEffect(0.8)
                                     }
                                     Text("Update Password")
                                         .font(.system(size: 16, weight: .semibold))
                                 }
-                                .foregroundStyle(.white)
+                                .foregroundStyle(colors.onAccent)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 52)
                                 .background(isValid ? colors.accent : colors.accent.opacity(0.4))

@@ -111,6 +111,24 @@ final class PersistenceRegressionTests: XCTestCase {
         XCTAssertTrue(columns.contains("next_attempt_at"))
     }
 
+    func testExerciseGoalCanBeDeletedFromLocalStorage() async throws {
+        let goal = ExerciseGoal(
+            id: "test-goal-\(UUID().uuidString)",
+            userId: "test-user-\(UUID().uuidString)",
+            exerciseId: "test-exercise-\(UUID().uuidString)",
+            targetWeightIncrease: 5,
+            baselineWeight: 80,
+            deadline: Date().addingTimeInterval(86_400)
+        )
+        try await ExerciseGoalRepository.insert(goal)
+        defer { Task { try? await ExerciseGoalRepository.delete(goal.id) } }
+
+        try await ExerciseGoalRepository.delete(goal.id)
+
+        let stored = try await ExerciseGoalRepository.findById(goal.id)
+        XCTAssertNil(stored)
+    }
+
     func testFreshDatabaseRunsEveryMigration() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("shift-db-test-\(UUID().uuidString)", isDirectory: true)

@@ -7,6 +7,7 @@ import WatchConnectivity
 extension Notification.Name {
     static let shiftDeepLinkStartWorkout = Notification.Name("shiftDeepLinkStartWorkout")
     static let shiftDeepLinkOpenWorkout = Notification.Name("shiftDeepLinkOpenWorkout")
+    static let shiftShortcutStartNextWorkout = Notification.Name("shiftShortcutStartNextWorkout")
 }
 
 enum ShiftDeepLinkStore {
@@ -118,4 +119,5 @@ struct ShiftApp: App {
             }
         }
     }
+
 }

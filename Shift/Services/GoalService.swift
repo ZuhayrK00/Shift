@@ -72,8 +72,14 @@ struct GoalService {
 
     static func deleteGoal(_ goalId: String) async throws {
         let userId = try authManager.requireUserId()
-        guard let goal = try await ExerciseGoalRepository.findById(goalId),
-              goal.userId == userId else { return }
+        guard let goal = try await ExerciseGoalRepository.findById(goalId) else {
+            // Deletion is idempotent. If another device already removed the
+            // record, the requested end state has already been reached.
+            return
+        }
+        guard goal.userId == userId else {
+            throw GoalServiceError.goalUnavailable
+        }
         let mutation = LocalMutation(
             table: "exercise_goals",
             op: "delete",
@@ -169,5 +175,16 @@ struct GoalService {
             payload["completed_at"] = NSNull()
         }
         return payload
+    }
+}
+
+enum GoalServiceError: LocalizedError {
+    case goalUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .goalUnavailable:
+            return "This goal could not be deleted because it belongs to a different account."
+        }
     }
 }

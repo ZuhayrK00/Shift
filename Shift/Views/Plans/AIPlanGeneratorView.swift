@@ -291,7 +291,7 @@ struct AIPlanGeneratorView: View {
                                     .font(.system(size: 13, weight: .semibold))
                                     .multilineTextAlignment(.center)
                             }
-                            .foregroundStyle(goalType == goal ? .white : colors.text)
+                            .foregroundStyle(goalType == goal ? colors.onAccent : colors.text)
                             .frame(maxWidth: .infinity)
                             .frame(height: 90)
                             .background(goalType == goal ? colors.accent : colors.surface)
@@ -331,7 +331,7 @@ struct AIPlanGeneratorView: View {
                             } label: {
                                 Text("\(day)")
                                     .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .foregroundStyle(daysPerWeek == day ? .white : colors.text)
+                                    .foregroundStyle(daysPerWeek == day ? colors.onAccent : colors.text)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 44)
                                     .background(daysPerWeek == day ? colors.accent : colors.surface2)
@@ -392,7 +392,7 @@ struct AIPlanGeneratorView: View {
                                         .font(.system(size: 12))
                                         .opacity(0.7)
                                 }
-                                .foregroundStyle(experienceLevel == level ? .white : colors.text)
+                                .foregroundStyle(experienceLevel == level ? colors.onAccent : colors.text)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 12)
                                 .background(experienceLevel == level ? colors.accent : colors.surface2)
@@ -510,7 +510,7 @@ struct AIPlanGeneratorView: View {
                             .frame(width: 64, height: 64)
                         Image(systemName: isRecording ? "stop.fill" : "mic.fill")
                             .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(isRecording ? Color.white : colors.onAccent)
                     }
                     Text(isRecording ? "Tap to stop" : "Tap to speak")
                         .font(.system(size: 13, weight: .medium))
@@ -650,7 +650,7 @@ struct AIPlanGeneratorView: View {
                     } label: {
                         Text(group.name)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(isSelected ? .white : colors.text)
+                            .foregroundStyle(isSelected ? colors.onAccent : colors.text)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(isSelected ? colors.accent : colors.surface2)
@@ -709,7 +709,7 @@ struct AIPlanGeneratorView: View {
                             } label: {
                                 Text(equip.capitalized)
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(isSelected ? .white : colors.text)
+                                    .foregroundStyle(isSelected ? colors.onAccent : colors.text)
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 8)
                                     .background(isSelected ? colors.accent.opacity(0.8) : colors.surface2)
@@ -781,7 +781,7 @@ struct AIPlanGeneratorView: View {
                         startGeneration()
                     }
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(colors.accent)
@@ -1052,14 +1052,14 @@ struct AIPlanGeneratorView: View {
                         } label: {
                             HStack {
                                 if isSaving {
-                                    ProgressView().tint(.white)
+                                    ProgressView().tint(colors.onAccent)
                                 } else {
                                     Image(systemName: "checkmark")
                                     Text(quickSession ? "Save Workout" : "Save \(plan.days.count) Workouts")
                                 }
                             }
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(colors.onAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
                             .background(colors.accent)
@@ -1119,7 +1119,7 @@ struct AIPlanGeneratorView: View {
                     Image(systemName: "checkmark.circle.fill")
                 }
             }
-            .foregroundStyle(isSelected ? .white : colors.text)
+            .foregroundStyle(isSelected ? colors.onAccent : colors.text)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(isSelected ? colors.accent : colors.surface2)
@@ -1136,7 +1136,7 @@ struct AIPlanGeneratorView: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(disabled ? colors.text : colors.onAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
                 .background(disabled ? colors.muted : colors.accent)

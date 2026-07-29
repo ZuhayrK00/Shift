@@ -73,6 +73,7 @@ enum WorkoutProgramService {
         }
         let standalone = grouped[nil] ?? []
         let activeID = activeProgramID(userID: userID)
+        let skippedPlanID = skippedPlanID(userID: userID)
 
         var programs = grouped.compactMap { key, items -> WorkoutProgramSummary? in
             guard let id = key,
@@ -85,12 +86,28 @@ enum WorkoutProgramService {
                 let rhs = PlanNotesCodec.decode($1.plan.notes).metadata?.dayIndex ?? 0
                 return lhs < rhs
             }
+            let normalNext = nextWorkout(in: ordered, completedSessions: completedSessions)
+            var resolvedNext = normalNext
+            if let skippedPlanID,
+               let skippedIndex = ordered.firstIndex(where: { $0.plan.id == skippedPlanID }) {
+                let skippedAt = skippedWorkoutDate(userID: userID) ?? .distantFuture
+                let wasCompleted = completedSessions.contains {
+                    $0.endedAt != nil
+                        && $0.planId == skippedPlanID
+                        && $0.startedAt >= skippedAt
+                }
+                if wasCompleted {
+                    clearSkippedWorkout(userID: userID)
+                } else if normalNext?.plan.id != skippedPlanID {
+                    resolvedNext = ordered[skippedIndex]
+                }
+            }
             return WorkoutProgramSummary(
                 id: id,
                 name: firstMetadata.name,
                 source: firstMetadata.source,
                 workouts: ordered,
-                nextWorkout: nextWorkout(in: ordered, completedSessions: completedSessions),
+                nextWorkout: resolvedNext,
                 isActive: id == activeID
             )
         }
@@ -130,6 +147,20 @@ enum WorkoutProgramService {
         UserDefaults.standard.string(forKey: activeProgramKey(userID: userID))
     }
 
+    static func skipNextWorkout(
+        in program: WorkoutProgramSummary,
+        userID: String
+    ) {
+        guard program.workouts.count > 1,
+              let current = program.nextWorkout,
+              let currentIndex = program.workouts.firstIndex(where: {
+                  $0.plan.id == current.plan.id
+              }) else { return }
+        let replacement = program.workouts[(currentIndex + 1) % program.workouts.count]
+        UserDefaults.standard.set(replacement.plan.id, forKey: skippedWorkoutKey(userID: userID))
+        UserDefaults.standard.set(Date(), forKey: skippedWorkoutDateKey(userID: userID))
+    }
+
     private static func nextWorkout(
         in workouts: [WorkoutPlanWithCount],
         completedSessions: [WorkoutSession]
@@ -148,5 +179,26 @@ enum WorkoutProgramService {
 
     private static func activeProgramKey(userID: String) -> String {
         "shift.activeProgram.\(userID)"
+    }
+
+    private static func skippedPlanID(userID: String) -> String? {
+        UserDefaults.standard.string(forKey: skippedWorkoutKey(userID: userID))
+    }
+
+    private static func clearSkippedWorkout(userID: String) {
+        UserDefaults.standard.removeObject(forKey: skippedWorkoutKey(userID: userID))
+        UserDefaults.standard.removeObject(forKey: skippedWorkoutDateKey(userID: userID))
+    }
+
+    private static func skippedWorkoutKey(userID: String) -> String {
+        "shift.skippedProgramWorkout.\(userID)"
+    }
+
+    private static func skippedWorkoutDate(userID: String) -> Date? {
+        UserDefaults.standard.object(forKey: skippedWorkoutDateKey(userID: userID)) as? Date
+    }
+
+    private static func skippedWorkoutDateKey(userID: String) -> String {
+        "shift.skippedProgramWorkoutDate.\(userID)"
     }
 }

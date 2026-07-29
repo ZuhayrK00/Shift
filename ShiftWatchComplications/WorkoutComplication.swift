@@ -109,7 +109,7 @@ struct WorkoutComplicationView: View {
                     }
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
-                .tint(.purple)
+                .tint(WatchColors.accent)
             } else {
                 Gauge(value: 0) {
                     VStack(spacing: 0) {
@@ -120,7 +120,7 @@ struct WorkoutComplicationView: View {
                     }
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
-                .tint(.purple)
+                .tint(WatchColors.accent)
             }
         }
     }
@@ -141,7 +141,7 @@ struct WorkoutComplicationView: View {
             HStack(spacing: 4) {
                 Image(systemName: "dumbbell.fill")
                     .font(.system(size: 10))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(WatchColors.accent)
                 Text("This Week")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -158,7 +158,7 @@ struct WorkoutComplicationView: View {
 
                 Gauge(value: progress) { EmptyView() }
                     .gaugeStyle(.accessoryLinearCapacity)
-                    .tint(.purple)
+                    .tint(WatchColors.accent)
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("\(entry.workouts)")
@@ -170,7 +170,7 @@ struct WorkoutComplicationView: View {
 
                 Gauge(value: 0) { EmptyView() }
                     .gaugeStyle(.accessoryLinearCapacity)
-                    .tint(.purple)
+                    .tint(WatchColors.accent)
             }
         }
     }

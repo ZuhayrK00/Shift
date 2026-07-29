@@ -42,6 +42,8 @@ struct WorkoutView: View {
     @State private var actionError: String?
     @State private var suggestedPlanWeights: [String: Double] = [:]
     @State private var showProgressionSuggestion = false
+    @State private var progressionRecommendations: [String: ProgressionRecommendation] = [:]
+    @State private var recap: WorkoutRecap?
 
     // True once the session has an endedAt timestamp
     private var isCompleted: Bool { session?.endedAt != nil }
@@ -88,14 +90,14 @@ struct WorkoutView: View {
             Text("This will mark the session as complete.")
         }
         .alert("Update your next workout?", isPresented: $showProgressionSuggestion) {
-            Button("Update \(suggestedPlanWeights.count) target\(suggestedPlanWeights.count == 1 ? "" : "s")") {
+            Button("Apply \(suggestedPlanWeights.count) change\(suggestedPlanWeights.count == 1 ? "" : "s")") {
                 Task { await applyProgressionSuggestions() }
             }
             Button("Not Now", role: .cancel) {
                 suggestedPlanWeights = [:]
             }
         } message: {
-            Text("You reached the top of the rep range comfortably. Shift can apply a small weight increase to the saved workout.")
+            Text("Shift will update only the suggested weights in your saved workout. You can edit them at any time.")
         }
         .sheet(isPresented: $showShareSheet) {
             if let shareImage {
@@ -134,6 +136,9 @@ struct WorkoutView: View {
                 // Completed summary or in-progress stats
                 if isCompleted {
                     completedSummary
+                    if recap != nil || !progressionRecommendations.isEmpty {
+                        workoutInsights
+                    }
                 } else {
                     // Rest timer (visible when active)
                     if timer.isActive {
@@ -345,6 +350,113 @@ struct WorkoutView: View {
         Rectangle()
             .fill(colors.border)
             .frame(width: 1, height: 28)
+    }
+
+    private var workoutInsights: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let recap {
+                HStack(spacing: 12) {
+                    if !recap.personalBestExerciseIDs.isEmpty {
+                        insightPill(
+                            "\(recap.personalBestExerciseIDs.count) PB\(recap.personalBestExerciseIDs.count == 1 ? "" : "s")",
+                            icon: "trophy.fill",
+                            color: .orange
+                        )
+                    }
+                    if let change = recap.volumeChangePercent {
+                        insightPill(
+                            "\(change >= 0 ? "+" : "")\(change)% volume",
+                            icon: change >= 0 ? "arrow.up.right" : "arrow.down.right",
+                            color: change >= 0 ? colors.success : colors.muted
+                        )
+                    }
+                    Spacer()
+                }
+            }
+
+            if !progressionRecommendations.isEmpty {
+                Divider().background(colors.border)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("NEXT TIME")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(colors.muted)
+                        .tracking(0.8)
+
+                    ForEach(progressionRecommendations.keys.sorted(), id: \.self) { exerciseID in
+                        if let recommendation = progressionRecommendations[exerciseID],
+                           let block = blocks.first(where: { $0.exercise.id == exerciseID }) {
+                            HStack(spacing: 10) {
+                                Image(systemName: progressionIcon(recommendation.action))
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(progressionColor(recommendation.action))
+                                    .frame(width: 28, height: 28)
+                                    .background(progressionColor(recommendation.action).opacity(0.12))
+                                    .clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(block.exercise.displayName)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(colors.text)
+                                        .lineLimit(1)
+                                    Text("\(progressionLabel(recommendation.action)) · \(formatWeight(recommendation.weight, unit: weightUnit))")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(colors.muted)
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+
+                    if !suggestedPlanWeights.isEmpty {
+                        Button {
+                            showProgressionSuggestion = true
+                        } label: {
+                            Text("Apply suggested changes")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(colors.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(colors.border, lineWidth: 1))
+    }
+
+    private func insightPill(_ title: String, icon: String, color: Color) -> some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(color.opacity(0.1))
+            .clipShape(Capsule())
+    }
+
+    private func progressionIcon(_ action: ProgressionAction) -> String {
+        switch action {
+        case .increase: "arrow.up"
+        case .hold: "equal"
+        case .decrease: "arrow.down"
+        }
+    }
+
+    private func progressionColor(_ action: ProgressionAction) -> Color {
+        switch action {
+        case .increase: colors.success
+        case .hold: colors.accent
+        case .decrease: .orange
+        }
+    }
+
+    private func progressionLabel(_ action: ProgressionAction) -> String {
+        switch action {
+        case .increase: "Increase"
+        case .hold: "Hold"
+        case .decrease: "Small reset"
+        }
     }
 
     @ViewBuilder
@@ -568,6 +680,18 @@ struct WorkoutView: View {
                 )
             }
 
+            if sess.endedAt != nil {
+                recap = try? await WorkoutRecapService.build(
+                    session: sess,
+                    sets: allSets
+                )
+                await prepareProgressionSuggestions()
+            } else {
+                recap = nil
+                progressionRecommendations = [:]
+                suggestedPlanWeights = [:]
+            }
+
             if sess.endedAt != nil,
                authManager.user?.settings.healthKit.syncWorkouts == true {
                 let start = sess.startedAt
@@ -618,11 +742,10 @@ struct WorkoutView: View {
             try await WorkoutService.finishSession(sessionId)
             await loadData()
             PhoneSessionManager.shared.sendContextToWatch()
-            prepareProgressionSuggestions()
         }
     }
 
-    private func prepareProgressionSuggestions() {
+    private func prepareProgressionSuggestions() async {
         guard session?.planId != nil else { return }
         let latestSets = Dictionary(
             uniqueKeysWithValues: blocks.map { ($0.exercise.id, $0.sets) }
@@ -641,17 +764,21 @@ struct WorkoutView: View {
             },
             uniquingKeysWith: { first, _ in first }
         )
+        let recentSessions = await ProgressionRecommendationService.recentSessionSets(
+            exerciseIDs: Array(latestSets.keys)
+        )
         let recommendations = ProgressionRecommendationService.recommendations(
             latestSets: latestSets,
             targets: targets,
-            increment: authManager.user?.settings.defaultWeightIncrement ?? 2.5
+            increment: authManager.user?.settings.defaultWeightIncrement ?? 2.5,
+            recentSessions: recentSessions
         )
+        progressionRecommendations = recommendations
         suggestedPlanWeights = recommendations.reduce(into: [:]) { result, entry in
-            guard entry.value.isIncrease,
+            guard entry.value.action != .hold,
                   let planExercise = planExerciseMap[entry.key] else { return }
             result[planExercise.id] = entry.value.weight
         }
-        showProgressionSuggestion = !suggestedPlanWeights.isEmpty
     }
 
     private func applyProgressionSuggestions() async {
@@ -787,7 +914,7 @@ private struct SharePreviewSheet: View {
                             Text("Share")
                                 .font(.system(size: 16, weight: .bold))
                         }
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.onAccent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(colors.accent)

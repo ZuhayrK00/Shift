@@ -25,7 +25,7 @@ struct SegmentedControl<Value: Hashable & Equatable>: View {
                 } label: {
                     Text(segment.label)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selection == segment.value ? .white : colors.muted)
+                        .foregroundStyle(selection == segment.value ? colors.onAccent : colors.muted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(
@@ -69,6 +69,6 @@ extension SegmentedControl where Value == String {
         selection: $tab
     )
     .padding()
-    .background(Color(hex: "#0b0b0f"))
+    .background(Color(hex: "#050505"))
     .shiftTheme()
 }

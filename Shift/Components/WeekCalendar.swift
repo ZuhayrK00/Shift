@@ -121,7 +121,7 @@ struct WeekCalendar: View {
                         .font(.system(size: 15, weight: isSelected ? .bold : .regular))
                         .foregroundStyle(
                             isSelected
-                                ? .white
+                                ? colors.onAccent
                                 : isFuture ? colors.muted : colors.text
                         )
                 }
@@ -188,6 +188,6 @@ struct WeekCalendar: View {
         completedDates: completed,
         inProgressDates: inProgress
     )
-    .background(Color(hex: "#0b0b0f"))
+    .background(Color(hex: "#050505"))
     .shiftTheme()
 }

@@ -113,6 +113,6 @@ struct StepperControl: View {
         StepperControl(label: "Reps", value: $reps, step: 1.0, allowDecimal: false)
     }
     .padding()
-    .background(Color(hex: "#0b0b0f"))
+    .background(Color(hex: "#050505"))
     .shiftTheme()
 }

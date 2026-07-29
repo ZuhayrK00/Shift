@@ -70,7 +70,7 @@ struct WeightTabView: View {
                     Text("Log Weight")
                         .font(.system(size: 14, weight: .semibold))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(colors.onAccent)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(colors.accent)

@@ -129,7 +129,8 @@ struct TodaysActivityWidgetView: View {
             HStack(spacing: 6) {
                 Image(systemName: "calendar")
                     .font(.system(size: 10))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(WidgetColors.accent)
+                    .widgetAccentable()
                 if let goal = entry.weeklyGoal, goal > 0 {
                     Text("\(entry.workoutsThisWeek)/\(goal)")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -181,7 +182,7 @@ struct TodaysActivityWidgetView: View {
                 label: "day streak"
             )
             mediumColumn(
-                color: .purple,
+                color: WidgetColors.accent,
                 icon: "calendar",
                 progress: entry.weeklyGoal != nil ? weeklyProgress : nil,
                 value: entry.weeklyGoal != nil
@@ -299,14 +300,15 @@ struct TodaysActivityWidgetView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label("This Week", systemImage: "calendar")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(WidgetColors.accent)
+                    .widgetAccentable()
 
                 Text("\(entry.workoutsThisWeek)")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
 
                 if let goal = entry.weeklyGoal, goal > 0 {
-                    progressBar(value: weeklyProgress, color: .purple)
+                    progressBar(value: weeklyProgress, color: WidgetColors.accent)
                     Text("of \(goal) workouts")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)

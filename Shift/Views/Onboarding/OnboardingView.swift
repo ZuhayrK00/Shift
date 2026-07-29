@@ -182,7 +182,7 @@ struct OnboardingView: View {
 
                 tourCard(
                     icon: "dumbbell.fill",
-                    color: .purple,
+                    color: colors.accent,
                     title: "Exercises",
                     description: "Browse hundreds of exercises by muscle group, equipment, or difficulty. Create custom exercises too."
                 )
@@ -261,7 +261,7 @@ struct OnboardingView: View {
                             .overlay(
                                 Image(systemName: "camera.fill")
                                     .font(.system(size: 12))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(colors.onAccent)
                             )
                     }
                 }
@@ -340,7 +340,7 @@ struct OnboardingView: View {
                         } label: {
                             Text("\(day)")
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundStyle(weeklyGoal == day ? .white : colors.text)
+                                .foregroundStyle(weeklyGoal == day ? colors.onAccent : colors.text)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 44)
                                 .background(weeklyGoal == day ? colors.accent : colors.surface2)
@@ -374,7 +374,7 @@ struct OnboardingView: View {
                         } label: {
                             Text(val >= 10000 ? "\(val / 1000)k" : "\(val / 1000).5k")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(stepGoal == val ? .white : colors.text)
+                                .foregroundStyle(stepGoal == val ? colors.onAccent : colors.text)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 44)
                                 .background(stepGoal == val ? colors.accent : colors.surface2)
@@ -532,7 +532,7 @@ struct OnboardingView: View {
 
                     Image(systemName: "crown.fill")
                         .font(.system(size: 28))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.onAccent)
                 }
 
                 Text("Unlock Shift Pro")
@@ -569,12 +569,12 @@ struct OnboardingView: View {
                     Text("Start Free Trial")
                         .font(.system(size: 17, weight: .bold))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(colors.onAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background(
                     LinearGradient(
-                        colors: [colors.accent, Color(hex: "#6344e0")],
+                        colors: [colors.accent, colors.accent2],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -876,14 +876,14 @@ struct OnboardingView: View {
             HStack {
                 if isSaving {
                     ProgressView()
-                        .tint(.white)
+                        .tint(colors.onAccent)
                         .scaleEffect(0.9)
                 } else {
                     Text(title)
                         .font(.system(size: 16, weight: .bold))
                 }
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(colors.onAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(

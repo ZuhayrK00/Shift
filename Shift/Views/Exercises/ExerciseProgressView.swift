@@ -75,7 +75,7 @@ struct ExerciseProgressView: View {
         } label: {
             Text(filter.rawValue)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(selectedFilter == filter ? .white : colors.muted)
+                .foregroundStyle(selectedFilter == filter ? colors.onAccent : colors.muted)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(selectedFilter == filter ? colors.accent : colors.surface2)
@@ -243,7 +243,7 @@ struct ExerciseProgressView: View {
 
 #Preview {
     ExerciseProgressView(exerciseId: "exercise-1")
-        .background(Color(hex: "#0b0b0f"))
+        .background(Color(hex: "#050505"))
         .shiftTheme()
         .environment(AuthManager())
 }

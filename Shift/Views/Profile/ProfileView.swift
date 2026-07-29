@@ -122,7 +122,7 @@ struct ProfileView: View {
             if showToast {
                 Text(toastMessage)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onSuccess)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
                     .background(colors.success)
@@ -926,11 +926,11 @@ struct FrequencyGoalEditorSheet: View {
                     // Icon
                     ZStack {
                         Circle()
-                            .fill(Color.purple.opacity(0.15))
+                            .fill(colors.accentSoft)
                             .frame(width: 80, height: 80)
                         Image(systemName: "calendar")
                             .font(.system(size: 34, weight: .semibold))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(colors.accent)
                     }
 
                     // Value display
@@ -976,13 +976,13 @@ struct FrequencyGoalEditorSheet: View {
                         ForEach(0..<7, id: \.self) { index in
                             VStack(spacing: 6) {
                                 Circle()
-                                    .fill(index < target ? Color.purple : colors.surface)
+                                    .fill(index < target ? colors.accent : colors.surface)
                                     .frame(width: 32, height: 32)
                                     .overlay {
                                         if index < target {
                                             Image(systemName: "checkmark")
                                                 .font(.system(size: 12, weight: .bold))
-                                                .foregroundStyle(.white)
+                                                .foregroundStyle(colors.onAccent)
                                         }
                                     }
                                 Text(weekdays[index])
@@ -1169,11 +1169,11 @@ struct StepGoalEditorSheet: View {
                             } label: {
                                 Text(preset >= 10000 ? "\(preset / 1000)k" : "\(preset / 1000)k")
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(stepGoal == preset ? .white : colors.text)
+                                    .foregroundStyle(stepGoal == preset ? colors.onSuccess : colors.text)
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 8)
                                     .background(
-                                        stepGoal == preset ? Color.green : colors.surface,
+                                        stepGoal == preset ? colors.success : colors.surface,
                                         in: Capsule()
                                     )
                             }
@@ -1505,7 +1505,7 @@ struct AvatarView: View {
             Circle().fill(colors.accent)
             Text(initials)
                 .font(.system(size: size * 0.35, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(colors.onAccent)
         }
     }
 }

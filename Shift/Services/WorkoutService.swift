@@ -192,6 +192,127 @@ struct WorkoutService {
         }
     }
 
+    /// Replaces only the unfinished portion of an exercise. Completed sets remain
+    /// attached to the exercise that was actually performed.
+    static func replaceExercise(
+        sessionId: String,
+        from oldExerciseId: String,
+        to newExerciseId: String
+    ) async throws {
+        guard oldExerciseId != newExerciseId else { return }
+        let newExerciseSets = try await SessionSetRepository.findForExercise(
+            sessionId: sessionId,
+            exerciseId: newExerciseId
+        )
+        guard newExerciseSets.isEmpty else {
+            throw WorkoutServiceError.exerciseAlreadyInWorkout
+        }
+
+        let oldSets = try await SessionSetRepository.findForExercise(
+            sessionId: sessionId,
+            exerciseId: oldExerciseId
+        )
+        let unfinished = oldSets.filter { !$0.isCompleted }
+        guard !oldSets.isEmpty else { throw WorkoutServiceError.exerciseNotFound }
+
+        try await AppDatabase.shared.dbPool.write { db in
+            if unfinished.isEmpty {
+                let placeholder = SessionSet(
+                    id: UUID().uuidString.lowercased(),
+                    sessionId: sessionId,
+                    exerciseId: newExerciseId,
+                    setNumber: 1
+                )
+                try SessionSetRepository.insert(placeholder, in: db)
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "insert",
+                    payload: setPayload(placeholder),
+                    in: db
+                )
+            } else {
+                for (index, set) in unfinished.enumerated() {
+                    try db.execute(
+                        sql: """
+                            UPDATE session_sets
+                            SET exercise_id = ?, set_number = ?
+                            WHERE id = ?
+                            """,
+                        arguments: [newExerciseId, index + 1, set.id]
+                    )
+                    try MutationQueueRepository.enqueue(
+                        table: "session_sets",
+                        op: "update",
+                        payload: [
+                            "id": set.id,
+                            "exercise_id": newExerciseId,
+                            "set_number": index + 1
+                        ],
+                        in: db
+                    )
+                }
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
+    /// Adds editable warm-up placeholders ahead of the remaining working sets.
+    /// Existing warm-ups are left alone so repeated taps never duplicate them.
+    static func addWarmupSets(
+        sessionId: String,
+        exerciseId: String,
+        prescriptions: [WarmupPrescription]
+    ) async throws {
+        guard !prescriptions.isEmpty else { return }
+        let existing = try await SessionSetRepository.findForExercise(
+            sessionId: sessionId,
+            exerciseId: exerciseId
+        )
+        guard !existing.contains(where: { $0.setType == .warmup }) else {
+            throw WorkoutServiceError.warmupsAlreadyAdded
+        }
+        guard !existing.contains(where: { $0.isCompleted && $0.setType != .warmup }) else {
+            throw WorkoutServiceError.warmupsMustComeFirst
+        }
+
+        try await AppDatabase.shared.dbPool.write { db in
+            for set in existing {
+                let shiftedNumber = set.setNumber + prescriptions.count
+                try SessionSetRepository.update(
+                    set.id,
+                    patch: SetPatch(setNumber: shiftedNumber),
+                    in: db
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "update",
+                    payload: ["id": set.id, "set_number": shiftedNumber],
+                    in: db
+                )
+            }
+            for (index, prescription) in prescriptions.enumerated() {
+                let warmup = SessionSet(
+                    id: UUID().uuidString.lowercased(),
+                    sessionId: sessionId,
+                    exerciseId: exerciseId,
+                    setNumber: index + 1,
+                    reps: prescription.reps,
+                    weight: prescription.weightKg,
+                    isCompleted: false,
+                    setType: .warmup
+                )
+                try SessionSetRepository.insert(warmup, in: db)
+                try MutationQueueRepository.enqueue(
+                    table: "session_sets",
+                    op: "insert",
+                    payload: setPayload(warmup),
+                    in: db
+                )
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
     // MARK: - Sets
 
     static func addSet(
@@ -618,11 +739,23 @@ struct WorkoutService {
 enum WorkoutServiceError: LocalizedError {
     case notAuthenticated
     case sessionNotFound(String)
+    case exerciseAlreadyInWorkout
+    case exerciseNotFound
+    case warmupsAlreadyAdded
+    case warmupsMustComeFirst
 
     var errorDescription: String? {
         switch self {
         case .notAuthenticated: return "No signed-in user."
         case .sessionNotFound(let id): return "Session \(id) not found."
+        case .exerciseAlreadyInWorkout:
+            return "That exercise is already in this workout."
+        case .exerciseNotFound:
+            return "The exercise could not be found in this workout."
+        case .warmupsAlreadyAdded:
+            return "Warm-up sets have already been added for this exercise."
+        case .warmupsMustComeFirst:
+            return "Add warm-up sets before logging working sets."
         }
     }
 }

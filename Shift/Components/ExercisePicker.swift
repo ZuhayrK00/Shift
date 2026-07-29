@@ -6,6 +6,9 @@ import SwiftUI
 struct ExercisePicker: View {
     @Binding var isPresented: Bool
     var excludeIds: Set<String> = []
+    /// When set to 1, selecting another exercise replaces the current selection.
+    var selectionLimit: Int? = nil
+    var confirmTitle: String? = nil
     /// Called when the user taps "Add". Provides selected exercises and whether
     /// they should be grouped into a superset.
     var onAdd: ([Exercise], Bool) -> Void = { _, _ in }
@@ -197,6 +200,11 @@ struct ExercisePicker: View {
             if isSelected {
                 selectedIds.removeAll { $0 == ex.id }
             } else {
+                if selectionLimit == 1 {
+                    selectedIds.removeAll()
+                } else if let selectionLimit, selectedIds.count >= selectionLimit {
+                    return
+                }
                 selectedIds.append(ex.id)
             }
         } label: {
@@ -253,7 +261,7 @@ struct ExercisePicker: View {
                             .frame(width: 26, height: 26)
                         Text("\(idx + 1)")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(colors.onAccent)
                     }
                 } else {
                     Circle()
@@ -271,7 +279,7 @@ struct ExercisePicker: View {
 
     private var bottomBar: some View {
         HStack(spacing: 12) {
-            if selectedIds.count >= 2 {
+            if selectedIds.count >= 2 && selectionLimit != 1 {
                 Button {
                     confirm(asGroup: true)
                 } label: {
@@ -292,9 +300,9 @@ struct ExercisePicker: View {
             Button {
                 confirm(asGroup: false)
             } label: {
-                Text("Add (\(selectedIds.count))")
+                Text(confirmTitle ?? "Add (\(selectedIds.count))")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(colors.accent)
@@ -370,7 +378,7 @@ private struct TogglePill: View {
                 Text(label)
                     .font(.system(size: 13, weight: .semibold))
             }
-            .foregroundStyle(isActive ? .white : colors.text)
+            .foregroundStyle(isActive ? colors.onAccent : colors.text)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(
@@ -417,7 +425,7 @@ private struct FilterPill: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .bold))
             }
-            .foregroundStyle(isActive ? .white : colors.text)
+            .foregroundStyle(isActive ? colors.onAccent : colors.text)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(

@@ -138,6 +138,8 @@ struct PlansView: View {
                         userID: selectedProgram.workouts.first?.plan.userId ?? ""
                     )
                     Task { await loadPlans() }
+                } onChanged: {
+                    Task { await loadPlans() }
                 }
             }
         }

@@ -4,6 +4,8 @@ import UIKit
 /// Displays an animated GIF from a URL using UIKit's native GIF support.
 /// Falls back to a placeholder if no URL is available.
 struct AnimatedExerciseImage: View {
+    @Environment(\.shiftColors) private var colors
+
     let imageUrl: String?
     let exerciseName: String
 
@@ -18,10 +20,10 @@ struct AnimatedExerciseImage: View {
 
     private var placeholder: some View {
         ZStack {
-            Color.white
+            colors.surface2
             Text(String(exerciseName.prefix(1)).uppercased())
                 .font(.system(size: 56, weight: .bold))
-                .foregroundStyle(Color(hex: "#7c5cff"))
+                .foregroundStyle(colors.accent)
         }
     }
 }

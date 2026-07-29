@@ -14,6 +14,8 @@ struct ExerciseLogTabView: View {
     let selectedSetId: String?
     var isBackfill: Bool = false
     var isBusy: Bool = false
+    var canAddWarmups: Bool = false
+    var canShowPlates: Bool = false
 
     @Binding var exerciseNote: String
     @Binding var weight: Double
@@ -25,6 +27,8 @@ struct ExerciseLogTabView: View {
     var onChangeSetType: (SessionSet, SetType) -> Void = { _, _ in }
     var onSelectSet: (SessionSet?) -> Void = { _ in }
     var onSaveNote: () -> Void      = {}
+    var onAddWarmups: () -> Void    = {}
+    var onShowPlates: () -> Void    = {}
 
     @Environment(\.shiftColors) private var colors
     @FocusState private var noteIsFocused: Bool
@@ -47,6 +51,11 @@ struct ExerciseLogTabView: View {
                 actionButtons
                     .padding(.horizontal, 16)
 
+                if weight > 0 && (canAddWarmups || canShowPlates) {
+                    utilityButtons
+                        .padding(.horizontal, 16)
+                }
+
                 notesSection
                     .padding(.horizontal, 16)
 
@@ -57,6 +66,47 @@ struct ExerciseLogTabView: View {
                 Spacer().frame(height: 24)
             }
         }
+    }
+
+    private var utilityButtons: some View {
+        HStack(spacing: 10) {
+            if canAddWarmups {
+                utilityButton(
+                    title: "Add warm-up",
+                    icon: "flame",
+                    action: onAddWarmups
+                )
+            }
+            if canShowPlates {
+                utilityButton(
+                    title: "Load plates",
+                    icon: "scalemass",
+                    action: onShowPlates
+                )
+            }
+        }
+    }
+
+    private func utilityButton(
+        title: String,
+        icon: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(colors.text)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(colors.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(colors.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy)
     }
 
     // MARK: - Stepper row
@@ -91,7 +141,7 @@ struct ExerciseLogTabView: View {
                 Text(selectedSetId != nil ? "Update" :
                      sets.contains(where: { !$0.isCompleted }) ? "Log set" : "Add set")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
                     .background(colors.accent)

@@ -203,6 +203,281 @@ struct PlanService {
         }
     }
 
+    // MARK: - Program management
+
+    static func renameProgram(_ programID: String, name: String) async throws {
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { throw PlanServiceError.invalidDraft("Enter a program name.") }
+        try await rewriteProgramMetadata(programID: programID) { metadata, _, total in
+            metadata.name = cleaned
+            metadata.totalDays = total
+        }
+    }
+
+    static func reorderProgram(_ programID: String, planIDs: [String]) async throws {
+        try await rewriteProgramMetadata(programID: programID, preferredOrder: planIDs) {
+            metadata, index, total in
+            metadata.dayIndex = index
+            metadata.totalDays = total
+        }
+    }
+
+    static func addBlankProgramWorkout(
+        programID: String,
+        name: String
+    ) async throws {
+        try await ensureCanAddPlan()
+        let plans = try await programPlans(programID)
+        guard let first = plans.first,
+              let firstMetadata = PlanNotesCodec.decode(first.notes).metadata else {
+            throw PlanServiceError.invalidDraft("This program could not be loaded.")
+        }
+        let userID = try authManager.requireUserId()
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newPlan = WorkoutPlan(
+            id: UUID().uuidString.lowercased(),
+            userId: userID,
+            name: cleaned.isEmpty ? "Workout \(plans.count + 1)" : cleaned,
+            notes: PlanNotesCodec.encode(
+                metadata: WorkoutProgramMetadata(
+                    id: programID,
+                    name: firstMetadata.name,
+                    dayIndex: plans.count,
+                    totalDays: plans.count + 1,
+                    source: firstMetadata.source
+                ),
+                userNotes: nil
+            ),
+            position: try await nextGlobalPlanPosition(),
+            createdAt: Date()
+        )
+        try await AppDatabase.shared.dbPool.write { db in
+            for plan in plans {
+                try updateProgramMetadata(
+                    plan: plan,
+                    index: PlanNotesCodec.decode(plan.notes).metadata?.dayIndex ?? 0,
+                    total: plans.count + 1,
+                    in: db
+                )
+            }
+            try newPlan.insert(db)
+            try MutationQueueRepository.enqueue(
+                table: "workout_plans",
+                op: "insert",
+                payload: planPayload(newPlan),
+                in: db
+            )
+        }
+        SyncService.flushInBackground()
+    }
+
+    static func duplicateProgramWorkout(
+        programID: String,
+        planID: String
+    ) async throws {
+        try await ensureCanAddPlan()
+        let plans = try await programPlans(programID)
+        guard let source = plans.first(where: { $0.id == planID }),
+              let metadata = PlanNotesCodec.decode(source.notes).metadata else {
+            throw PlanServiceError.invalidDraft("This workout could not be loaded.")
+        }
+        let sourceExercises = try await PlanRepository.findExercises(planId: planID)
+        let copy = WorkoutPlan(
+            id: UUID().uuidString.lowercased(),
+            userId: source.userId,
+            name: "\(source.name) Copy",
+            notes: PlanNotesCodec.encode(
+                metadata: WorkoutProgramMetadata(
+                    id: programID,
+                    name: metadata.name,
+                    dayIndex: plans.count,
+                    totalDays: plans.count + 1,
+                    source: metadata.source
+                ),
+                userNotes: PlanNotesCodec.decode(source.notes).userNotes
+            ),
+            position: try await nextGlobalPlanPosition(),
+            createdAt: Date()
+        )
+        let copiedExercises = sourceExercises.map { exercise -> PlanExercise in
+            var copied = exercise
+            copied.id = UUID().uuidString.lowercased()
+            copied.planId = copy.id
+            return copied
+        }
+
+        try await AppDatabase.shared.dbPool.write { db in
+            for plan in plans {
+                try updateProgramMetadata(
+                    plan: plan,
+                    index: PlanNotesCodec.decode(plan.notes).metadata?.dayIndex ?? 0,
+                    total: plans.count + 1,
+                    in: db
+                )
+            }
+            try copy.insert(db)
+            try MutationQueueRepository.enqueue(
+                table: "workout_plans",
+                op: "insert",
+                payload: planPayload(copy),
+                in: db
+            )
+            for exercise in copiedExercises {
+                try exercise.insert(db)
+                try MutationQueueRepository.enqueue(
+                    table: "plan_exercises",
+                    op: "insert",
+                    payload: planExercisePayload(exercise),
+                    in: db
+                )
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
+    static func removeProgramWorkout(
+        programID: String,
+        planID: String
+    ) async throws {
+        let plans = try await programPlans(programID)
+        guard plans.count > 1 else {
+            throw PlanServiceError.invalidDraft("A program needs at least one workout.")
+        }
+        let remaining = plans.filter { $0.id != planID }
+        let exercises = try await PlanRepository.findExercises(planId: planID)
+        try await AppDatabase.shared.dbPool.write { db in
+            for exercise in exercises {
+                try db.execute(sql: "DELETE FROM plan_exercises WHERE id = ?", arguments: [exercise.id])
+                try MutationQueueRepository.enqueue(
+                    table: "plan_exercises",
+                    op: "delete",
+                    payload: ["id": exercise.id],
+                    in: db
+                )
+            }
+            try db.execute(sql: "DELETE FROM workout_plans WHERE id = ?", arguments: [planID])
+            try MutationQueueRepository.enqueue(
+                table: "workout_plans",
+                op: "delete",
+                payload: ["id": planID],
+                in: db
+            )
+            for (index, plan) in remaining.enumerated() {
+                try updateProgramMetadata(
+                    plan: plan,
+                    index: index,
+                    total: remaining.count,
+                    in: db
+                )
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
+    private static func rewriteProgramMetadata(
+        programID: String,
+        preferredOrder: [String]? = nil,
+        transform: (inout WorkoutProgramMetadata, Int, Int) -> Void
+    ) async throws {
+        let plans = try await programPlans(programID)
+        let ordered: [WorkoutPlan]
+        if let preferredOrder {
+            let map = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
+            ordered = preferredOrder.compactMap { map[$0] }
+            guard ordered.count == plans.count else {
+                throw PlanServiceError.invalidDraft("The program order could not be saved.")
+            }
+        } else {
+            ordered = plans
+        }
+        let preservedPositions = plans.map(\.position).sorted()
+        try await AppDatabase.shared.dbPool.write { db in
+            for (index, plan) in ordered.enumerated() {
+                guard var metadata = PlanNotesCodec.decode(plan.notes).metadata else { continue }
+                transform(&metadata, index, ordered.count)
+                let notes = PlanNotesCodec.encode(
+                    metadata: metadata,
+                    userNotes: PlanNotesCodec.decode(plan.notes).userNotes
+                )
+                try db.execute(
+                    sql: "UPDATE workout_plans SET notes = ?, position = ? WHERE id = ?",
+                    arguments: [notes, preservedPositions[index], plan.id]
+                )
+                try MutationQueueRepository.enqueue(
+                    table: "workout_plans",
+                    op: "update",
+                    payload: [
+                        "id": plan.id,
+                        "notes": notes ?? NSNull(),
+                        "position": preservedPositions[index]
+                    ],
+                    in: db
+                )
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
+    private static func programPlans(_ programID: String) async throws -> [WorkoutPlan] {
+        let userID = try authManager.requireUserId()
+        return try await PlanRepository.findPlansWithCount(userId: userID)
+            .map(\.plan)
+            .filter { PlanNotesCodec.decode($0.notes).metadata?.id == programID }
+            .sorted {
+                (PlanNotesCodec.decode($0.notes).metadata?.dayIndex ?? 0)
+                    < (PlanNotesCodec.decode($1.notes).metadata?.dayIndex ?? 0)
+            }
+    }
+
+    private static func nextGlobalPlanPosition() async throws -> Int {
+        let userID = try authManager.requireUserId()
+        let allPlans = try await PlanRepository.findPlansWithCount(userId: userID)
+        return (allPlans.map(\.plan.position).max() ?? -1) + 1
+    }
+
+    private static func ensureCanAddPlan() async throws {
+        let userID = try authManager.requireUserId()
+        let count = try await PlanRepository.findPlansWithCount(userId: userID).count
+        guard count >= ProFeaturePolicy.freePlanLimit else { return }
+        guard await StoreService.verifyProEntitlement() else {
+            throw PlanServiceError.freePlanLimitReached
+        }
+    }
+
+    private static func updateProgramMetadata(
+        plan: WorkoutPlan,
+        index: Int,
+        total: Int,
+        in db: Database
+    ) throws {
+        let decoded = PlanNotesCodec.decode(plan.notes)
+        guard var metadata = decoded.metadata else { return }
+        metadata.dayIndex = index
+        metadata.totalDays = total
+        let notes = PlanNotesCodec.encode(metadata: metadata, userNotes: decoded.userNotes)
+        try db.execute(
+            sql: "UPDATE workout_plans SET notes = ? WHERE id = ?",
+            arguments: [notes, plan.id]
+        )
+        try MutationQueueRepository.enqueue(
+            table: "workout_plans",
+            op: "update",
+            payload: ["id": plan.id, "notes": notes ?? NSNull()],
+            in: db
+        )
+    }
+
+    private static func planPayload(_ plan: WorkoutPlan) -> [String: Any] {
+        [
+            "id": plan.id,
+            "user_id": plan.userId,
+            "name": plan.name,
+            "notes": plan.notes.map { $0 as Any } ?? NSNull(),
+            "position": plan.position,
+            "created_at": ISO8601DateFormatter.shared.string(from: plan.createdAt)
+        ]
+    }
+
     // MARK: - Plan exercises
 
     static func addExercises(

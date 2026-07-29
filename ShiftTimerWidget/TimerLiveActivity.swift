@@ -23,7 +23,7 @@ struct RestTimerLiveActivity: Widget {
                     HStack(spacing: 10) {
                         Image(systemName: "dumbbell.fill")
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(Color.purple)
+                            .foregroundStyle(WidgetColors.accent)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("SHIFT")
                                 .font(.system(size: 10, weight: .semibold))
@@ -56,17 +56,17 @@ struct RestTimerLiveActivity: Widget {
                 // ── Compact (pill when another app is foreground) ────────────
                 Image(systemName: "dumbbell.fill")
                     .imageScale(.small)
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(WidgetColors.accent)
             } compactTrailing: {
                 Text(timerInterval: .now...context.state.endTime, countsDown: true)
                     .monospacedDigit()
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(WidgetColors.accent)
                     .frame(width: 35)
             } minimal: {
                 // ── Minimal (tiny dot when two activities compete) ───────────
                 Image(systemName: "dumbbell.fill")
                     .font(.caption2)
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(WidgetColors.accent)
             }
         }
     }
@@ -81,11 +81,11 @@ struct LockScreenBanner: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.25))
+                    .fill(WidgetColors.accentSoft)
                     .frame(width: 50, height: 50)
                 Image(systemName: "dumbbell.fill")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(WidgetColors.accent)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -106,7 +106,7 @@ struct LockScreenBanner: View {
                     .stroke(Color.white.opacity(0.15), lineWidth: 4)
                 Circle()
                     .trim(from: 0, to: arcProgress)
-                    .stroke(Color.purple, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(WidgetColors.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
             .frame(width: 36, height: 36)
@@ -135,7 +135,7 @@ struct ProgressBar: View {
                     .fill(Color.white.opacity(0.15))
                     .frame(height: 4)
                 Capsule()
-                    .fill(Color.purple)
+                    .fill(WidgetColors.accent)
                     .frame(width: geo.size.width * fraction, height: 4)
             }
         }

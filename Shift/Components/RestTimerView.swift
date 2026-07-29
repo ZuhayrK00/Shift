@@ -93,6 +93,6 @@ struct RestTimerView: View {
 #Preview {
     RestTimerView(duration: 90) { }
         .padding()
-        .background(Color(hex: "#0b0b0f"))
+        .background(Color(hex: "#050505"))
         .shiftTheme()
 }

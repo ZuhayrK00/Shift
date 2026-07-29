@@ -53,12 +53,13 @@ struct QuickStartWidgetView: View {
         VStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.2))
+                    .fill(WidgetColors.accentSoft)
                     .frame(width: 56, height: 56)
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(WidgetColors.accent)
             }
+            .widgetAccentable()
 
             VStack(spacing: 2) {
                 Text("Start")
@@ -79,12 +80,13 @@ struct QuickStartWidgetView: View {
         HStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(Color.purple.opacity(0.2))
+                    .fill(WidgetColors.accentSoft)
                     .frame(width: 64, height: 64)
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(Color.purple)
+                    .foregroundStyle(WidgetColors.accent)
             }
+            .widgetAccentable()
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Start Workout")

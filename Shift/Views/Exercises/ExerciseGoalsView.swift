@@ -11,6 +11,8 @@ struct ExerciseGoalsView: View {
     @State private var isLoading = true
     @State private var showEditor = false
     @State private var editingGoal: ExerciseGoal?
+    @State private var goalPendingDeletion: ExerciseGoal?
+    @State private var isDeletingGoal = false
 
     private var weightUnit: String { authManager.user?.settings.weightUnit ?? "kg" }
 
@@ -57,6 +59,23 @@ struct ExerciseGoalsView: View {
             if !isPresented { editingGoal = nil }
         }
         .task { await loadGoals() }
+        .alert(
+            "Delete Goal?",
+            isPresented: Binding(
+                get: { goalPendingDeletion != nil },
+                set: { if !$0 { goalPendingDeletion = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                goalPendingDeletion = nil
+            }
+            Button("Delete", role: .destructive) {
+                guard let goal = goalPendingDeletion else { return }
+                Task { await deleteGoal(goal) }
+            }
+        } message: {
+            Text("This will permanently remove this goal. This cannot be undone.")
+        }
     }
 
     // MARK: - Empty state
@@ -81,7 +100,7 @@ struct ExerciseGoalsView: View {
             } label: {
                 Text("Set a Goal")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
                     .background(colors.accent)
@@ -117,15 +136,19 @@ struct ExerciseGoalsView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    let days = goal.daysRemaining
-                    Text(days == 0 ? "Due today" : days == 1 ? "1 day left" : "\(days) days left")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(days <= 3 ? colors.danger : colors.accent)
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        let days = goal.daysRemaining
+                        Text(days == 0 ? "Due today" : days == 1 ? "1 day left" : "\(days) days left")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(days <= 3 ? colors.danger : colors.accent)
 
-                    Text(goal.deadline, style: .date)
-                        .font(.system(size: 11))
-                        .foregroundStyle(colors.muted)
+                        Text(goal.deadline, style: .date)
+                            .font(.system(size: 11))
+                            .foregroundStyle(colors.muted)
+                    }
+
+                    goalMenu(goal, canEdit: true)
                 }
             }
 
@@ -176,14 +199,7 @@ struct ExerciseGoalsView: View {
             }
 
             Button(role: .destructive) {
-                Task {
-                    do {
-                        try await GoalService.deleteGoal(goal.id)
-                        await loadGoals()
-                    } catch {
-                        AppErrorCenter.shared.present(error)
-                    }
-                }
+                goalPendingDeletion = goal
             } label: {
                 Label("Delete Goal", systemImage: "trash")
             }
@@ -266,6 +282,8 @@ struct ExerciseGoalsView: View {
             Text("+\(formatWeight(goal.targetWeightIncrease, unit: weightUnit))")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(colors.success)
+
+            goalMenu(goal, canEdit: false)
         }
         .padding(12)
         .background(colors.surface)
@@ -276,21 +294,60 @@ struct ExerciseGoalsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contextMenu {
             Button(role: .destructive) {
-                Task {
-                    do {
-                        try await GoalService.deleteGoal(goal.id)
-                        await loadGoals()
-                    } catch {
-                        AppErrorCenter.shared.present(error)
-                    }
-                }
+                goalPendingDeletion = goal
             } label: {
                 Label("Delete Goal", systemImage: "trash")
             }
         }
     }
 
+    private func goalMenu(_ goal: ExerciseGoal, canEdit: Bool) -> some View {
+        Menu {
+            if canEdit {
+                Button {
+                    editingGoal = goal
+                    showEditor = true
+                } label: {
+                    Label("Edit Goal", systemImage: "pencil")
+                }
+            }
+
+            Button(role: .destructive) {
+                goalPendingDeletion = goal
+            } label: {
+                Label("Delete Goal", systemImage: "trash")
+            }
+        } label: {
+            if isDeletingGoal && goalPendingDeletion?.id == goal.id {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(colors.muted)
+            }
+        }
+        .disabled(isDeletingGoal)
+        .accessibilityLabel("Goal options")
+    }
+
     // MARK: - Data loading
+
+    private func deleteGoal(_ goal: ExerciseGoal) async {
+        isDeletingGoal = true
+        goals.removeAll { $0.id == goal.id }
+
+        do {
+            try await GoalService.deleteGoal(goal.id)
+            goalPendingDeletion = nil
+            await loadGoals()
+        } catch {
+            await loadGoals()
+            AppErrorCenter.shared.present(error)
+        }
+
+        isDeletingGoal = false
+    }
 
     private func loadGoals() async {
         isLoading = true

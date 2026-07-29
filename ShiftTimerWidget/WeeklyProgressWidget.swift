@@ -73,11 +73,12 @@ struct WeeklyProgressWidgetView: View {
             if let goal = entry.goal, goal > 0 {
                 ZStack {
                     Circle()
-                        .stroke(Color.purple.opacity(0.2), lineWidth: 8)
+                        .stroke(WidgetColors.accentSoft, lineWidth: 8)
                     Circle()
                         .trim(from: 0, to: progress)
-                        .stroke(Color.purple, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .stroke(WidgetColors.accent, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                         .rotationEffect(.degrees(-90))
+                        .widgetAccentable()
                     VStack(spacing: 0) {
                         Text("\(entry.completed)")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
@@ -95,7 +96,8 @@ struct WeeklyProgressWidgetView: View {
             } else {
                 Image(systemName: "dumbbell.fill")
                     .font(.system(size: 18))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(WidgetColors.accent)
+                    .widgetAccentable()
                 Text("\(entry.completed)")
                     .font(.system(size: 40, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
@@ -115,11 +117,12 @@ struct WeeklyProgressWidgetView: View {
             if let goal = entry.goal, goal > 0 {
                 ZStack {
                     Circle()
-                        .stroke(Color.purple.opacity(0.2), lineWidth: 10)
+                        .stroke(WidgetColors.accentSoft, lineWidth: 10)
                     Circle()
                         .trim(from: 0, to: progress)
-                        .stroke(Color.purple, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                        .stroke(WidgetColors.accent, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                         .rotationEffect(.degrees(-90))
+                        .widgetAccentable()
                     VStack(spacing: 0) {
                         Text("\(entry.completed)")
                             .font(.system(size: 32, weight: .bold, design: .rounded))
@@ -139,7 +142,8 @@ struct WeeklyProgressWidgetView: View {
                     if progress >= 1.0 {
                         Label("Goal complete!", systemImage: "checkmark.circle.fill")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(WidgetColors.accent)
+                            .widgetAccentable()
                     } else {
                         let remaining = goal - entry.completed
                         Text("\(remaining) more \(remaining == 1 ? "workout" : "workouts") to go")
@@ -151,7 +155,8 @@ struct WeeklyProgressWidgetView: View {
             } else {
                 Image(systemName: "dumbbell.fill")
                     .font(.system(size: 28))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(WidgetColors.accent)
+                    .widgetAccentable()
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("This Week")

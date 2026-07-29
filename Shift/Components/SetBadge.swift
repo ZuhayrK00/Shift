@@ -102,6 +102,6 @@ extension SetType {
                                   setNumber: 4, isCompleted: true, setType: .failure), compact: true)
     }
     .padding()
-    .background(Color(hex: "#0b0b0f"))
+    .background(Color(hex: "#050505"))
     .shiftTheme()
 }

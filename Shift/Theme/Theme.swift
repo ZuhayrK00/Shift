@@ -11,10 +11,15 @@ struct ShiftColorPalette {
     let text: Color
     let muted: Color
     let accent: Color
+    let onAccent: Color
+    let accentSoft: Color
     let accent2: Color
     let success: Color
+    let onSuccess: Color
     let warning: Color
+    let onWarning: Color
     let danger: Color
+    let onDanger: Color
 }
 
 // MARK: - ShiftColors
@@ -23,31 +28,41 @@ struct ShiftColorPalette {
 /// Access via the `\.shiftColors` environment key.
 struct ShiftColors {
     private let light = ShiftColorPalette(
-        bg:       Color(hex: "#fafafc"),
-        surface:  Color(hex: "#ffffff"),
-        surface2: Color(hex: "#f1f1f6"),
-        border:   Color(hex: "#e2e2ea"),
-        text:     Color(hex: "#11111a"),
-        muted:    Color(hex: "#646478"),
-        accent:   Color(hex: "#7c5cff"),
-        accent2:  Color(hex: "#22d3ee"),
-        success:  Color(hex: "#16a34a"),
-        warning:  Color(hex: "#d97706"),
-        danger:   Color(hex: "#dc2626")
+        bg:         Color(hex: "#f6f6f4"),
+        surface:    Color(hex: "#ffffff"),
+        surface2:   Color(hex: "#ececea"),
+        border:     Color(hex: "#d8d8d4"),
+        text:       Color(hex: "#0a0a0a"),
+        muted:      Color(hex: "#626262"),
+        accent:     Color(hex: "#111111"),
+        onAccent:   Color(hex: "#ffffff"),
+        accentSoft: Color(hex: "#e6e6e2"),
+        accent2:    Color(hex: "#6f6f6a"),
+        success:    Color(hex: "#16803c"),
+        onSuccess:  Color(hex: "#ffffff"),
+        warning:    Color(hex: "#b35a00"),
+        onWarning:  Color(hex: "#ffffff"),
+        danger:     Color(hex: "#c62828"),
+        onDanger:   Color(hex: "#ffffff")
     )
 
     private let dark = ShiftColorPalette(
-        bg:       Color(hex: "#0b0b0f"),
-        surface:  Color(hex: "#16161d"),
-        surface2: Color(hex: "#1f1f29"),
-        border:   Color(hex: "#2a2a36"),
-        text:     Color(hex: "#f5f5f7"),
-        muted:    Color(hex: "#9a9aae"),
-        accent:   Color(hex: "#7c5cff"),
-        accent2:  Color(hex: "#22d3ee"),
-        success:  Color(hex: "#22c55e"),
-        warning:  Color(hex: "#f59e0b"),
-        danger:   Color(hex: "#ef4444")
+        bg:         Color(hex: "#050505"),
+        surface:    Color(hex: "#101010"),
+        surface2:   Color(hex: "#191919"),
+        border:     Color(hex: "#2a2a2a"),
+        text:       Color(hex: "#f4f4f2"),
+        muted:      Color(hex: "#a0a09b"),
+        accent:     Color(hex: "#f2f2ee"),
+        onAccent:   Color(hex: "#0a0a0a"),
+        accentSoft: Color(hex: "#242424"),
+        accent2:    Color(hex: "#a8a8a2"),
+        success:    Color(hex: "#39c66d"),
+        onSuccess:  Color(hex: "#050505"),
+        warning:    Color(hex: "#f0a23b"),
+        onWarning:  Color(hex: "#050505"),
+        danger:     Color(hex: "#ff5b5b"),
+        onDanger:   Color(hex: "#050505")
     )
 
     private let scheme: ColorScheme
@@ -69,10 +84,15 @@ struct ShiftColors {
     var text:     Color { palette.text }
     var muted:    Color { palette.muted }
     var accent:   Color { palette.accent }
+    var onAccent: Color { palette.onAccent }
+    var accentSoft: Color { palette.accentSoft }
     var accent2:  Color { palette.accent2 }
     var success:  Color { palette.success }
+    var onSuccess: Color { palette.onSuccess }
     var warning:  Color { palette.warning }
+    var onWarning: Color { palette.onWarning }
     var danger:   Color { palette.danger }
+    var onDanger: Color { palette.onDanger }
 }
 
 // MARK: - Environment key

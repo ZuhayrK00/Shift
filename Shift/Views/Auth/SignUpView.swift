@@ -82,7 +82,7 @@ struct SignUpView: View {
                         HStack {
                             if isLoading {
                                 ProgressView()
-                                    .tint(.white)
+                                    .tint(colors.onAccent)
                                     .scaleEffect(0.9)
                             } else {
                                 Text("Create account")
@@ -92,7 +92,7 @@ struct SignUpView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(colors.accent)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colors.onAccent)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .disabled(!canSubmit)

@@ -10,6 +10,7 @@ struct ExerciseLogView: View {
 
     @Environment(\.shiftColors) private var colors
     @Environment(AuthManager.self) private var authManager
+    @Environment(\.dismiss) private var dismiss
 
     // MARK: - State
 
@@ -27,6 +28,10 @@ struct ExerciseLogView: View {
     @State private var exerciseNote: String     = ""
     @State private var isSaving                 = false
     @State private var saveError: String?
+    @State private var showReplacementPicker = false
+    @State private var showPlateCalculator = false
+    @State private var sessionExerciseIds: Set<String> = []
+    @State private var sessionIsCompleted = false
 
     // MARK: - Tab enum
 
@@ -70,6 +75,21 @@ struct ExerciseLogView: View {
         }
         .navigationTitle(exercise?.name ?? "Exercise")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !sessionIsCompleted {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showReplacementPicker = true
+                        } label: {
+                            Label("Replace Exercise", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
         .task { await loadData() }
         .onDisappear {
             RestTimerManager.shared.stop()
@@ -81,6 +101,23 @@ struct ExerciseLogView: View {
             Button("OK", role: .cancel) { saveError = nil }
         } message: {
             Text(saveError ?? "Please try again.")
+        }
+        .sheet(isPresented: $showReplacementPicker) {
+            ExercisePicker(
+                isPresented: $showReplacementPicker,
+                excludeIds: sessionExerciseIds,
+                selectionLimit: 1,
+                confirmTitle: "Replace"
+            ) { exercises, _ in
+                guard let replacement = exercises.first else { return }
+                Task { await replaceExercise(with: replacement) }
+            }
+        }
+        .sheet(isPresented: $showPlateCalculator) {
+            PlateCalculatorSheet(
+                targetWeight: weight,
+                unit: weightUnit
+            )
         }
     }
 
@@ -132,6 +169,11 @@ struct ExerciseLogView: View {
                 selectedSetId: selectedSetId,
                 isBackfill: isBackfill,
                 isBusy: isSaving,
+                canAddWarmups: !sessionIsCompleted
+                    && weight > 0
+                    && !sets.contains(where: { $0.setType == .warmup })
+                    && !sets.contains(where: { $0.isCompleted && $0.setType != .warmup }),
+                canShowPlates: supportsPlateLoading,
                 exerciseNote: $exerciseNote,
                 weight: $weight,
                 reps: $reps,
@@ -150,7 +192,9 @@ struct ExerciseLogView: View {
                         selectedSetId = nil
                     }
                 },
-                onSaveNote: { Task { await saveNote() } }
+                onSaveNote: { Task { await saveNote() } },
+                onAddWarmups: { Task { await addWarmups() } },
+                onShowPlates: { showPlateCalculator = true }
             )
         case .info:
             if let ex = exercise { ExerciseDetailView(exercise: ex) }
@@ -185,6 +229,8 @@ struct ExerciseLogView: View {
             }
             exercise = loadedExercise
             sessionDate = sess.startedAt
+            sessionIsCompleted = sess.endedAt != nil
+            sessionExerciseIds = Set(try await WorkoutService.getSessionExerciseIds(sessionId))
 
             let sessionAge = Date().timeIntervalSince(sess.startedAt)
             isBackfill = sess.endedAt != nil || sessionAge > 12 * 3600
@@ -208,6 +254,13 @@ struct ExerciseLogView: View {
         } catch {
             saveError = error.localizedDescription
         }
+    }
+
+    private var supportsPlateLoading: Bool {
+        guard let equipment = exercise?.equipment?.lowercased() else { return false }
+        return equipment.contains("barbell")
+            || equipment.contains("smith")
+            || equipment.contains("olympic")
     }
 
     private func seedStepperValues(from allSets: [SessionSet]) {
@@ -332,6 +385,42 @@ struct ExerciseLogView: View {
             sessionId: sessionId,
             exerciseId: exerciseId
         )
+    }
+
+    private func addWarmups() async {
+        guard let workingWeightKg = weightInKg else { return }
+        let prescriptions = WorkoutUtilityService.warmups(
+            workingWeightKg: workingWeightKg,
+            incrementKg: convertWeightToKg(weightIncrement, from: weightUnit)
+        )
+        guard !prescriptions.isEmpty else { return }
+        await performSave {
+            try await WorkoutService.addWarmupSets(
+                sessionId: sessionId,
+                exerciseId: exerciseId,
+                prescriptions: prescriptions
+            )
+            try await reloadSets()
+            if let firstWarmup = sets.first(where: {
+                !$0.isCompleted && $0.setType == .warmup
+            }) {
+                weight = convertWeight(firstWarmup.weight ?? 0, to: weightUnit)
+                reps = Double(firstWarmup.reps)
+            }
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
+        }
+    }
+
+    private func replaceExercise(with replacement: Exercise) async {
+        await performSave {
+            try await WorkoutService.replaceExercise(
+                sessionId: sessionId,
+                from: exerciseId,
+                to: replacement.id
+            )
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
+            dismiss()
+        }
     }
 
     private func performSave(_ operation: () async throws -> Void) async {

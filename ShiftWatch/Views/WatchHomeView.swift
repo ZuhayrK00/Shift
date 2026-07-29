@@ -306,7 +306,7 @@ struct WatchHomeView: View {
                     HStack {
                         Image(systemName: "dumbbell.fill")
                             .font(.system(size: 10))
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(WatchColors.accent)
                         Text("This Week")
                             .font(.system(size: 12, weight: .semibold))
                         Spacer()
@@ -336,7 +336,7 @@ struct WatchHomeView: View {
                                     .fill(Color.white.opacity(0.1))
                                     .frame(height: 6)
                                 RoundedRectangle(cornerRadius: 3)
-                                    .fill(.purple)
+                                    .fill(WatchColors.accent)
                                     .frame(width: geo.size.width * min(Double(snap.workoutsThisWeek) / Double(goal), 1.0), height: 6)
                             }
                         }

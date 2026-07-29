@@ -124,7 +124,7 @@ struct ProPaywallView: View {
 
                 Image(systemName: "crown.fill")
                     .font(.system(size: 32))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(colors.onAccent)
             }
 
             Text("Shift Pro")
@@ -239,7 +239,7 @@ struct ProPaywallView: View {
                         if let savingsBadge {
                             Text(savingsBadge)
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(colors.onSuccess)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
                                 .background(colors.success)
@@ -294,18 +294,18 @@ struct ProPaywallView: View {
             HStack(spacing: 8) {
                 if isPurchasing {
                     ProgressView()
-                        .tint(.white)
+                        .tint(colors.onAccent)
                         .scaleEffect(0.8)
                 }
                 Text(purchaseButtonTitle)
                     .font(.system(size: 17, weight: .bold))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(colors.onAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(
                 LinearGradient(
-                    colors: [colors.accent, Color(hex: "#6344e0")],
+                    colors: [colors.accent, colors.accent2],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
