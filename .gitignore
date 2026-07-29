@@ -36,3 +36,6 @@ Pods/
 # Misc
 *.orig
 .env
+
+# Supabase CLI machine-local link and connection state
+supabase/.temp/
