@@ -11,7 +11,6 @@ struct WatchHomeView: View {
 
     @State private var showCompletedDetail = false
     @State private var liveSteps: Int?
-    @State private var isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
 
     private var ctx: WatchContext? { session.context }
 
@@ -21,15 +20,50 @@ struct WatchHomeView: View {
 
     var body: some View {
         NavigationStack {
-            if !isPro {
+            if session.isCheckingEntitlement && !session.isPro {
+                ProgressView("Checking Shift Pro…")
+            } else if !session.isSignedIn {
+                signedOutView
+            } else if !session.isPro {
                 proLockedView
             } else {
                 mainContent
             }
         }
+        .task {
+            await session.refreshEntitlement()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task {
+                await session.refreshEntitlement()
+                session.requestSync()
+                if session.canUseProFeatures {
+                    await refreshSteps()
+                }
+            }
+        }
     }
 
     // MARK: - Pro locked view
+
+    private var signedOutView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Image(systemName: "iphone.and.arrow.forward")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                Text("Open Shift on iPhone")
+                    .font(.system(size: 16, weight: .bold))
+                Text("Sign in on your iPhone once to securely sync your workout data.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 20)
+        }
+    }
 
     private var proLockedView: some View {
         ScrollView {
@@ -160,18 +194,6 @@ struct WatchHomeView: View {
             .task {
                 await WatchHealthKitService.requestAuthorization()
                 await refreshSteps()
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    refreshProStatus()
-                    Task { await refreshSteps() }
-                }
-            }
-            .onAppear {
-                refreshProStatus()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
-                isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
             }
     }
 
@@ -354,13 +376,6 @@ struct WatchHomeView: View {
                     .multilineTextAlignment(.center)
                     .padding(.vertical, 12)
             }
-        }
-    }
-
-    private func refreshProStatus() {
-        isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
-        if !isPro {
-            session.requestSync()
         }
     }
 

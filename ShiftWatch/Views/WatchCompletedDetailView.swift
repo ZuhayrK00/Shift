@@ -8,6 +8,7 @@ struct WatchCompletedDetailView: View {
 
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
+    @State private var deleteError: String?
 
     var body: some View {
         ScrollView {
@@ -74,10 +75,14 @@ struct WatchCompletedDetailView: View {
         .alert("Delete workout?", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
                 isDeleting = true
-                session.deleteSession(sessionId: completed.sessionId) { _ in
+                session.deleteSession(sessionId: completed.sessionId) { success in
                     Task { @MainActor in
                         isDeleting = false
-                        dismiss()
+                        if success {
+                            dismiss()
+                        } else {
+                            deleteError = "The workout was not queued for deletion. Please try again."
+                        }
                     }
                 }
             }
@@ -85,6 +90,18 @@ struct WatchCompletedDetailView: View {
         } message: {
             Text("This workout will be permanently deleted.")
         }
+        .alert("Couldn’t Delete Workout", isPresented: deleteErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private var deleteErrorBinding: Binding<Bool> {
+        Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )
     }
 
     private func miniStat(value: String, label: String) -> some View {

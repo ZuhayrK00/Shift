@@ -12,35 +12,46 @@ struct TodaysActivityEntry: TimelineEntry {
     let weeklyGoal: Int?
     let currentStreak: Int
     let isPro: Bool
+    let hasData: Bool
 }
 
 // MARK: - Provider
 
 struct TodaysActivityProvider: TimelineProvider {
     func placeholder(in context: Context) -> TodaysActivityEntry {
-        Self.entry(from: .placeholder)
+        Self.entry(from: .placeholder, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TodaysActivityEntry) -> Void) {
-        completion(Self.entry(from: WidgetSnapshot.read() ?? .placeholder))
+        let snapshot = context.isPreview ? WidgetSnapshot.placeholder : WidgetSnapshot.read()
+        completion(Self.entry(from: snapshot, hasData: snapshot != nil))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodaysActivityEntry>) -> Void) {
-        let entry = Self.entry(from: WidgetSnapshot.read() ?? .placeholder)
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        Task {
+            let snapshot = WidgetSnapshot.read()
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let entry = Self.entry(from: snapshot, hasData: snapshot != nil, isPro: isPro)
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
+            completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        }
     }
 
-    static func entry(from s: WidgetSnapshot) -> TodaysActivityEntry {
+    static func entry(
+        from snapshot: WidgetSnapshot?,
+        hasData: Bool,
+        isPro: Bool = WidgetSnapshot.isProUser
+    ) -> TodaysActivityEntry {
         TodaysActivityEntry(
             date: .now,
-            steps: s.stepsToday,
-            stepGoal: s.stepGoal,
-            workedOutToday: s.workedOutToday,
-            workoutsThisWeek: s.workoutsThisWeek,
-            weeklyGoal: s.weeklyGoal,
-            currentStreak: s.currentStreak,
-            isPro: WidgetSnapshot.isProUser
+            steps: snapshot?.stepsToday ?? 0,
+            stepGoal: snapshot?.stepGoal,
+            workedOutToday: snapshot?.workedOutToday ?? false,
+            workoutsThisWeek: snapshot?.workoutsThisWeek ?? 0,
+            weeklyGoal: snapshot?.weeklyGoal,
+            currentStreak: snapshot?.currentStreak ?? 0,
+            isPro: isPro,
+            hasData: hasData
         )
     }
 }
@@ -69,7 +80,7 @@ struct TodaysActivityWidgetView: View {
             default: smallLayout
             }
         }
-        .proLocked(entry.isPro)
+        .proProtected(isPro: entry.isPro, hasData: entry.hasData)
     }
 
     // MARK: - Small

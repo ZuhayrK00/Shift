@@ -8,28 +8,42 @@ struct StreakEntry: TimelineEntry {
     let streak: Int
     let unit: String
     let isPro: Bool
+    let hasData: Bool
 }
 
 // MARK: - Provider
 
 struct StreakProvider: TimelineProvider {
     func placeholder(in context: Context) -> StreakEntry {
-        StreakEntry(date: .now, streak: 4, unit: "days", isPro: true)
+        StreakEntry(date: .now, streak: 4, unit: "days", isPro: true, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StreakEntry) -> Void) {
-        completion(entry(from: WidgetSnapshot.read()))
+        completion(entry(from: context.isPreview ? .placeholder : WidgetSnapshot.read()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<StreakEntry>) -> Void) {
-        let entry = entry(from: WidgetSnapshot.read())
-        let tomorrow = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now)
-        completion(Timeline(entries: [entry], policy: .after(tomorrow)))
+        Task {
+            let snapshot = WidgetSnapshot.read()
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let tomorrow = Calendar.current.startOfDay(
+                for: Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
+            )
+            completion(Timeline(entries: [entry(from: snapshot, isPro: isPro)], policy: .after(tomorrow)))
+        }
     }
 
-    private func entry(from snapshot: WidgetSnapshot?) -> StreakEntry {
-        let s = snapshot ?? .placeholder
-        return StreakEntry(date: .now, streak: s.currentStreak, unit: s.streakUnit, isPro: WidgetSnapshot.isProUser)
+    private func entry(
+        from snapshot: WidgetSnapshot?,
+        isPro: Bool = WidgetSnapshot.isProUser
+    ) -> StreakEntry {
+        return StreakEntry(
+            date: .now,
+            streak: snapshot?.currentStreak ?? 0,
+            unit: snapshot?.streakUnit ?? "days",
+            isPro: isPro,
+            hasData: snapshot != nil
+        )
     }
 }
 
@@ -48,7 +62,7 @@ struct StreakCounterWidgetView: View {
             default: smallLayout
             }
         }
-        .proLocked(entry.isPro)
+        .proProtected(isPro: entry.isPro, hasData: entry.hasData)
     }
 
     // MARK: - Small

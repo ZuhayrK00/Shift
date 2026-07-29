@@ -74,6 +74,9 @@ struct ProfileService {
         try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
             try profileToSave.save(db)
         }
+        if patch.settings != nil {
+            Task { await WidgetDataService.updateSnapshot() }
+        }
 
         return profile
     }

@@ -14,6 +14,9 @@ struct WidgetSnapshot: Codable {
     var currentStreak: Int
     var streakUnit: String
     var updatedAt: Date
+    var ownerUserId: String?
+    var weekStart: Date?
+    var schemaVersion: Int?
 
     struct WeightPoint: Codable {
         var weight: Double
@@ -22,14 +25,45 @@ struct WidgetSnapshot: Codable {
 
     static let suiteName = "group.com.zuhayrk.shift"
     static let key = "widgetSnapshot"
+    static let activeUserIdKey = "widgetActiveUserId.v2"
 
     static func read() -> WidgetSnapshot? {
-        guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              let activeUserId = defaults.string(forKey: activeUserIdKey),
+              let data = defaults.data(forKey: key),
+              let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data),
+              snapshot.ownerUserId == activeUserId else { return nil }
+        return snapshot.normalized(for: Date())
     }
 
     static var isProUser: Bool {
-        UserDefaults(suiteName: suiteName)?.bool(forKey: "isPro") ?? false
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              defaults.string(forKey: activeUserIdKey) != nil else { return false }
+        return defaults.bool(forKey: "isPro")
+    }
+
+    /// Refreshes StoreKit directly inside the widget extension. This prevents
+    /// widget access from depending on the iPhone app having launched recently.
+    static func refreshProEntitlement() async -> Bool {
+        guard let defaults = UserDefaults(suiteName: suiteName),
+              defaults.string(forKey: activeUserIdKey) != nil else { return false }
+        let isPro = (await StoreEntitlementVerifier.currentSnapshot()).isPro
+        defaults.set(isPro, forKey: "isPro")
+        return isPro
+    }
+
+    func normalized(for date: Date, calendar: Calendar = .current) -> WidgetSnapshot {
+        var copy = self
+        if !calendar.isDate(updatedAt, inSameDayAs: date) {
+            copy.stepsToday = 0
+            copy.workedOutToday = false
+        }
+        if let weekStart,
+           let nextWeek = calendar.date(byAdding: .day, value: 7, to: weekStart),
+           date >= nextWeek {
+            copy.workoutsThisWeek = 0
+        }
+        return copy
     }
 
     static let placeholder = WidgetSnapshot(
@@ -43,6 +77,9 @@ struct WidgetSnapshot: Codable {
         weightTrend: [],
         currentStreak: 4,
         streakUnit: "days",
-        updatedAt: Date()
+        updatedAt: Date(),
+        ownerUserId: "preview",
+        weekStart: Calendar.current.dateInterval(of: .weekOfYear, for: Date())?.start,
+        schemaVersion: 2
     )
 }

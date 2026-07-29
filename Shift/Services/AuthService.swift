@@ -44,16 +44,27 @@ class AuthManager {
                 if let session {
                     await MainActor.run { self.session = session }
                     await loadUser(session)
+                    if event != .tokenRefreshed {
+                        await StoreService.shared.updatePurchasedProducts(syncWatch: false)
+                        await WidgetDataService.updateSnapshot(
+                            knownProStatus: StoreService.shared.isPro
+                        )
+                        PhoneSessionManager.shared.sendContextToWatch()
+                    }
                 } else {
                     await MainActor.run { self.isLoading = false }
                 }
             case .signedOut:
+                let signedOutUserId = self.currentUserId
                 UserDefaults.standard.removeObject(forKey: "shift.cachedUserId")
                 await MainActor.run {
                     self.session = nil
                     self.user = nil
                     self.isLoading = false
                 }
+                await GoalNotificationService.clearUserState(userId: signedOutUserId)
+                ImageCache.shared.removeAll()
+                await StoreService.shared.reset()
             case .passwordRecovery:
                 if let session {
                     await MainActor.run {
@@ -122,6 +133,7 @@ class AuthManager {
         // Cache userId for background wake access (HealthKit observer may fire
         // before the async auth listener has restored the Supabase session)
         UserDefaults.standard.set(userId, forKey: "shift.cachedUserId")
+        WidgetSnapshot.setActiveUserId(userId)
 
         await MainActor.run {
             self.session = session

@@ -8,11 +8,12 @@ struct StepComplicationEntry: TimelineEntry {
     let steps: Int
     let goal: Int?
     let isPro: Bool
+    let hasData: Bool
 }
 
 struct StepComplicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> StepComplicationEntry {
-        StepComplicationEntry(date: .now, steps: 6420, goal: 10000, isPro: true)
+        StepComplicationEntry(date: .now, steps: 6420, goal: 10000, isPro: true, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StepComplicationEntry) -> Void) {
@@ -20,17 +21,21 @@ struct StepComplicationProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepComplicationEntry>) -> Void) {
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
-        completion(Timeline(entries: [entry()], policy: .after(nextUpdate)))
+        Task {
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
+            completion(Timeline(entries: [entry(isPro: isPro)], policy: .after(nextUpdate)))
+        }
     }
 
-    private func entry() -> StepComplicationEntry {
+    private func entry(isPro: Bool = WidgetSnapshot.isProUser) -> StepComplicationEntry {
         let snap = WidgetSnapshot.read()
         return StepComplicationEntry(
             date: .now,
             steps: snap?.stepsToday ?? 0,
             goal: snap?.stepGoal,
-            isPro: WidgetSnapshot.isProUser
+            isPro: isPro,
+            hasData: snap != nil
         )
     }
 }
@@ -47,6 +52,8 @@ struct StepComplicationView: View {
     var body: some View {
         if !entry.isPro {
             proLockedView
+        } else if !entry.hasData {
+            syncRequiredView
         } else {
             switch family {
             case .accessoryCircular: circularView
@@ -56,6 +63,11 @@ struct StepComplicationView: View {
             default: circularView
             }
         }
+    }
+
+    private var syncRequiredView: some View {
+        Label("Open Shift", systemImage: "arrow.triangle.2.circlepath")
+            .font(.system(size: 10, weight: .semibold))
     }
 
     private var proLockedView: some View {

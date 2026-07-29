@@ -5,13 +5,25 @@ import WidgetKit
 /// Replaces the containerBackground with a dimmed version so the overlay fills edge-to-edge.
 struct ProLockedOverlay: ViewModifier {
     let isPro: Bool
+    var hasData: Bool = true
     @Environment(\.widgetFamily) var family
 
     private var isSmall: Bool { family == .systemSmall }
 
     func body(content: Content) -> some View {
-        if isPro {
+        if isPro && hasData {
             content
+        } else if isPro {
+            VStack(spacing: isSmall ? 7 : 9) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: isSmall ? 17 : 21, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Open Shift to sync")
+                    .font(.system(size: isSmall ? 11 : 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .containerBackground(.background, for: .widget)
         } else {
             VStack(spacing: isSmall ? 8 : 10) {
                 Image(systemName: "lock.fill")
@@ -38,5 +50,9 @@ struct ProLockedOverlay: ViewModifier {
 extension View {
     func proLocked(_ isPro: Bool) -> some View {
         modifier(ProLockedOverlay(isPro: isPro))
+    }
+
+    func proProtected(isPro: Bool, hasData: Bool) -> some View {
+        modifier(ProLockedOverlay(isPro: isPro, hasData: hasData))
     }
 }

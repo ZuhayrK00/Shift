@@ -9,11 +9,12 @@ struct WorkoutComplicationEntry: TimelineEntry {
     let goal: Int?
     let workedOutToday: Bool
     let isPro: Bool
+    let hasData: Bool
 }
 
 struct WorkoutComplicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> WorkoutComplicationEntry {
-        WorkoutComplicationEntry(date: .now, workouts: 3, goal: 5, workedOutToday: true, isPro: true)
+        WorkoutComplicationEntry(date: .now, workouts: 3, goal: 5, workedOutToday: true, isPro: true, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WorkoutComplicationEntry) -> Void) {
@@ -21,18 +22,22 @@ struct WorkoutComplicationProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WorkoutComplicationEntry>) -> Void) {
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
-        completion(Timeline(entries: [entry()], policy: .after(nextUpdate)))
+        Task {
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
+            completion(Timeline(entries: [entry(isPro: isPro)], policy: .after(nextUpdate)))
+        }
     }
 
-    private func entry() -> WorkoutComplicationEntry {
+    private func entry(isPro: Bool = WidgetSnapshot.isProUser) -> WorkoutComplicationEntry {
         let snap = WidgetSnapshot.read()
         return WorkoutComplicationEntry(
             date: .now,
             workouts: snap?.workoutsThisWeek ?? 0,
             goal: snap?.weeklyGoal,
             workedOutToday: snap?.workedOutToday ?? false,
-            isPro: WidgetSnapshot.isProUser
+            isPro: isPro,
+            hasData: snap != nil
         )
     }
 }
@@ -49,6 +54,8 @@ struct WorkoutComplicationView: View {
     var body: some View {
         if !entry.isPro {
             proLockedView
+        } else if !entry.hasData {
+            syncRequiredView
         } else {
             switch family {
             case .accessoryCircular: circularView
@@ -57,6 +64,11 @@ struct WorkoutComplicationView: View {
             default: circularView
             }
         }
+    }
+
+    private var syncRequiredView: some View {
+        Label("Open Shift", systemImage: "arrow.triangle.2.circlepath")
+            .font(.system(size: 10, weight: .semibold))
     }
 
     private var proLockedView: some View {

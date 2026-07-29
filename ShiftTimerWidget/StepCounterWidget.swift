@@ -8,25 +8,40 @@ struct StepCounterEntry: TimelineEntry {
     let steps: Int
     let goal: Int?
     let isPro: Bool
+    let hasData: Bool
 }
 
 // MARK: - Provider
 
 struct StepCounterProvider: TimelineProvider {
     func placeholder(in context: Context) -> StepCounterEntry {
-        StepCounterEntry(date: .now, steps: 6420, goal: 10000, isPro: true)
+        StepCounterEntry(date: .now, steps: 6420, goal: 10000, isPro: true, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (StepCounterEntry) -> Void) {
-        let s = WidgetSnapshot.read() ?? .placeholder
-        completion(StepCounterEntry(date: .now, steps: s.stepsToday, goal: s.stepGoal, isPro: WidgetSnapshot.isProUser))
+        completion(entry(from: context.isPreview ? .placeholder : WidgetSnapshot.read()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<StepCounterEntry>) -> Void) {
-        let s = WidgetSnapshot.read() ?? .placeholder
-        let entry = StepCounterEntry(date: .now, steps: s.stepsToday, goal: s.stepGoal, isPro: WidgetSnapshot.isProUser)
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        Task {
+            let snapshot = WidgetSnapshot.read()
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
+            completion(Timeline(entries: [entry(from: snapshot, isPro: isPro)], policy: .after(nextUpdate)))
+        }
+    }
+
+    private func entry(
+        from snapshot: WidgetSnapshot?,
+        isPro: Bool = WidgetSnapshot.isProUser
+    ) -> StepCounterEntry {
+        StepCounterEntry(
+            date: .now,
+            steps: snapshot?.stepsToday ?? 0,
+            goal: snapshot?.stepGoal,
+            isPro: isPro,
+            hasData: snapshot != nil
+        )
     }
 }
 
@@ -48,7 +63,7 @@ struct StepCounterWidgetView: View {
             default: smallLayout
             }
         }
-        .proLocked(entry.isPro)
+        .proProtected(isPro: entry.isPro, hasData: entry.hasData)
     }
 
     // MARK: - Small

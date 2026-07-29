@@ -42,11 +42,18 @@ struct ProPaywallView: View {
                                 .tint(colors.accent)
                                 .padding(.vertical, 40)
                         } else if store.products.isEmpty {
-                            Text("Unable to load subscription options.\nPlease try again later.")
-                                .font(.system(size: 14))
-                                .foregroundStyle(colors.muted)
-                                .multilineTextAlignment(.center)
-                                .padding(.vertical, 40)
+                            VStack(spacing: 12) {
+                                Text(store.lastStoreError ?? "Unable to load subscription options.")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(colors.muted)
+                                    .multilineTextAlignment(.center)
+                                Button("Try Again") {
+                                    Task { await store.loadProducts() }
+                                }
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(colors.accent)
+                            }
+                            .padding(.vertical, 40)
                         } else {
                             planCards
                                 .padding(.bottom, 20)
@@ -178,7 +185,7 @@ struct ProPaywallView: View {
                 planCard(
                     product: yearly,
                     title: "Yearly",
-                    trialText: "7-day free trial",
+                    offerText: introductoryOfferText(for: yearly),
                     priceText: yearly.displayPrice + "/year",
                     savingsBadge: savingsText(yearly: yearly)
                 )
@@ -188,7 +195,7 @@ struct ProPaywallView: View {
                 planCard(
                     product: monthly,
                     title: "Monthly",
-                    trialText: "3-day free trial",
+                    offerText: introductoryOfferText(for: monthly),
                     priceText: monthly.displayPrice + "/month",
                     savingsBadge: nil
                 )
@@ -199,7 +206,7 @@ struct ProPaywallView: View {
     private func planCard(
         product: Product,
         title: String,
-        trialText: String,
+        offerText: String?,
         priceText: String,
         savingsBadge: String?
     ) -> some View {
@@ -240,9 +247,15 @@ struct ProPaywallView: View {
                         }
                     }
 
-                    Text(trialText)
-                        .font(.system(size: 13))
-                        .foregroundStyle(colors.accent)
+                    if let offerText {
+                        Text(offerText)
+                            .font(.system(size: 13))
+                            .foregroundStyle(colors.accent)
+                    } else {
+                        Text("Renews automatically until cancelled")
+                            .font(.system(size: 12))
+                            .foregroundStyle(colors.muted)
+                    }
                 }
 
                 Spacer()
@@ -305,11 +318,10 @@ struct ProPaywallView: View {
     private var purchaseButtonTitle: String {
         if purchaseSuccess { return "Welcome to Pro!" }
         guard let product = selectedProduct else { return "Select a plan" }
-        if product.id == StoreProduct.yearlyPro.rawValue {
-            return "Try Free for 7 Days"
-        } else {
-            return "Try Free for 3 Days"
+        if let offerText = introductoryOfferText(for: product) {
+            return "Start \(offerText)"
         }
+        return "Subscribe"
     }
 
     // MARK: - Restore
@@ -317,12 +329,18 @@ struct ProPaywallView: View {
     private var restoreButton: some View {
         Button {
             Task {
-                await store.restorePurchases()
-                if store.isPro {
-                    purchaseSuccess = true
-                } else {
-                    errorMessage = "No active subscription found for this Apple ID."
+                isPurchasing = true
+                errorMessage = nil
+                do {
+                    if try await store.restorePurchases() {
+                        purchaseSuccess = true
+                    } else {
+                        errorMessage = "No active subscription was found for this Apple ID."
+                    }
+                } catch {
+                    errorMessage = "Restore failed: \(error.localizedDescription)"
                 }
+                isPurchasing = false
             }
         } label: {
             Text("Restore Purchases")
@@ -356,15 +374,38 @@ struct ProPaywallView: View {
         errorMessage = nil
 
         do {
-            let success = try await store.purchase(product)
-            if success {
+            switch try await store.purchase(product) {
+            case .purchased:
                 purchaseSuccess = true
+            case .pending:
+                errorMessage = "Your purchase is pending approval. Shift Pro will unlock automatically when it completes."
+            case .cancelled:
+                break
             }
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isPurchasing = false
+    }
+
+    private func introductoryOfferText(for product: Product) -> String? {
+        guard store.isEligibleForIntroOffer(product),
+              let offer = product.subscription?.introductoryOffer,
+              offer.paymentMode == .freeTrial else { return nil }
+        return "\(periodText(offer.period)) free trial"
+    }
+
+    private func periodText(_ period: Product.SubscriptionPeriod) -> String {
+        let unit: String
+        switch period.unit {
+        case .day: unit = "day"
+        case .week: unit = "week"
+        case .month: unit = "month"
+        case .year: unit = "year"
+        @unknown default: unit = "period"
+        }
+        return "\(period.value)-\(unit)"
     }
 }
 

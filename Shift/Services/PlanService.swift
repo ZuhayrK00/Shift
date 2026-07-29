@@ -48,6 +48,12 @@ struct PlanService {
 
         // Put new plans at the end
         let existing = try await PlanRepository.findPlansWithCount(userId: userId)
+        if existing.count >= ProFeaturePolicy.freePlanLimit {
+            let isPro = await StoreService.verifyProEntitlement()
+            guard isPro else {
+                throw PlanServiceError.freePlanLimitReached
+            }
+        }
         let nextPosition = (existing.map { $0.plan.position }.max() ?? -1) + 1
 
         let plan = WorkoutPlan(id: id, userId: userId, name: name, position: nextPosition, createdAt: Date())
@@ -222,15 +228,23 @@ struct PlanService {
     /// Creates a new in-progress session pre-populated with placeholder sets from the plan.
     static func createSessionFromPlan(
         _ planId: String,
-        startedAt: Date = Date()
+        startedAt: Date = Date(),
+        sessionId requestedSessionId: String? = nil
     ) async throws -> WorkoutSession {
         let userId = try authManager.requireUserId()
+        if let requestedSessionId,
+           let existing = try await SessionRepository.findById(requestedSessionId) {
+            guard existing.userId == userId else {
+                throw PlanServiceError.planNotFound(planId)
+            }
+            return existing
+        }
         guard let plan = try await PlanRepository.findById(planId),
               plan.userId == userId else {
             throw PlanServiceError.planNotFound(planId)
         }
 
-        let sessionId = UUID().uuidString.lowercased()
+        let sessionId = requestedSessionId ?? UUID().uuidString.lowercased()
         let session = WorkoutSession(
             id: sessionId,
             userId: userId,
@@ -321,10 +335,13 @@ struct PlanService {
 
 enum PlanServiceError: LocalizedError {
     case planNotFound(String)
+    case freePlanLimitReached
 
     var errorDescription: String? {
         switch self {
         case .planNotFound(let id): return "Plan \(id) not found."
+        case .freePlanLimitReached:
+            return "Free accounts can create up to \(ProFeaturePolicy.freePlanLimit) plans. Upgrade to Shift Pro for unlimited plans."
         }
     }
 }

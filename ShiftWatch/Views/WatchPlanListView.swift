@@ -7,6 +7,7 @@ struct WatchPlanListView: View {
     var onStarted: () -> Void
 
     @State private var isStarting: String?
+    @State private var errorMessage: String?
 
     var body: some View {
         List {
@@ -31,6 +32,8 @@ struct WatchPlanListView: View {
                                     }
                                     workout.start(sessionId: id, name: name ?? plan.name, planId: plan.id, startedAt: date, exercises: exercises)
                                     onStarted()
+                                } else {
+                                    errorMessage = "The plan could not be sent to your iPhone. Please try again."
                                 }
                             }
                         }
@@ -53,5 +56,17 @@ struct WatchPlanListView: View {
             }
         }
         .navigationTitle("Plans")
+        .alert("Couldn’t Start Plan", isPresented: errorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
     }
 }

@@ -103,13 +103,15 @@ struct ShiftApp: App {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                Task { await StoreService.shared.updatePurchasedProducts() }
                 Task {
+                    await StoreService.shared.updatePurchasedProducts(syncWatch: false)
+                    await WidgetDataService.updateSnapshot(
+                        knownProStatus: StoreService.shared.isPro
+                    )
+                    PhoneSessionManager.shared.sendContextToWatch()
                     await GoalNotificationService.checkAndNotifyGoalCompletion()
                     await GoalNotificationService.notifyFrequencyGoalIfReached()
                 }
-                Task { await WidgetDataService.updateSnapshot() }
-                PhoneSessionManager.shared.sendContextToWatch()
             }
             if newPhase == .background {
                 Task { await WidgetDataService.updateSnapshot() }

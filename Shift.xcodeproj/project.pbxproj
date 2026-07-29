@@ -106,6 +106,7 @@
 		3FB2F3FC2F8ED266003B8597 /* Exceptions for "Shift" folder in "Shift" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Configuration.storekit,
 				Info.plist,
 			);
 			target = 3F4C3C0B2F8CE0FC00A9EB58 /* Shift */;
@@ -287,6 +288,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				3F824DE22F8CEE74000009CB /* ShiftTimerWidget */,
+				BB000007BBBB000000000007 /* Shared */,
 			);
 			name = ShiftTimerWidgetExtension;
 			packageProductDependencies = (
@@ -357,6 +359,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				CC000009CCCC000000000009 /* ShiftWatchComplications */,
+				BB000007BBBB000000000007 /* Shared */,
 			);
 			name = ShiftWatchComplications;
 			packageProductDependencies = (

@@ -122,6 +122,9 @@ struct WatchContext: Codable {
     var settings: WatchSettings
     var userId: String
     var snapshot: WatchSnapshotData
+    var schemaVersion: Int?
+    var generatedAt: Date?
+    var isSignedIn: Bool?
 
     struct WatchSnapshotData: Codable {
         var workoutsThisWeek: Int
@@ -131,7 +134,15 @@ struct WatchContext: Codable {
         var workedOutToday: Bool
         var currentStreak: Int
         var streakUnit: String
+        var updatedAt: Date?
+        var weekStart: Date?
     }
+}
+
+struct WatchWorkoutUpdate: Codable {
+    var userId: String
+    var activeSession: WatchActiveSession?
+    var generatedAt: Date
 }
 
 // MARK: - Message keys
@@ -144,4 +155,12 @@ enum WatchAction: String, Codable {
     case addExercise
     case deleteSession
     case requestSync
+}
+
+/// A queued or previously processed action is successful from the Watch user's
+/// perspective: it must not be presented as a failure and retried with a new ID.
+enum WatchDeliveryPolicy {
+    static func isAccepted(success: Bool, queued: Bool, duplicate: Bool) -> Bool {
+        success || queued || duplicate
+    }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import LocalAuthentication
+import WidgetKit
 
 // MARK: - Settings Hub
 
@@ -22,7 +23,15 @@ struct SettingsView: View {
             List {
                 // Subscription
                 Section {
-                    if store.isPro {
+                    if store.isCheckingEntitlement {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text("Checking Shift Pro…")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(colors.muted)
+                        }
+                        .padding(.vertical, 8)
+                    } else if store.isPro {
                         HStack(spacing: 14) {
                             Image(systemName: "crown.fill")
                                 .font(.system(size: 14, weight: .semibold))
@@ -174,6 +183,16 @@ struct SettingsView: View {
                         }
                     }
 
+                    NavigationLink {
+                        ConnectedFeaturesSettingsPage()
+                    } label: {
+                        settingsRow(
+                            icon: "applewatch.and.arrow.forward",
+                            iconColor: .indigo,
+                            title: "Watch & Widgets",
+                            subtitle: "Installation, access and sync status"
+                        )
+                    }
                 }
                 .listRowBackground(colors.surface)
 
@@ -274,6 +293,132 @@ struct SettingsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct ConnectedFeaturesSettingsPage: View {
+    @Environment(\.shiftColors) private var colors
+    @Environment(StoreService.self) private var store
+
+    @State private var phoneSession = PhoneSessionManager.shared
+    @State private var configuredWidgetCount = 0
+    @State private var isRefreshing = false
+
+    var body: some View {
+        Form {
+            Section("Shift Pro") {
+                statusRow(
+                    "Subscription",
+                    value: store.isCheckingEntitlement
+                        ? "Checking…"
+                        : (store.isPro ? "Active" : "Not active"),
+                    isPositive: store.isPro
+                )
+                Text("Your Apple Watch now verifies Shift Pro directly. It does not require the iPhone app to be opened periodically.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(colors.muted)
+            }
+
+            Section("Apple Watch") {
+                statusRow(
+                    "Paired",
+                    value: phoneSession.isWatchPaired ? "Yes" : "No",
+                    isPositive: phoneSession.isWatchPaired
+                )
+                statusRow(
+                    "Shift installed",
+                    value: phoneSession.isWatchAppInstalled ? "Yes" : "No",
+                    isPositive: phoneSession.isWatchAppInstalled
+                )
+                statusRow(
+                    "Connection",
+                    value: phoneSession.isWatchReachable ? "Connected" : "Background",
+                    isPositive: phoneSession.isWatchReachable
+                )
+                if let date = phoneSession.lastSyncDate {
+                    HStack {
+                        Text("Last sync")
+                        Spacer()
+                        Text(date, style: .relative)
+                            .foregroundStyle(colors.muted)
+                    }
+                }
+                if let error = phoneSession.lastSyncError {
+                    Text(error)
+                        .font(.system(size: 13))
+                        .foregroundStyle(colors.danger)
+                }
+                if phoneSession.isWatchPaired && !phoneSession.isWatchAppInstalled {
+                    Text("Open the Watch app on your iPhone, find Shift under Available Apps, and tap Install.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(colors.muted)
+                }
+            }
+
+            Section("Home Screen Widgets") {
+                statusRow(
+                    "Configured",
+                    value: "\(configuredWidgetCount)",
+                    isPositive: configuredWidgetCount > 0
+                )
+                Text("To add one, touch and hold the iPhone Home Screen, tap Edit, then Add Widget and search for Shift.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(colors.muted)
+            }
+
+            Section {
+                Button {
+                    Task { await refreshEverything() }
+                } label: {
+                    HStack {
+                        Spacer()
+                        if isRefreshing {
+                            ProgressView()
+                        } else {
+                            Label("Refresh Access & Sync", systemImage: "arrow.clockwise")
+                        }
+                        Spacer()
+                    }
+                }
+                .disabled(isRefreshing)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(colors.bg)
+        .navigationTitle("Watch & Widgets")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadWidgetCount()
+            await refreshEverything()
+        }
+    }
+
+    @ViewBuilder
+    private func statusRow(_ title: String, value: String, isPositive: Bool) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundStyle(isPositive ? colors.success : colors.muted)
+        }
+    }
+
+    private func refreshEverything() async {
+        isRefreshing = true
+        await store.updatePurchasedProducts(syncWatch: false)
+        await WidgetDataService.updateSnapshot(knownProStatus: store.isPro)
+        phoneSession.sendContextToWatch()
+        await loadWidgetCount()
+        isRefreshing = false
+    }
+
+    private func loadWidgetCount() async {
+        let count = await withCheckedContinuation { continuation in
+            WidgetCenter.shared.getCurrentConfigurations { result in
+                continuation.resume(returning: (try? result.get().count) ?? 0)
+            }
+        }
+        configuredWidgetCount = count
     }
 }
 

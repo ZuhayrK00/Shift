@@ -12,12 +12,19 @@ struct WorkoutService {
 
     static func createSession(
         name: String = "Workout",
-        startedAt: Date = Date()
+        startedAt: Date = Date(),
+        id requestedId: String? = nil
     ) async throws -> WorkoutSession {
         guard let userId = try? authManager.requireUserId() else {
             throw WorkoutServiceError.notAuthenticated
         }
-        let id = UUID().uuidString.lowercased()
+        let id = requestedId ?? UUID().uuidString.lowercased()
+        if let existing = try await SessionRepository.findById(id) {
+            guard existing.userId == userId else {
+                throw WorkoutServiceError.sessionNotFound(id)
+            }
+            return existing
+        }
         let session = WorkoutSession(
             id: id,
             userId: userId,
@@ -138,6 +145,7 @@ struct WorkoutService {
             try SessionRepository.setEndedAt(sessionId, nil, in: db)
         }
         await refreshIdleAlertIfNeeded(sessionId: sessionId)
+        Task { await WidgetDataService.updateSnapshot() }
     }
 
     static func deleteSession(_ sessionId: String) async throws {
@@ -156,6 +164,7 @@ struct WorkoutService {
         // Immediately flush so the delete reaches Supabase before the app
         // is killed — prevents pullUserData from re-inserting the session.
         _ = try? await SyncService.flushQueue()
+        Task { await WidgetDataService.updateSnapshot() }
     }
 
     // MARK: - Exercises in session

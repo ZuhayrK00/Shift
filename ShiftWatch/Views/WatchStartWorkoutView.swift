@@ -7,6 +7,7 @@ struct WatchStartWorkoutView: View {
 
     @State private var isStarting = false
     @State private var showPlanList = false
+    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -21,6 +22,8 @@ struct WatchStartWorkoutView: View {
                             if let id, let date {
                                 workout.start(sessionId: id, name: name ?? "Workout", startedAt: date)
                                 navigateToWorkout = true
+                            } else {
+                                errorMessage = "The workout could not be sent to your iPhone. Please try again."
                             }
                         }
                     }
@@ -63,5 +66,17 @@ struct WatchStartWorkoutView: View {
                 navigateToWorkout = true
             })
         }
+        .alert("Couldn’t Start Workout", isPresented: errorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
     }
 }

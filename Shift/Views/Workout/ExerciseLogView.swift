@@ -268,7 +268,7 @@ struct ExerciseLogView: View {
                 }
             }
             try await reloadSets()
-            PhoneSessionManager.shared.sendContextToWatch()
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 
@@ -276,7 +276,7 @@ struct ExerciseLogView: View {
         await performSave {
             try await WorkoutService.updateSet(set.id, patch: SetPatch(setType: newType))
             try await reloadSets()
-            PhoneSessionManager.shared.sendContextToWatch()
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 
@@ -289,7 +289,7 @@ struct ExerciseLogView: View {
             ))
             selectedSetId = nil
             try await reloadSets()
-            PhoneSessionManager.shared.sendContextToWatch()
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 
@@ -308,7 +308,7 @@ struct ExerciseLogView: View {
             }
             selectedSetId = nil
             try await reloadSets()
-            PhoneSessionManager.shared.sendContextToWatch()
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 

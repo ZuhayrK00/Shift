@@ -7,6 +7,7 @@ struct WatchWorkoutView: View {
     @State private var showFinishAlert = false
     @State private var isFinishing = false
     @State private var showSummary = false
+    @State private var finishError: String?
 
     var body: some View {
         ScrollView {
@@ -60,6 +61,11 @@ struct WatchWorkoutView: View {
         }
         .navigationDestination(isPresented: $showSummary) {
             WatchSummaryView()
+        }
+        .alert("Couldn’t Finish Workout", isPresented: finishErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(finishError ?? "")
         }
         .onChange(of: session.context?.activeSession?.exercises) { _, newExercises in
             if let exercises = newExercises {
@@ -206,12 +212,23 @@ struct WatchWorkoutView: View {
     private func finishWorkout() {
         guard let sid = workout.sessionId else { return }
         isFinishing = true
-        session.finishSession(sessionId: sid) { _ in
+        session.finishSession(sessionId: sid) { success in
             Task { @MainActor in
                 isFinishing = false
-                showSummary = true
+                if success {
+                    showSummary = true
+                } else {
+                    finishError = "The workout was not queued or saved. Please try again."
+                }
             }
         }
+    }
+
+    private var finishErrorBinding: Binding<Bool> {
+        Binding(
+            get: { finishError != nil },
+            set: { if !$0 { finishError = nil } }
+        )
     }
 
     private func formatWeight(_ w: Double) -> String {

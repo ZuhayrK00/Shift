@@ -12,6 +12,7 @@ struct WatchExerciseLogView: View {
     @State private var crownOnWeight = true
     @State private var isLogging = false
     @State private var showRestTimer = false
+    @State private var logError: String?
 
     private var settings: WatchSettings? { session.context?.settings }
     private var increment: Double { settings?.defaultWeightIncrement ?? 2.5 }
@@ -88,6 +89,11 @@ struct WatchExerciseLogView: View {
         .navigationDestination(isPresented: $showRestTimer) {
             WatchRestTimerView(duration: settings?.restTimerDurationSeconds ?? 90)
         }
+        .alert("Set Not Saved", isPresented: logErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(logError ?? "")
+        }
         .onAppear { seedValues() }
     }
 
@@ -156,9 +162,18 @@ struct WatchExerciseLogView: View {
                     if settings?.restTimerEnabled ?? true {
                         showRestTimer = true
                     }
+                } else {
+                    logError = "The set was not queued or saved. Please try again."
                 }
             }
         }
+    }
+
+    private var logErrorBinding: Binding<Bool> {
+        Binding(
+            get: { logError != nil },
+            set: { if !$0 { logError = nil } }
+        )
     }
 
     private func seedValues() {

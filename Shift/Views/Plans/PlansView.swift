@@ -15,7 +15,7 @@ struct PlansView: View {
     @State private var toastMessage: String?
     @State private var showToast = false
 
-    private let freePlanLimit = 3
+    private let freePlanLimit = ProFeaturePolicy.freePlanLimit
 
     var body: some View {
         ZStack {

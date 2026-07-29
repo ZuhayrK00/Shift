@@ -5,22 +5,34 @@ import WidgetKit
 /// shared App Group so widgets can display fresh data.
 struct WidgetDataService {
 
-    static func updateSnapshot() async {
-        let isPro = await StoreService.verifyProEntitlement()
-        guard isPro else {
-            UserDefaults(suiteName: WidgetSnapshot.suiteName)?.removeObject(forKey: WidgetSnapshot.key)
+    static func updateSnapshot(knownProStatus: Bool? = nil) async {
+        guard let userId = authManager.currentUserId else {
+            WidgetSnapshot.clearSharedState()
             WidgetCenter.shared.reloadAllTimelines()
             return
         }
-        guard let userId = authManager.currentUserId else { return }
+        WidgetSnapshot.setActiveUserId(userId)
+
+        let isPro: Bool
+        if let knownProStatus {
+            isPro = knownProStatus
+        } else {
+            isPro = await StoreService.verifyProEntitlement()
+        }
+        UserDefaults(suiteName: WidgetSnapshot.suiteName)?.set(isPro, forKey: "isPro")
+        guard isPro else {
+            WidgetSnapshot.clearSnapshot()
+            WidgetCenter.shared.reloadAllTimelines()
+            return
+        }
 
         // Fall back to local profile cache when woken in the background by HealthKit
         // (authManager.user may not be fully loaded yet)
         let settings: UserSettings
-        if let userSettings = authManager.user?.settings {
-            settings = userSettings
-        } else if let profile = try? await ProfileRepository.findById(userId) {
+        if let profile = try? await ProfileRepository.findById(userId) {
             settings = profile.settings
+        } else if let userSettings = authManager.user?.settings {
+            settings = userSettings
         } else {
             settings = .default
         }
@@ -63,7 +75,10 @@ struct WidgetDataService {
             weightTrend: trendPoints,
             currentStreak: streak.count,
             streakUnit: streak.unit,
-            updatedAt: Date()
+            updatedAt: Date(),
+            ownerUserId: userId,
+            weekStart: weekStart,
+            schemaVersion: 2
         )
 
         snapshot.write()

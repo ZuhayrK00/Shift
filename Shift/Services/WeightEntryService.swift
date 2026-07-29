@@ -39,6 +39,7 @@ struct WeightEntryService {
                 arguments: [id, userId]
             )
         }
+        Task { await WidgetDataService.updateSnapshot() }
     }
 
     // MARK: - Private

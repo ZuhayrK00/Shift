@@ -8,32 +8,39 @@ struct WeeklyProgressEntry: TimelineEntry {
     let completed: Int
     let goal: Int?
     let isPro: Bool
+    let hasData: Bool
 }
 
 // MARK: - Provider
 
 struct WeeklyProgressProvider: TimelineProvider {
     func placeholder(in context: Context) -> WeeklyProgressEntry {
-        WeeklyProgressEntry(date: .now, completed: 3, goal: 5, isPro: true)
+        WeeklyProgressEntry(date: .now, completed: 3, goal: 5, isPro: true, hasData: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WeeklyProgressEntry) -> Void) {
-        completion(entry(from: WidgetSnapshot.read()))
+        completion(entry(from: context.isPreview ? .placeholder : WidgetSnapshot.read()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeeklyProgressEntry>) -> Void) {
-        let entry = entry(from: WidgetSnapshot.read())
-        let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
-        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        Task {
+            let snapshot = WidgetSnapshot.read()
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
+            completion(Timeline(entries: [entry(from: snapshot, isPro: isPro)], policy: .after(nextUpdate)))
+        }
     }
 
-    private func entry(from snapshot: WidgetSnapshot?) -> WeeklyProgressEntry {
-        let s = snapshot ?? .placeholder
+    private func entry(
+        from snapshot: WidgetSnapshot?,
+        isPro: Bool = WidgetSnapshot.isProUser
+    ) -> WeeklyProgressEntry {
         return WeeklyProgressEntry(
             date: .now,
-            completed: s.workoutsThisWeek,
-            goal: s.weeklyGoal,
-            isPro: WidgetSnapshot.isProUser
+            completed: snapshot?.workoutsThisWeek ?? 0,
+            goal: snapshot?.weeklyGoal,
+            isPro: isPro,
+            hasData: snapshot != nil
         )
     }
 }
@@ -56,7 +63,7 @@ struct WeeklyProgressWidgetView: View {
             default: smallLayout
             }
         }
-        .proLocked(entry.isPro)
+        .proProtected(isPro: entry.isPro, hasData: entry.hasData)
     }
 
     // MARK: - Small

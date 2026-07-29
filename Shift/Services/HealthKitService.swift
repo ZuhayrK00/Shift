@@ -104,6 +104,8 @@ struct HealthKitService {
                 Task {
                     await GoalNotificationService.notifyFrequencyGoalIfReached()
                     completionHandler()
+                    await WidgetDataService.updateSnapshot()
+                    PhoneSessionManager.shared.sendSnapshotToWatch()
                 }
             }
             store.execute(query)

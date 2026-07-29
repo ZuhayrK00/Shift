@@ -178,6 +178,7 @@ private struct TemplatePlanCard: View {
 
 struct TemplateDetailView: View {
     @Environment(\.shiftColors) private var colors
+    @Environment(StoreService.self) private var store
     let template: PlanTemplate
     var onAdded: ((String) -> Void)?
 
@@ -188,6 +189,8 @@ struct TemplateDetailView: View {
     @State private var addedPlanIds: [String: String] = [:]  // dayId → planId
     @State private var expandedDays: Set<String> = []
     @State private var existingPlans: [WorkoutPlanWithCount] = []
+    @State private var showPaywall = false
+    @State private var addError: String?
 
     private var levelColor: Color {
         switch template.level {
@@ -300,6 +303,14 @@ struct TemplateDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadExercises() }
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView()
+        }
+        .alert("Couldn’t Add Plan", isPresented: addErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(addError ?? "")
+        }
     }
 
     private func loadExercises() async {
@@ -392,29 +403,57 @@ struct TemplateDetailView: View {
     }
 
     private func addAllDays() async {
+        addError = nil
+        let missingCount = template.days.filter { !addedDays.contains($0.id) }.count
+        guard await canAddPlans(missingCount) else {
+            showPaywall = true
+            return
+        }
         isAdding = true
         for day in template.days {
             if !addedDays.contains(day.id) {
-                await addDayToPlan(day)
-                addedDays.insert(day.id)
+                if await addDayToPlan(day) {
+                    addedDays.insert(day.id)
+                } else {
+                    break
+                }
             }
         }
         isAdding = false
-        onAdded?(template.name)
+        if addError == nil {
+            onAdded?(template.name)
+        }
     }
 
     private func addSingleDay(_ day: PlanTemplateDay) async {
+        addError = nil
+        guard await canAddPlans(1) else {
+            showPaywall = true
+            return
+        }
         isAdding = true
-        await addDayToPlan(day)
-        addedDays.insert(day.id)
+        if await addDayToPlan(day) {
+            addedDays.insert(day.id)
+            onAdded?(day.name)
+        }
         isAdding = false
-        onAdded?(day.name)
     }
 
-    private func addDayToPlan(_ day: PlanTemplateDay) async {
+    private func addDayToPlan(_ day: PlanTemplateDay) async -> Bool {
+        var createdPlanId: String?
         do {
             let plan = try await PlanService.createPlan(name: day.name)
+            createdPlanId = plan.id
             addedPlanIds[day.id] = plan.id
+            existingPlans.append(
+                WorkoutPlanWithCount(
+                    plan: plan,
+                    exerciseCount: 0,
+                    muscleGroups: [],
+                    exerciseImageUrls: [],
+                    estimatedMinutes: 0
+                )
+            )
 
             var position = 0
             var groupTagToId: [String: String] = [:]
@@ -448,9 +487,27 @@ struct TemplateDetailView: View {
             }
             try await PlanService.addConfiguredExercises(configuredExercises)
             PhoneSessionManager.shared.sendContextToWatch()
+            return true
         } catch {
-            print("Failed to add plan day: \(error)")
+            if let createdPlanId {
+                try? await PlanService.deletePlan(createdPlanId)
+                addedPlanIds.removeValue(forKey: day.id)
+                existingPlans.removeAll { $0.plan.id == createdPlanId }
+            }
+            addError = error.localizedDescription
+            return false
         }
+    }
+
+    private func canAddPlans(_ count: Int) async -> Bool {
+        guard existingPlans.count + count > ProFeaturePolicy.freePlanLimit else {
+            return true
+        }
+        if store.isPro {
+            return true
+        }
+        await store.updatePurchasedProducts()
+        return store.isPro
     }
 
     private func removeDayPlan(_ day: PlanTemplateDay) async {
@@ -459,9 +516,17 @@ struct TemplateDetailView: View {
             try await PlanService.deletePlan(planId)
             addedDays.remove(day.id)
             addedPlanIds.removeValue(forKey: day.id)
+            existingPlans.removeAll { $0.plan.id == planId }
         } catch {
             print("Failed to remove plan: \(error)")
         }
+    }
+
+    private var addErrorBinding: Binding<Bool> {
+        Binding(
+            get: { addError != nil },
+            set: { if !$0 { addError = nil } }
+        )
     }
 }
 

@@ -579,7 +579,7 @@ struct WorkoutView: View {
                 asGroup: asGroup
             )
             await loadData()
-            PhoneSessionManager.shared.sendContextToWatch()
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 
@@ -590,7 +590,7 @@ struct WorkoutView: View {
                 exerciseId: exerciseId
             )
             await loadData()
-            PhoneSessionManager.shared.sendContextToWatch()
+            PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         }
     }
 

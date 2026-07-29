@@ -20,7 +20,14 @@ struct QuickStartProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<QuickStartEntry>) -> Void) {
-        completion(Timeline(entries: [QuickStartEntry(date: .now, isPro: WidgetSnapshot.isProUser)], policy: .never))
+        Task {
+            let isPro = await WidgetSnapshot.refreshProEntitlement()
+            let refreshDate = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
+            completion(Timeline(
+                entries: [QuickStartEntry(date: .now, isPro: isPro)],
+                policy: .after(refreshDate)
+            ))
+        }
     }
 }
 

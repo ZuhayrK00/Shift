@@ -1,6 +1,55 @@
 import Foundation
 import WatchConnectivity
 
+private actor WatchActionLedger {
+    static let shared = WatchActionLedger()
+
+    private let defaults = UserDefaults.standard
+    private let prefix = "shift.watch.action."
+    private var inFlight: Set<String> = []
+
+    func begin(actionId: String) -> Bool {
+        let key = prefix + actionId
+        let now = Date().timeIntervalSince1970
+        if let stored = defaults.object(forKey: key) as? Double {
+            // Negative values are crash-safe in-flight reservations. A stale
+            // reservation can be retried after five minutes.
+            if stored >= 0 || -stored > now - 5 * 60 {
+                return false
+            }
+            defaults.removeObject(forKey: key)
+        } else if defaults.object(forKey: key) != nil {
+            return false
+        }
+        guard !inFlight.contains(actionId) else { return false }
+        inFlight.insert(actionId)
+        defaults.set(-now, forKey: key)
+        return true
+    }
+
+    func finish(actionId: String, succeeded: Bool) {
+        inFlight.remove(actionId)
+        if succeeded {
+            defaults.set(Date().timeIntervalSince1970, forKey: prefix + actionId)
+            removeExpiredEntries()
+        } else {
+            defaults.removeObject(forKey: prefix + actionId)
+        }
+    }
+
+    private func removeExpiredEntries() {
+        let cutoff = Date().addingTimeInterval(-30 * 24 * 60 * 60).timeIntervalSince1970
+        for (key, value) in defaults.dictionaryRepresentation()
+        where key.hasPrefix(prefix) {
+            if let timestamp = value as? Double,
+               timestamp >= 0,
+               timestamp < cutoff {
+                defaults.removeObject(forKey: key)
+            }
+        }
+    }
+}
+
 extension Notification.Name {
     /// Posted when the Watch modifies workout data so phone views can refresh.
     static let watchDidUpdateWorkout = Notification.Name("watchDidUpdateWorkout")
@@ -13,9 +62,14 @@ final class PhoneSessionManager: NSObject {
     static let shared = PhoneSessionManager()
 
     private(set) var isWatchReachable = false
+    private(set) var isWatchPaired = false
+    private(set) var isWatchAppInstalled = false
+    private(set) var lastSyncDate: Date?
+    private(set) var lastSyncError: String?
     private let sendLock = NSLock()
     private var isSendingContext = false
     private var needsAnotherContextPass = false
+    private var shouldRefreshEntitlementForNextPass = false
 
     private override init() {
         super.init()
@@ -29,11 +83,15 @@ final class PhoneSessionManager: NSObject {
 
     // MARK: - Send context to Watch
 
-    func sendContextToWatch() {
-        guard WCSession.default.activationState == .activated,
-              WCSession.default.isPaired else { return }
+    func sendContextToWatch(refreshEntitlement: Bool = false) {
+        guard WCSession.default.activationState == .activated else { return }
+        refreshWatchState(WCSession.default)
+        guard WCSession.default.isPaired,
+              WCSession.default.isWatchAppInstalled else { return }
 
         let shouldStart = sendLock.withLock {
+            shouldRefreshEntitlementForNextPass =
+                shouldRefreshEntitlementForNextPass || refreshEntitlement
             if isSendingContext {
                 needsAnotherContextPass = true
                 return false
@@ -46,7 +104,12 @@ final class PhoneSessionManager: NSObject {
         Task { [weak self] in
             guard let self else { return }
             while true {
-                await sendContextPass()
+                let shouldRefreshEntitlement = sendLock.withLock {
+                    let value = self.shouldRefreshEntitlementForNextPass
+                    self.shouldRefreshEntitlementForNextPass = false
+                    return value
+                }
+                await sendContextPass(refreshEntitlement: shouldRefreshEntitlement)
 
                 let shouldRepeat = sendLock.withLock {
                     if self.needsAnotherContextPass {
@@ -61,13 +124,17 @@ final class PhoneSessionManager: NSObject {
         }
     }
 
-    private func sendContextPass() async {
+    private func sendContextPass(refreshEntitlement: Bool) async {
+        if refreshEntitlement {
             // Re-verify entitlement from StoreKit before syncing to watch.
             // This ensures Pro status is fresh even if the app process was
             // killed and restarted by a WatchConnectivity wake.
             await StoreService.shared.updatePurchasedProducts(syncWatch: false)
 
-            await WidgetDataService.updateSnapshot()
+            await WidgetDataService.updateSnapshot(
+                knownProStatus: StoreService.shared.isPro
+            )
+        }
             let context = await buildContext()
             guard let data = try? JSONEncoder().encode(context),
                   var dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -77,11 +144,21 @@ final class PhoneSessionManager: NSObject {
 
             // Include Pro status so the watch can update complications
             dict["isPro"] = StoreService.shared.isPro
+            dict["entitlementVerifiedAt"] =
+                StoreEntitlementCache.read()?.verifiedAt.timeIntervalSince1970
+                ?? Date().timeIntervalSince1970
 
             do {
                 try WCSession.default.updateApplicationContext(dict)
+                await MainActor.run {
+                    lastSyncDate = Date()
+                    lastSyncError = nil
+                }
             } catch {
                 print("[PhoneSession] updateApplicationContext error: \(error.localizedDescription)")
+                await MainActor.run {
+                    lastSyncError = error.localizedDescription
+                }
             }
 
             // Also send via message for immediate delivery when watch app is open
@@ -91,7 +168,6 @@ final class PhoneSessionManager: NSObject {
                 }
             }
 
-            sendComplicationUpdate()
     }
 
     /// Lightweight update that only sends the snapshot to watch complications.
@@ -99,12 +175,61 @@ final class PhoneSessionManager: NSObject {
     /// Uses transferCurrentComplicationUserInfo for high-priority delivery.
     func sendSnapshotToWatch() {
         guard WCSession.default.activationState == .activated,
-              WCSession.default.isPaired else { return }
-        sendComplicationUpdate()
+              WCSession.default.isPaired,
+              WCSession.default.isWatchAppInstalled else { return }
+        sendSnapshotUpdate()
     }
 
-    private func sendComplicationUpdate() {
-        guard WCSession.default.isComplicationEnabled else { return }
+    /// Sends only live-workout state after set/session mutations. This avoids
+    /// rebuilding and retransmitting every saved plan after each logged set.
+    func sendWorkoutUpdateToWatch() {
+        guard WCSession.default.activationState == .activated,
+              WCSession.default.isPaired,
+              WCSession.default.isWatchAppInstalled,
+              let userId = authManager.currentUserId else { return }
+
+        Task {
+            let update = WatchWorkoutUpdate(
+                userId: userId,
+                activeSession: await buildActiveSession(),
+                generatedAt: Date()
+            )
+            guard let data = try? JSONEncoder().encode(update),
+                  var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return
+            }
+            payload["stateType"] = "workout"
+            payload["schemaVersion"] = 2
+
+            for transfer in WCSession.default.outstandingUserInfoTransfers
+            where transfer.userInfo["stateType"] as? String == "workout" {
+                transfer.cancel()
+            }
+            WCSession.default.transferUserInfo(payload)
+            if WCSession.default.isReachable {
+                WCSession.default.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+            }
+        }
+    }
+
+    func sendSignedOutStateToWatch() {
+        guard WCSession.default.activationState == .activated,
+              WCSession.default.isPaired,
+              WCSession.default.isWatchAppInstalled else { return }
+        let payload: [String: Any] = [
+            "stateType": "signedOut",
+            "schemaVersion": 2,
+            "isPro": false,
+            "entitlementVerifiedAt": Date().timeIntervalSince1970
+        ]
+        try? WCSession.default.updateApplicationContext(payload)
+        WCSession.default.transferUserInfo(payload)
+        if WCSession.default.isReachable {
+            WCSession.default.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        }
+    }
+
+    private func sendSnapshotUpdate() {
         guard let snap = WidgetSnapshot.read(),
               let snapData = try? JSONEncoder().encode(snap),
               var snapDict = try? JSONSerialization.jsonObject(with: snapData) as? [String: Any] else { return }
@@ -113,7 +238,29 @@ final class PhoneSessionManager: NSObject {
         // here but the singleton may not have been refreshed.
         let isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
         snapDict["isPro"] = isPro
-        WCSession.default.transferCurrentComplicationUserInfo(["snapshot": snapDict, "isPro": isPro])
+        let payload: [String: Any] = [
+            "stateType": "snapshot",
+            "schemaVersion": 2,
+            "snapshot": snapDict,
+            "isPro": isPro,
+            "entitlementVerifiedAt":
+                StoreEntitlementCache.read()?.verifiedAt.timeIntervalSince1970
+                ?? Date().timeIntervalSince1970
+        ]
+
+        for transfer in WCSession.default.outstandingUserInfoTransfers
+        where transfer.userInfo["stateType"] as? String == "snapshot" {
+            transfer.cancel()
+        }
+        WCSession.default.transferUserInfo(payload)
+
+        if WCSession.default.isReachable {
+            WCSession.default.sendMessage(payload, replyHandler: nil, errorHandler: nil)
+        }
+        if WCSession.default.isComplicationEnabled,
+           WCSession.default.remainingComplicationUserInfoTransfers > 0 {
+            WCSession.default.transferCurrentComplicationUserInfo(payload)
+        }
     }
 
     private func buildContext() async -> WatchContext {
@@ -164,34 +311,7 @@ final class PhoneSessionManager: NSObject {
             }
         }()
 
-        // Active session
-        let activeSession: WatchActiveSession? = await {
-            guard let session = try? await WorkoutService.getLatestInProgress() else { return nil }
-            guard let exerciseIds = try? await WorkoutService.getSessionExerciseIds(session.id) else { return nil }
-            let exerciseMap = (try? await ExerciseService.getByIds(exerciseIds)) ?? [:]
-
-            var watchExercises: [WatchSessionExercise] = []
-            for eid in exerciseIds {
-                let sets = (try? await WorkoutService.getSetsFor(sessionId: session.id, exerciseId: eid)) ?? []
-                let exercise = exerciseMap[eid]
-                watchExercises.append(WatchSessionExercise(
-                    exerciseId: eid,
-                    exerciseName: exercise?.name ?? "Exercise",
-                    equipment: exercise?.equipment,
-                    completedSets: sets.filter { $0.isCompleted }.count,
-                    totalSets: sets.count,
-                    groupId: sets.first?.groupId
-                ))
-            }
-
-            return WatchActiveSession(
-                sessionId: session.id,
-                planId: session.planId,
-                name: session.name,
-                startedAt: session.startedAt,
-                exercises: watchExercises
-            )
-        }()
+        let activeSession = await buildActiveSession()
 
         // Last completed session today
         let lastCompleted: WatchCompletedSession? = await {
@@ -221,7 +341,9 @@ final class PhoneSessionManager: NSObject {
             stepGoal: snapshot?.stepGoal,
             workedOutToday: snapshot?.workedOutToday ?? false,
             currentStreak: snapshot?.currentStreak ?? 0,
-            streakUnit: snapshot?.streakUnit ?? "days"
+            streakUnit: snapshot?.streakUnit ?? "days",
+            updatedAt: snapshot?.updatedAt,
+            weekStart: snapshot?.weekStart
         )
 
         return WatchContext(
@@ -236,8 +358,55 @@ final class PhoneSessionManager: NSObject {
                 restTimerDurationSeconds: settings.restTimer.durationSeconds
             ),
             userId: userId,
-            snapshot: snapshotData
+            snapshot: snapshotData,
+            schemaVersion: 2,
+            generatedAt: Date(),
+            isSignedIn: !userId.isEmpty
         )
+    }
+
+    private func buildActiveSession() async -> WatchActiveSession? {
+        guard let session = try? await WorkoutService.getLatestInProgress(),
+              let exerciseIds = try? await WorkoutService.getSessionExerciseIds(session.id) else {
+            return nil
+        }
+        let exerciseMap = (try? await ExerciseService.getByIds(exerciseIds)) ?? [:]
+        var watchExercises: [WatchSessionExercise] = []
+        for exerciseId in exerciseIds {
+            let sets = (try? await WorkoutService.getSetsFor(
+                sessionId: session.id,
+                exerciseId: exerciseId
+            )) ?? []
+            let exercise = exerciseMap[exerciseId]
+            watchExercises.append(
+                WatchSessionExercise(
+                    exerciseId: exerciseId,
+                    exerciseName: exercise?.name ?? "Exercise",
+                    equipment: exercise?.equipment,
+                    completedSets: sets.filter(\.isCompleted).count,
+                    totalSets: sets.count,
+                    groupId: sets.first?.groupId
+                )
+            )
+        }
+        return WatchActiveSession(
+            sessionId: session.id,
+            planId: session.planId,
+            name: session.name,
+            startedAt: session.startedAt,
+            exercises: watchExercises
+        )
+    }
+
+    private func refreshWatchState(_ session: WCSession) {
+        let paired = session.activationState == .activated && session.isPaired
+        let installed = paired && session.isWatchAppInstalled
+        let reachable = installed && session.isReachable
+        Task { @MainActor in
+            isWatchPaired = paired
+            isWatchAppInstalled = installed
+            isWatchReachable = reachable
+        }
     }
 
     // MARK: - Handle Watch messages
@@ -250,53 +419,96 @@ final class PhoneSessionManager: NSObject {
         }
 
         Task { @MainActor in
+            let actionId = action == .requestSync ? nil : message["actionId"] as? String
+            if let actionId,
+               !(await WatchActionLedger.shared.begin(actionId: actionId)) {
+                replyHandler?(["duplicate": true])
+                return
+            }
+
+            func respond(_ payload: [String: Any], succeeded: Bool) {
+                replyHandler?(payload)
+                if let actionId {
+                    Task {
+                        await WatchActionLedger.shared.finish(
+                            actionId: actionId,
+                            succeeded: succeeded
+                        )
+                    }
+                }
+            }
+
             switch action {
             case .startSession:
                 let name = message["name"] as? String ?? "Workout"
+                let requestedSessionId = message["sessionId"] as? String
+                let startedAt = (message["startedAt"] as? String)
+                    .flatMap { ISO8601DateFormatter.shared.date(from: $0) }
+                    ?? Date()
                 do {
-                    let session = try await WorkoutService.createSession(name: name)
-                    replyHandler?(["sessionId": session.id, "name": session.name,
-                                   "startedAt": ISO8601DateFormatter.shared.string(from: session.startedAt)])
-                    sendContextToWatch()
+                    let session = try await WorkoutService.createSession(
+                        name: name,
+                        startedAt: startedAt,
+                        id: requestedSessionId
+                    )
+                    respond([
+                        "success": true,
+                        "sessionId": session.id,
+                        "name": session.name,
+                        "startedAt": ISO8601DateFormatter.shared.string(from: session.startedAt)
+                    ], succeeded: true)
+                    sendWorkoutUpdateToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
-                    replyHandler?(["error": error.localizedDescription])
+                    respond(["error": error.localizedDescription], succeeded: false)
                 }
 
             case .startSessionFromPlan:
                 guard let planId = message["planId"] as? String else {
-                    replyHandler?(["error": "Missing planId"])
+                    respond(["error": "Missing planId"], succeeded: false)
                     return
                 }
+                let requestedSessionId = message["sessionId"] as? String
+                let startedAt = (message["startedAt"] as? String)
+                    .flatMap { ISO8601DateFormatter.shared.date(from: $0) }
+                    ?? Date()
                 do {
-                    let session = try await PlanService.createSessionFromPlan(planId)
-                    replyHandler?(["sessionId": session.id, "name": session.name,
-                                   "startedAt": ISO8601DateFormatter.shared.string(from: session.startedAt)])
-                    sendContextToWatch()
+                    let session = try await PlanService.createSessionFromPlan(
+                        planId,
+                        startedAt: startedAt,
+                        sessionId: requestedSessionId
+                    )
+                    respond([
+                        "success": true,
+                        "sessionId": session.id,
+                        "name": session.name,
+                        "startedAt": ISO8601DateFormatter.shared.string(from: session.startedAt)
+                    ], succeeded: true)
+                    sendWorkoutUpdateToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
-                    replyHandler?(["error": error.localizedDescription])
+                    respond(["error": error.localizedDescription], succeeded: false)
                 }
 
             case .finishSession:
                 guard let sessionId = message["sessionId"] as? String else {
-                    replyHandler?(["error": "Missing sessionId"])
+                    respond(["error": "Missing sessionId"], succeeded: false)
                     return
                 }
                 do {
                     try await WorkoutService.finishSession(sessionId)
-                    replyHandler?(["success": true])
+                    respond(["success": true], succeeded: true)
                     sendContextToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
-                    replyHandler?(["error": error.localizedDescription])
+                    respond(["error": error.localizedDescription], succeeded: false)
                 }
 
             case .logSet:
                 guard let sessionId = message["sessionId"] as? String,
                       let exerciseId = message["exerciseId"] as? String,
                       let reps = message["reps"] as? Int else {
-                    replyHandler?(["error": "Missing required fields"])
+                    respond(["error": "Missing required fields"], succeeded: false)
                     return
                 }
                 do {
@@ -309,44 +521,45 @@ final class PhoneSessionManager: NSObject {
                         weight: weight,
                         setType: SetType(rawValue: setType ?? "normal")
                     )
-                    replyHandler?(["success": true, "setId": newSet.id])
+                    respond(["success": true, "setId": newSet.id], succeeded: true)
+                    sendWorkoutUpdateToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
-                    replyHandler?(["error": error.localizedDescription])
+                    respond(["error": error.localizedDescription], succeeded: false)
                 }
 
             case .addExercise:
                 guard let sessionId = message["sessionId"] as? String,
                       let exerciseId = message["exerciseId"] as? String else {
-                    replyHandler?(["error": "Missing required fields"])
+                    respond(["error": "Missing required fields"], succeeded: false)
                     return
                 }
                 do {
                     try await WorkoutService.addExercisesToSession(sessionId, exerciseIds: [exerciseId])
-                    replyHandler?(["success": true])
-                    sendContextToWatch()
+                    respond(["success": true], succeeded: true)
+                    sendWorkoutUpdateToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
-                    replyHandler?(["error": error.localizedDescription])
+                    respond(["error": error.localizedDescription], succeeded: false)
                 }
 
             case .deleteSession:
                 guard let sessionId = message["sessionId"] as? String else {
-                    replyHandler?(["error": "Missing sessionId"])
+                    respond(["error": "Missing sessionId"], succeeded: false)
                     return
                 }
                 do {
                     try await WorkoutService.deleteSession(sessionId)
-                    replyHandler?(["success": true])
+                    respond(["success": true], succeeded: true)
                     sendContextToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)
                 } catch {
-                    replyHandler?(["error": error.localizedDescription])
+                    respond(["error": error.localizedDescription], succeeded: false)
                 }
 
             case .requestSync:
-                sendContextToWatch()
-                replyHandler?(["success": true])
+                sendContextToWatch(refreshEntitlement: true)
+                respond(["success": true], succeeded: true)
             }
         }
     }
@@ -356,19 +569,29 @@ final class PhoneSessionManager: NSObject {
 
 extension PhoneSessionManager: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        refreshWatchState(session)
+        Task { @MainActor in
+            lastSyncError = error?.localizedDescription
+        }
         if activationState == .activated {
-            sendContextToWatch()
+            sendContextToWatch(refreshEntitlement: true)
         }
     }
 
     func sessionDidBecomeInactive(_ session: WCSession) {}
     func sessionDidDeactivate(_ session: WCSession) {
+        refreshWatchState(session)
         WCSession.default.activate()
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
-        Task { @MainActor in
-            isWatchReachable = session.isReachable
+        refreshWatchState(session)
+    }
+
+    func sessionWatchStateDidChange(_ session: WCSession) {
+        refreshWatchState(session)
+        if session.activationState == .activated, session.isWatchAppInstalled {
+            sendContextToWatch(refreshEntitlement: true)
         }
     }
 
