@@ -61,6 +61,68 @@ final class PlanEnhancementTests: XCTestCase {
         XCTAssertEqual(suggestions.first?.id, close.id)
     }
 
+    func testDefaultGymPreference_prioritizesCommercialGymEquipment() {
+        let bodyweight = exercise(
+            id: "bodyweight",
+            muscle: "chest",
+            equipment: "body only",
+            mechanic: "compound"
+        )
+        let cable = exercise(
+            id: "cable",
+            muscle: "chest",
+            equipment: "cable",
+            mechanic: "isolation"
+        )
+        let barbell = exercise(
+            id: "barbell",
+            muscle: "chest",
+            equipment: "barbell",
+            mechanic: "compound"
+        )
+
+        let sorted = GymExercisePreferenceService.sorted([bodyweight, cable, barbell])
+
+        XCTAssertEqual(sorted.map(\.id), ["barbell", "cable", "bodyweight"])
+    }
+
+    func testDefaultGymPreference_stillAllowsBodyweightCatalogue() {
+        let pushUp = exercise(
+            id: "push-up",
+            muscle: "chest",
+            equipment: "body only",
+            mechanic: "compound"
+        )
+        let dip = exercise(
+            id: "dip",
+            muscle: "chest",
+            equipment: "body only",
+            mechanic: "compound"
+        )
+
+        let sorted = GymExercisePreferenceService.sorted([pushUp, dip])
+
+        XCTAssertEqual(Set(sorted.map(\.id)), ["push-up", "dip"])
+    }
+
+    #if canImport(FoundationModels)
+    @available(iOS 26, *)
+    func testFallbackSelectionBalancesRequestedMuscleGroups() {
+        let exercises = [
+            exercise(id: "chest-1", muscle: "chest", equipment: "barbell", mechanic: "compound"),
+            exercise(id: "chest-2", muscle: "chest", equipment: "dumbbell", mechanic: "compound"),
+            exercise(id: "back-1", muscle: "back", equipment: "cable", mechanic: "compound"),
+            exercise(id: "back-2", muscle: "back", equipment: "machine", mechanic: "compound"),
+            exercise(id: "legs-1", muscle: "legs", equipment: "barbell", mechanic: "compound"),
+            exercise(id: "legs-2", muscle: "legs", equipment: "machine", mechanic: "compound")
+        ]
+
+        let selected = AIPlanFallbackBuilder.balancedSelection(from: exercises, limit: 3)
+
+        XCTAssertEqual(Set(selected.map(\.primaryMuscleId)), ["chest", "back", "legs"])
+    }
+    #endif
+
     func testProgressionRecommendation_increasesOnlyAfterComfortableTopRange() {
         let comfortable = [
             SessionSet(

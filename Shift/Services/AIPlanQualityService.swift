@@ -133,20 +133,15 @@ enum AIPlanFallbackBuilder {
                 errors: ["The basic fallback can't safely account for injury or return-to-training needs. Adjust the draft manually or try Apple Intelligence again."]
             )
         }
-        let ordered = request.catalogue.sorted {
-            let lhsFamiliar = request.familiarExerciseIDs.contains($0.id)
-            let rhsFamiliar = request.familiarExerciseIDs.contains($1.id)
-            if lhsFamiliar != rhsFamiliar { return lhsFamiliar }
-            let lhsCompound = $0.mechanic?.lowercased() == "compound"
-            let rhsCompound = $1.mechanic?.lowercased() == "compound"
-            if lhsCompound != rhsCompound { return lhsCompound }
-            return $0.name < $1.name
-        }
+        let ordered = GymExercisePreferenceService.sorted(
+            request.catalogue,
+            familiarExerciseIDs: request.familiarExerciseIDs
+        )
         let availablePerDay = max(2, ordered.count / max(1, request.days))
         let budgetLimit = request.timeBudgetMinutes.map(AIPlanQualityService.maximumExerciseCount) ?? 6
         let perDay = min(6, budgetLimit, availablePerDay)
         let needed = min(ordered.count, request.days * perDay)
-        let selected = Array(ordered.prefix(needed))
+        let selected = balancedSelection(from: ordered, limit: needed)
 
         var buckets = Array(repeating: [Exercise](), count: request.days)
         for (index, exercise) in selected.enumerated() {
@@ -188,6 +183,27 @@ enum AIPlanFallbackBuilder {
             expectedDays: request.days,
             timeBudgetMinutes: request.timeBudgetMinutes
         )
+    }
+
+    static func balancedSelection(from exercises: [Exercise], limit: Int) -> [Exercise] {
+        guard limit > 0 else { return [] }
+        let groups = Dictionary(grouping: exercises, by: \.primaryMuscleId)
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+        var selection: [Exercise] = []
+        var index = 0
+
+        while selection.count < limit {
+            var addedExercise = false
+            for group in groups where group.indices.contains(index) {
+                selection.append(group[index])
+                addedExercise = true
+                if selection.count == limit { break }
+            }
+            if !addedExercise { break }
+            index += 1
+        }
+        return selection
     }
 
     private static func targets(for goal: String) -> (sets: Int, repsMin: Int, repsMax: Int, rest: Int) {

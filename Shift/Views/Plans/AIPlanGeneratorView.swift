@@ -1241,7 +1241,7 @@ struct AIPlanGeneratorView: View {
 
         if effectiveEquipment.count < allEquipmentTypes.count {
             filtered = filtered.filter { exercise in
-                guard let equip = exercise.equipment?.lowercased() else { return true }
+                guard let equip = exercise.equipment?.lowercased() else { return false }
                 return effectiveEquipment.contains(equip)
             }
         }
@@ -1270,13 +1270,13 @@ struct AIPlanGeneratorView: View {
             }
         }
 
-        // 5. Prioritize compound exercises, then sort by category
-        filtered.sort { a, b in
-            let aCompound = a.mechanic?.lowercased() == "compound"
-            let bCompound = b.mechanic?.lowercased() == "compound"
-            if aCompound != bCompound { return aCompound }
-            return a.name < b.name
-        }
+        // 5. For unrestricted requests, lead with equipment found in modern
+        // commercial gyms. An explicit bodyweight-only filter still works
+        // because only bodyweight exercises reach this sorting step.
+        filtered = GymExercisePreferenceService.sorted(
+            filtered,
+            familiarExerciseIDs: recentExerciseIds
+        )
 
         // 6. Group by muscle group with movement pattern tags + familiarity tag, cap per group
         var grouped: [String: [String]] = [:]
