@@ -244,6 +244,9 @@ struct MainTabView: View {
             NotificationCenter.default.post(name: .shiftDeepLinkStartWorkout, object: nil)
         case .showToday:
             selectedTab = 0
+        case .resumeWorkout:
+            selectedTab = 0
+            NotificationCenter.default.post(name: .shiftShortcutResumeWorkout, object: nil)
         case .startRestTimer:
             selectedTab = 0
             let seconds = min(3600, max(10, Int(value ?? 90)))

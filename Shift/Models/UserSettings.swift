@@ -18,11 +18,77 @@ struct HealthKitSettings: Codable, Hashable {
     var syncWorkouts: Bool = false
     var syncBodyWeight: Bool = false
     var countExternalWorkouts: Bool = false
+    var recoveryGuidance: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case syncWorkouts = "sync_workouts"
         case syncBodyWeight = "sync_body_weight"
         case countExternalWorkouts = "count_external_workouts"
+        case recoveryGuidance = "recovery_guidance"
+    }
+
+    init(
+        syncWorkouts: Bool = false,
+        syncBodyWeight: Bool = false,
+        countExternalWorkouts: Bool = false,
+        recoveryGuidance: Bool = false
+    ) {
+        self.syncWorkouts = syncWorkouts
+        self.syncBodyWeight = syncBodyWeight
+        self.countExternalWorkouts = countExternalWorkouts
+        self.recoveryGuidance = recoveryGuidance
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        syncWorkouts = (try? container.decode(Bool.self, forKey: .syncWorkouts)) ?? false
+        syncBodyWeight = (try? container.decode(Bool.self, forKey: .syncBodyWeight)) ?? false
+        countExternalWorkouts =
+            (try? container.decode(Bool.self, forKey: .countExternalWorkouts)) ?? false
+        recoveryGuidance =
+            (try? container.decode(Bool.self, forKey: .recoveryGuidance)) ?? false
+    }
+}
+
+// MARK: - TrainingScheduleSettings
+
+struct TrainingScheduleSettings: Codable, Hashable {
+    /// ISO weekday (1 = Monday, 7 = Sunday) to workout plan ID.
+    var weeklyPlanIDs: [String: String] = [:]
+    /// Local yyyy-MM-dd to a plan ID. An empty value represents a rest day.
+    var dateOverrides: [String: String] = [:]
+
+    var isEmpty: Bool { weeklyPlanIDs.isEmpty && dateOverrides.isEmpty }
+
+    func planID(for date: Date, calendar: Calendar = .current) -> String? {
+        let key = Self.dateKey(date, calendar: calendar)
+        if let override = dateOverrides[key] {
+            return override.isEmpty ? nil : override
+        }
+        let appleWeekday = calendar.component(.weekday, from: date)
+        let isoWeekday = appleWeekday == 1 ? 7 : appleWeekday - 1
+        guard let weekly = weeklyPlanIDs[String(isoWeekday)] else { return nil }
+        return weekly.isEmpty ? nil : weekly
+    }
+
+    func hasExplicitRestDay(for date: Date, calendar: Calendar = .current) -> Bool {
+        let dateKey = Self.dateKey(date, calendar: calendar)
+        if let override = dateOverrides[dateKey] {
+            return override.isEmpty
+        }
+        let appleWeekday = calendar.component(.weekday, from: date)
+        let isoWeekday = appleWeekday == 1 ? 7 : appleWeekday - 1
+        return weeklyPlanIDs[String(isoWeekday)] == ""
+    }
+
+    static func dateKey(_ date: Date, calendar: Calendar = .current) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
     }
 }
 
@@ -93,6 +159,7 @@ struct UserSettings: Codable, Hashable {
     var targetWeightDeadline: String? = nil
     var notifications: NotificationSettings = .init()
     var healthKit: HealthKitSettings = .init()
+    var trainingSchedule: TrainingScheduleSettings = .init()
     var lockPhotos: Bool = false
     var hasCompletedOnboarding: Bool = false
 
@@ -112,6 +179,7 @@ struct UserSettings: Codable, Hashable {
         case targetWeightDeadline = "target_weight_deadline"
         case notifications
         case healthKit = "health_kit"
+        case trainingSchedule = "training_schedule"
         case lockPhotos = "lock_photos"
         case hasCompletedOnboarding = "has_completed_onboarding"
     }
@@ -131,6 +199,9 @@ struct UserSettings: Codable, Hashable {
         targetWeightDeadline = try? container.decode(String.self, forKey: .targetWeightDeadline)
         notifications = (try? container.decode(NotificationSettings.self, forKey: .notifications)) ?? .init()
         healthKit = (try? container.decode(HealthKitSettings.self, forKey: .healthKit)) ?? .init()
+        trainingSchedule =
+            (try? container.decode(TrainingScheduleSettings.self, forKey: .trainingSchedule))
+            ?? .init()
         lockPhotos = (try? container.decode(Bool.self, forKey: .lockPhotos)) ?? false
         hasCompletedOnboarding = (try? container.decode(Bool.self, forKey: .hasCompletedOnboarding)) ?? false
     }

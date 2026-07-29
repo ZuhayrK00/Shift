@@ -7,27 +7,32 @@ enum ShiftShortcutAction: String {
     case showToday
     case logWeight
     case startRestTimer
+    case resumeWorkout
 }
 
 enum ShiftShortcutStore {
     private static let actionKey = "shift.shortcut.action"
     private static let valueKey = "shift.shortcut.value"
 
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: "group.com.zuhayrk.shift") ?? .standard
+    }
+
     static func save(_ action: ShiftShortcutAction, value: Double? = nil) {
-        UserDefaults.standard.set(action.rawValue, forKey: actionKey)
+        defaults.set(action.rawValue, forKey: actionKey)
         if let value {
-            UserDefaults.standard.set(value, forKey: valueKey)
+            defaults.set(value, forKey: valueKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: valueKey)
+            defaults.removeObject(forKey: valueKey)
         }
     }
 
     static func consume() -> (action: ShiftShortcutAction, value: Double?)? {
-        guard let raw = UserDefaults.standard.string(forKey: actionKey),
+        guard let raw = defaults.string(forKey: actionKey),
               let action = ShiftShortcutAction(rawValue: raw) else { return nil }
-        let value = UserDefaults.standard.object(forKey: valueKey) as? Double
-        UserDefaults.standard.removeObject(forKey: actionKey)
-        UserDefaults.standard.removeObject(forKey: valueKey)
+        let value = defaults.object(forKey: valueKey) as? Double
+        defaults.removeObject(forKey: actionKey)
+        defaults.removeObject(forKey: valueKey)
         return (action, value)
     }
 }

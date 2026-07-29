@@ -589,6 +589,135 @@ struct PlanService {
         }
     }
 
+    /// Applies a user-confirmed AI edit as one local database transaction.
+    /// The UI never calls this until the complete proposal has been reviewed.
+    static func applyConfirmedEdit(
+        planID: String,
+        planName: String?,
+        edits: [ConfirmedPlanExerciseEdit]
+    ) async throws {
+        let existing = try await PlanRepository.findExercises(planId: planID)
+        var nextPosition = (existing.map(\.position).max() ?? -1) + 1
+        var mutations: [LocalMutation] = []
+
+        if let planName {
+            mutations.append(
+                LocalMutation(
+                    table: "workout_plans",
+                    op: "update",
+                    payload: ["id": planID, "name": planName]
+                )
+            )
+        }
+
+        struct Addition {
+            let model: PlanExercise
+        }
+        var additions: [Addition] = []
+        for edit in edits {
+            switch edit.action {
+            case .remove:
+                guard let id = edit.planExerciseID else { continue }
+                mutations.append(
+                    LocalMutation(table: "plan_exercises", op: "delete", payload: ["id": id])
+                )
+            case .update, .replace:
+                guard let id = edit.planExerciseID else { continue }
+                var payload: [String: Any] = [
+                    "id": id,
+                    "target_sets": edit.sets,
+                    "target_reps_min": edit.repsMin,
+                    "target_reps_max": edit.repsMax,
+                    "rest_seconds": edit.restSeconds
+                ]
+                if edit.action == .replace, let exerciseID = edit.exerciseID {
+                    payload["exercise_id"] = exerciseID
+                    payload["target_weight"] = NSNull()
+                }
+                mutations.append(
+                    LocalMutation(table: "plan_exercises", op: "update", payload: payload)
+                )
+            case .add:
+                guard let exerciseID = edit.exerciseID else { continue }
+                let model = PlanExercise(
+                    id: UUID().uuidString.lowercased(),
+                    planId: planID,
+                    exerciseId: exerciseID,
+                    position: nextPosition,
+                    targetSets: edit.sets,
+                    targetRepsMin: edit.repsMin,
+                    targetRepsMax: edit.repsMax,
+                    restSeconds: edit.restSeconds
+                )
+                nextPosition += 1
+                additions.append(Addition(model: model))
+                mutations.append(
+                    LocalMutation(
+                        table: "plan_exercises",
+                        op: "insert",
+                        payload: planExercisePayload(model)
+                    )
+                )
+            }
+        }
+
+        let additionsToInsert = additions
+        try await MutationQueueRepository.performAtomically(mutations: mutations) { db in
+            if let planName {
+                try db.execute(
+                    sql: "UPDATE workout_plans SET name = ? WHERE id = ?",
+                    arguments: [planName, planID]
+                )
+            }
+            for edit in edits {
+                switch edit.action {
+                case .remove:
+                    if let id = edit.planExerciseID {
+                        try db.execute(
+                            sql: "DELETE FROM plan_exercises WHERE id = ?",
+                            arguments: [id]
+                        )
+                    }
+                case .update, .replace:
+                    guard let id = edit.planExerciseID else { continue }
+                    if edit.action == .replace, let exerciseID = edit.exerciseID {
+                        try db.execute(
+                            sql: """
+                                UPDATE plan_exercises
+                                SET exercise_id = ?, target_sets = ?, target_reps_min = ?,
+                                    target_reps_max = ?, target_weight = NULL, rest_seconds = ?
+                                WHERE id = ?
+                                """,
+                            arguments: [
+                                exerciseID, edit.sets, edit.repsMin,
+                                edit.repsMax, edit.restSeconds, id
+                            ]
+                        )
+                    } else {
+                        try db.execute(
+                            sql: """
+                                UPDATE plan_exercises
+                                SET target_sets = ?, target_reps_min = ?,
+                                    target_reps_max = ?, rest_seconds = ?
+                                WHERE id = ?
+                                """,
+                            arguments: [
+                                edit.sets, edit.repsMin, edit.repsMax,
+                                edit.restSeconds, id
+                            ]
+                        )
+                    }
+                case .add:
+                    break
+                }
+            }
+            for addition in additionsToInsert {
+                try addition.model.insert(db)
+            }
+        }
+        SyncService.flushInBackground()
+    }
+
     /// Inserts preconfigured exercises (templates/AI) and their sync mutations
     /// in one transaction.
     static func addConfiguredExercises(_ exercises: [PlanExercise]) async throws {

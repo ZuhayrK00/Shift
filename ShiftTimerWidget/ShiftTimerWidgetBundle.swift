@@ -10,5 +10,11 @@ struct ShiftTimerWidgetBundle: WidgetBundle {
         WeeklyProgressWidget()
         StreakCounterWidget()
         QuickStartWidget()
+        if #available(iOS 18.0, *) {
+            ShiftStartWorkoutControl()
+            ShiftQuickWorkoutControl()
+            ShiftResumeWorkoutControl()
+            ShiftRestTimerControl()
+        }
     }
 }

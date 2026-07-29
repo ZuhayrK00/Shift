@@ -103,14 +103,13 @@ struct ExerciseLogView: View {
             Text(saveError ?? "Please try again.")
         }
         .sheet(isPresented: $showReplacementPicker) {
-            ExercisePicker(
-                isPresented: $showReplacementPicker,
-                excludeIds: sessionExerciseIds,
-                selectionLimit: 1,
-                confirmTitle: "Replace"
-            ) { exercises, _ in
-                guard let replacement = exercises.first else { return }
-                Task { await replaceExercise(with: replacement) }
+            if let exercise {
+                ContextualExerciseReplacementSheet(
+                    current: exercise,
+                    excluding: sessionExerciseIds
+                ) { replacement in
+                    Task { await replaceExercise(with: replacement) }
+                }
             }
         }
         .sheet(isPresented: $showPlateCalculator) {

@@ -11,6 +11,7 @@ struct TodayView: View {
     @State private var inProgressDates: Set<String> = []
     @State private var plans: [WorkoutPlan] = []
     @State private var nextProgramPlan: WorkoutPlan?
+    @State private var scheduledPlan: WorkoutPlan?
     @State private var showPlanPicker = false
     @State private var isLoading = false
     @State private var starting = false
@@ -20,12 +21,15 @@ struct TodayView: View {
     @State private var currentStreak: Int = 0
     @State private var workoutError: String?
     @State private var weeklySummary: WeeklyTrainingSummary?
+    @State private var recoverySnapshot: RecoverySnapshot?
+    @State private var showRecoveryCheckIn = false
 
     private var todayKey: String { toLocalDateKey(Date()) }
     private var selectedKey: String { toLocalDateKey(selectedDate) }
     private var isToday: Bool { selectedKey == todayKey }
     private var isPast: Bool { selectedKey < todayKey }
     private var isFuture: Bool { selectedDate > noonOfLocalDate(Date()) }
+    private var preferredPlan: WorkoutPlan? { scheduledPlan ?? nextProgramPlan }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -71,6 +75,16 @@ struct TodayView: View {
                             streakCard
                                 .padding(.horizontal, 20)
                                 .padding(.bottom, 16)
+                        }
+
+                        if isToday,
+                           authManager.user?.settings.healthKit.recoveryGuidance == true,
+                           let recoverySnapshot {
+                            RecoveryGuidanceCard(snapshot: recoverySnapshot) {
+                                showRecoveryCheckIn = true
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 16)
                         }
 
                         // Content
@@ -129,11 +143,19 @@ struct TodayView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .shiftShortcutStartNextWorkout)) { _ in
             Task {
-                if nextProgramPlan == nil { await loadData() }
-                if let nextProgramPlan {
-                    await startWorkout(plan: nextProgramPlan)
+                if preferredPlan == nil { await loadData() }
+                if let preferredPlan {
+                    await startWorkout(plan: preferredPlan)
                 } else {
                     showPlanPicker = !plans.isEmpty
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftShortcutResumeWorkout)) { _ in
+            Task {
+                await loadSessionsForDate()
+                if let active = inProgressSessions.first {
+                    openWorkout(active.id)
                 }
             }
         }
@@ -152,9 +174,18 @@ struct TodayView: View {
         .onChange(of: selectedDate) {
             Task { await loadSessionsForDate() }
         }
+        .onChange(of: authManager.user?.settings.trainingSchedule) {
+            updateScheduledPlan()
+        }
         .sheet(isPresented: $showPlanPicker) {
             PlanPickerSheet(plans: plans) { plan in
                 Task { await startWorkout(plan: plan) }
+            }
+        }
+        .sheet(isPresented: $showRecoveryCheckIn) {
+            RecoveryCheckInSheet(currentValue: recoverySnapshot?.checkIn) { value in
+                RecoveryCheckInStore.save(value)
+                Task { recoverySnapshot = await RecoveryGuidanceService.load() }
             }
         }
         .alert("Error", isPresented: .init(
@@ -264,14 +295,14 @@ struct TodayView: View {
                 .disabled(starting)
                 .opacity(starting ? 0.5 : 1)
 
-                if let nextProgramPlan {
+                if let preferredPlan {
                     Button {
-                        Task { await startWorkout(plan: nextProgramPlan) }
+                        Task { await startWorkout(plan: preferredPlan) }
                     } label: {
                         VStack(spacing: 1) {
                             Text("Next workout")
                                 .font(.system(size: 11, weight: .medium))
-                            Text(nextProgramPlan.name)
+                            Text(preferredPlan.name)
                                 .font(.system(size: 14, weight: .semibold))
                                 .lineLimit(1)
                         }
@@ -300,7 +331,7 @@ struct TodayView: View {
                 }
             }
 
-            if nextProgramPlan != nil && plans.count > 1 {
+            if preferredPlan != nil && plans.count > 1 {
                 Button("Choose another workout") {
                     showPlanPicker = true
                 }
@@ -316,10 +347,24 @@ struct TodayView: View {
         VStack(spacing: 12) {
             Image(systemName: "calendar")
                 .font(.system(size: 36))
-                .foregroundStyle(colors.muted)
-            Text("No workout scheduled")
-                .font(.system(size: 16))
-                .foregroundStyle(colors.muted)
+                .foregroundStyle(scheduledPlan == nil ? colors.muted : colors.accent)
+            if let scheduledPlan {
+                Text(scheduledPlan.name)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(colors.text)
+                Text("Scheduled workout")
+                    .font(.system(size: 13))
+                    .foregroundStyle(colors.muted)
+            } else if authManager.user?.settings.trainingSchedule
+                .hasExplicitRestDay(for: selectedDate) == true {
+                Text("Rest day")
+                    .font(.system(size: 16))
+                    .foregroundStyle(colors.muted)
+            } else {
+                Text("Nothing scheduled")
+                    .font(.system(size: 16))
+                    .foregroundStyle(colors.muted)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)
@@ -563,6 +608,7 @@ struct TodayView: View {
         let fetchedInProgress = (try? await inProgressDatesResult) ?? []
 
         plans = fetchedPlans.map { $0.plan }
+        updateScheduledPlan()
         completedDates = fetchedCompleted
         inProgressDates = fetchedInProgress
         isLoading = false
@@ -594,9 +640,15 @@ struct TodayView: View {
             _ = try? await HealthKitService.requestAuthorization()
             activityData = await HealthKitService.fetchActivity(for: selectedDate)
         }
+        if authManager.user?.settings.healthKit.recoveryGuidance == true {
+            recoverySnapshot = await RecoveryGuidanceService.load()
+        } else {
+            recoverySnapshot = nil
+        }
     }
 
     private func loadSessionsForDate() async {
+        updateScheduledPlan()
         async let completed = WorkoutService.getCompletedSessions(for: selectedDate)
         async let inProgress = WorkoutService.getInProgressSessions(for: selectedDate)
         completedSessions = (try? await completed) ?? []
@@ -606,6 +658,11 @@ struct TodayView: View {
         if HealthKitService.isAvailable {
             activityData = await HealthKitService.fetchActivity(for: selectedDate)
         }
+    }
+
+    private func updateScheduledPlan() {
+        let planID = authManager.user?.settings.trainingSchedule.planID(for: selectedDate)
+        scheduledPlan = plans.first { $0.id == planID }
     }
 
     /// Lightweight refresh for when we return from a pushed view (e.g. after discarding a workout).

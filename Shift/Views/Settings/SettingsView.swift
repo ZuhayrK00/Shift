@@ -195,6 +195,17 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
+                        DiagnosticsView()
+                    } label: {
+                        settingsRow(
+                            icon: "stethoscope",
+                            iconColor: .orange,
+                            title: "Sync & Diagnostics",
+                            subtitle: "Check pending data, access and connected features"
+                        )
+                    }
+
+                    NavigationLink {
                         DataExportSettingsPage()
                     } label: {
                         settingsRow(
@@ -1140,6 +1151,7 @@ private struct HealthSettingsPage: View {
     @State private var syncWorkouts = false
     @State private var syncBodyWeight = false
     @State private var countExternal = false
+    @State private var recoveryGuidance = false
     @State private var isSaving = false
     @State private var showAuthAlert = false
     @State private var saveError: String?
@@ -1162,6 +1174,24 @@ private struct HealthSettingsPage: View {
                     .tint(colors.accent)
                 } header: {
                     Text("Workouts")
+                }
+                .listRowBackground(colors.surface)
+
+                Section {
+                    Toggle(isOn: $recoveryGuidance) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Recovery guidance")
+                                .foregroundStyle(colors.text)
+                            Text("Optional daily guidance from sleep, heart trends and a quick check-in")
+                                .font(.system(size: 12))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }
+                    .tint(colors.accent)
+                } header: {
+                    Text("Recovery")
+                } footer: {
+                    Text("Shift keeps this simple and does not provide medical advice.")
                 }
                 .listRowBackground(colors.surface)
 
@@ -1239,6 +1269,7 @@ private struct HealthSettingsPage: View {
         syncWorkouts = hk.syncWorkouts
         syncBodyWeight = hk.syncBodyWeight
         countExternal = hk.countExternalWorkouts
+        recoveryGuidance = hk.recoveryGuidance
     }
 
     private func save() async {
@@ -1249,6 +1280,7 @@ private struct HealthSettingsPage: View {
         let needsAuth = (!wasEnabled.syncWorkouts && syncWorkouts)
             || (!wasEnabled.syncBodyWeight && syncBodyWeight)
             || (!wasEnabled.countExternalWorkouts && countExternal)
+            || (!wasEnabled.recoveryGuidance && recoveryGuidance)
 
         if needsAuth {
             do {
@@ -1264,6 +1296,7 @@ private struct HealthSettingsPage: View {
         settings.healthKit.syncWorkouts = syncWorkouts
         settings.healthKit.syncBodyWeight = syncBodyWeight
         settings.healthKit.countExternalWorkouts = countExternal
+        settings.healthKit.recoveryGuidance = recoveryGuidance
 
         do {
             _ = try await ProfileService.updateSettings(settings)

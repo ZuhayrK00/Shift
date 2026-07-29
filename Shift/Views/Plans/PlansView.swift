@@ -22,6 +22,7 @@ struct PlansView: View {
     @State private var showStartedWorkout = false
     @State private var isStartingWorkout = false
     @State private var actionError: String?
+    @State private var showSchedule = false
 
     private let freePlanLimit = ProFeaturePolicy.freePlanLimit
 
@@ -55,6 +56,12 @@ struct PlansView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button {
+                        showSchedule = true
+                    } label: {
+                        Label("Training Schedule", systemImage: "calendar")
+                    }
+
                     if !store.isPro {
                         Section("\(planItems.count)/\(freePlanLimit) free plans used") {
                             if planItems.count >= freePlanLimit {
@@ -84,6 +91,9 @@ struct PlansView: View {
                         .font(.system(size: 17, weight: .semibold))
                 }
             }
+        }
+        .navigationDestination(isPresented: $showSchedule) {
+            TrainingScheduleView(plans: planItems.map(\.plan))
         }
         .navigationDestination(isPresented: $showExplore) {
             ExplorePlansView()

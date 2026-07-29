@@ -69,29 +69,39 @@ struct AIExerciseReplacementSheet: View {
     let suggestions: [Exercise]
     let onSelect: (Exercise) -> Void
 
+    private var rankedSuggestions: [ExerciseSubstitution] {
+        ExerciseSubstitutionService.rankedSuggestions(
+            for: current,
+            from: suggestions,
+            excluding: []
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 colors.bg.ignoresSafeArea()
-                if suggestions.isEmpty {
+                if rankedSuggestions.isEmpty {
                     ContentUnavailableView(
                         "No Close Matches",
                         systemImage: "dumbbell",
                         description: Text("Try changing your equipment or muscle preferences.")
                     )
                 } else {
-                    List(suggestions) { exercise in
-                        Button {
-                            onSelect(exercise)
-                            dismiss()
-                        } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(exercise.name)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(colors.text)
-                                Text(exercise.equipment?.capitalized ?? "No equipment")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(colors.muted)
+                    List {
+                        ForEach(rankedSuggestions) { suggestion in
+                            Button {
+                                onSelect(suggestion.exercise)
+                                dismiss()
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(suggestion.exercise.name)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(colors.text)
+                                    Text(suggestion.explanation)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(colors.muted)
+                                }
                             }
                         }
                         .listRowBackground(colors.surface)

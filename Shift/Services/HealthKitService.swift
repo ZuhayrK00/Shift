@@ -41,12 +41,15 @@ struct HealthKitService {
     private static let stepCountType = HKQuantityType(.stepCount)
     private static let distanceType = HKQuantityType(.distanceWalkingRunning)
     private static let heartRateType = HKQuantityType(.heartRate)
+    private static let restingHeartRateType = HKQuantityType(.restingHeartRate)
+    private static let heartRateVariabilityType = HKQuantityType(.heartRateVariabilitySDNN)
+    private static let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
     private static let observerRegistry = HealthObserverRegistry()
 
     private static let readTypes: Set<HKObjectType> = [
         workoutType, bodyMassType,
         activeEnergyType, exerciseTimeType, standTimeType, stepCountType, distanceType,
-        heartRateType,
+        heartRateType, restingHeartRateType, heartRateVariabilityType, sleepType,
         HKObjectType.activitySummaryType()
     ]
     private static let writeTypes: Set<HKSampleType> = [workoutType, bodyMassType]
@@ -260,6 +263,136 @@ struct HealthKitService {
                     for: HKUnit.count().unitDivided(by: .minute())
                 )
                 continuation.resume(returning: bpm)
+            }
+            store.execute(query)
+        }
+    }
+
+    // MARK: - Recovery signals
+
+    static func fetchRecoveryMetrics() async -> RecoveryHealthMetrics {
+        guard isAvailable else { return .init() }
+        let now = Date()
+        let baselineStart = Calendar.current.date(byAdding: .day, value: -28, to: now)
+            ?? now.addingTimeInterval(-28 * 86_400)
+
+        async let sleep = fetchSleepHours(endingAt: now)
+        async let hrvLatest = fetchLatestQuantity(
+            heartRateVariabilityType,
+            unit: .secondUnit(with: .milli),
+            since: baselineStart
+        )
+        async let hrvBaseline = fetchAverageQuantity(
+            heartRateVariabilityType,
+            unit: .secondUnit(with: .milli),
+            since: baselineStart
+        )
+        async let restingLatest = fetchLatestQuantity(
+            restingHeartRateType,
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            since: baselineStart
+        )
+        async let restingBaseline = fetchAverageQuantity(
+            restingHeartRateType,
+            unit: HKUnit.count().unitDivided(by: .minute()),
+            since: baselineStart
+        )
+
+        return await RecoveryHealthMetrics(
+            sleepHours: sleep,
+            hrvMilliseconds: hrvLatest,
+            hrvBaselineMilliseconds: hrvBaseline,
+            restingHeartRate: restingLatest,
+            restingHeartRateBaseline: restingBaseline
+        )
+    }
+
+    private static func fetchSleepHours(endingAt end: Date) async -> Double? {
+        let start = Calendar.current.date(byAdding: .hour, value: -18, to: end)
+            ?? end.addingTimeInterval(-18 * 3_600)
+        let predicate = HKQuery.predicateForSamples(
+            withStart: start,
+            end: end,
+            options: .strictEndDate
+        )
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: sleepType,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                let asleepValues: Set<Int> = [
+                    HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+                    HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                    HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+                    HKCategoryValueSleepAnalysis.asleepREM.rawValue
+                ]
+                let intervals = (samples as? [HKCategorySample] ?? [])
+                    .filter { asleepValues.contains($0.value) }
+                    .sorted { $0.startDate < $1.startDate }
+                guard !intervals.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                // Merge overlaps from multiple sleep sources rather than double-counting.
+                var total: TimeInterval = 0
+                var rangeStart = intervals[0].startDate
+                var rangeEnd = intervals[0].endDate
+                for sample in intervals.dropFirst() {
+                    if sample.startDate <= rangeEnd {
+                        rangeEnd = max(rangeEnd, sample.endDate)
+                    } else {
+                        total += rangeEnd.timeIntervalSince(rangeStart)
+                        rangeStart = sample.startDate
+                        rangeEnd = sample.endDate
+                    }
+                }
+                total += rangeEnd.timeIntervalSince(rangeStart)
+                continuation.resume(returning: total / 3_600)
+            }
+            store.execute(query)
+        }
+    }
+
+    private static func fetchLatestQuantity(
+        _ type: HKQuantityType,
+        unit: HKUnit,
+        since start: Date
+    ) async -> Double? {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: type,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: [sort]
+            ) { _, samples, _ in
+                let value = (samples?.first as? HKQuantitySample)?
+                    .quantity.doubleValue(for: unit)
+                continuation.resume(returning: value)
+            }
+            store.execute(query)
+        }
+    }
+
+    private static func fetchAverageQuantity(
+        _ type: HKQuantityType,
+        unit: HKUnit,
+        since start: Date
+    ) async -> Double? {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: .discreteAverage
+            ) { _, result, _ in
+                continuation.resume(
+                    returning: result?.averageQuantity()?.doubleValue(for: unit)
+                )
             }
             store.execute(query)
         }

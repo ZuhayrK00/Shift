@@ -8,6 +8,7 @@ extension Notification.Name {
     static let shiftDeepLinkStartWorkout = Notification.Name("shiftDeepLinkStartWorkout")
     static let shiftDeepLinkOpenWorkout = Notification.Name("shiftDeepLinkOpenWorkout")
     static let shiftShortcutStartNextWorkout = Notification.Name("shiftShortcutStartNextWorkout")
+    static let shiftShortcutResumeWorkout = Notification.Name("shiftShortcutResumeWorkout")
 }
 
 enum ShiftDeepLinkStore {

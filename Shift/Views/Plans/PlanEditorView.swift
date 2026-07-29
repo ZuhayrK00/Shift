@@ -16,6 +16,7 @@ struct PlanEditorView: View {
     @State private var configuring: PlanExercise?
     @State private var showSavedToast = false
     @State private var errorMessage: String?
+    @State private var showAIEdit = false
 
     init(plan: WorkoutPlan, onDismiss: @escaping (_ deleted: Bool) -> Void) {
         self.plan = plan
@@ -97,6 +98,21 @@ struct PlanEditorView: View {
                 .foregroundStyle(colors.accent)
                 .font(.system(size: 15, weight: .semibold))
             }
+
+            #if canImport(FoundationModels)
+            if #available(iOS 26, *) {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showAIEdit = true
+                    } label: {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(colors.accent)
+                    }
+                    .accessibilityLabel("Edit with Apple Intelligence")
+                    .disabled(exercises.isEmpty)
+                }
+            }
+            #endif
         }
         .task(id: plan.id) { await loadExercises() }
         .sheet(isPresented: $showExercisePicker) {
@@ -112,6 +128,19 @@ struct PlanEditorView: View {
                 Task { await updateExercise(updated) }
             }
         }
+        #if canImport(FoundationModels)
+        .sheet(isPresented: $showAIEdit) {
+            if #available(iOS 26, *) {
+                NaturalLanguagePlanEditSheet(
+                    plan: plan,
+                    exercises: exercises,
+                    exerciseMap: exerciseMap
+                ) {
+                    Task { await loadExercises() }
+                }
+            }
+        }
+        #endif
         .alert("Delete Plan", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
                 Task { await deletePlan() }
