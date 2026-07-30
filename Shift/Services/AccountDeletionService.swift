@@ -17,10 +17,11 @@ struct AccountDeletionService {
         // Scope the cleanup so another account's queue is never affected.
         try await MutationQueueRepository.clear(for: userId)
 
-        // The security-definer function deletes the Auth user, owned storage
-        // objects, and every dependent database row in one server transaction.
-        // Keep this operation in a versioned migration rather than relying on a
-        // sequence of best-effort client requests.
+        // Supabase forbids deleting rows from storage.objects directly, including
+        // from a database function. Remove owned files through the Storage API
+        // while the user's authenticated session and storage RLS access still
+        // exist, then let the RPC remove database rows and the Auth user.
+        try await deleteRemoteStorage(userId: userId)
         try await supabase.rpc("delete_own_account").execute()
 
         do {
@@ -35,6 +36,56 @@ struct AccountDeletionService {
 
         // Clear the now-invalid local Auth session.
         try await authManager.signOut()
+    }
+
+    // MARK: - Remote storage deletion
+
+    private static func deleteRemoteStorage(userId: String) async throws {
+        let userFolder = userId.lowercased()
+        try await deleteAllObjects(in: "progress-photos", userFolder: userFolder)
+        try await deleteAllObjects(in: "avatars", userFolder: userFolder)
+    }
+
+    /// Deletes every object in one user-owned bucket folder. Always reading the
+    /// first page after a removal avoids skipping objects as the result set
+    /// shrinks, while still handling accounts with more than Storage's default
+    /// 100-object page.
+    private static func deleteAllObjects(in bucket: String, userFolder: String) async throws {
+        let pageSize = 100
+        let storage = supabase.storage.from(bucket)
+
+        while true {
+            let files = try await storage.list(
+                path: userFolder,
+                options: SearchOptions(limit: pageSize, offset: 0)
+            )
+            let paths = storagePaths(
+                userFolder: userFolder,
+                fileNames: files.compactMap { file in
+                    // Folder placeholders have no object id and cannot be
+                    // removed with the file API.
+                    file.id == nil ? nil : file.name
+                }
+            )
+
+            guard !paths.isEmpty else { return }
+            try await storage.remove(paths: paths)
+
+            if files.count < pageSize { return }
+        }
+    }
+
+    static func storagePaths(userFolder: String, fileNames: [String]) -> [String] {
+        let folder = userFolder
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .lowercased()
+
+        guard !folder.isEmpty else { return [] }
+        return fileNames.compactMap { name in
+            let cleanName = name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard !cleanName.isEmpty, !cleanName.contains("/") else { return nil }
+            return "\(folder)/\(cleanName)"
+        }
     }
 
     // MARK: - Local deletion

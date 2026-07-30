@@ -59,6 +59,32 @@ final class CommerceAndSyncRegressionTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    func testSyncPaginationFetchesEveryPageIncludingBoundaryPage() async throws {
+        var requestedRanges: [ClosedRange<Int>] = []
+        let source = Array(0..<6)
+
+        let rows: [Int] = try await SyncService.collectAllPages(pageSize: 3) { from, to in
+            requestedRanges.append(from...to)
+            guard from < source.count else { return [] }
+            return Array(source[from..<min(to + 1, source.count)])
+        }
+
+        XCTAssertEqual(rows, source)
+        XCTAssertEqual(requestedRanges, [0...2, 3...5, 6...8])
+    }
+
+    func testSyncPaginationStopsAfterPartialPage() async throws {
+        var requestCount = 0
+
+        let rows: [Int] = try await SyncService.collectAllPages(pageSize: 3) { _, _ in
+            requestCount += 1
+            return [1, 2]
+        }
+
+        XCTAssertEqual(rows, [1, 2])
+        XCTAssertEqual(requestCount, 1)
+    }
+
     private func makeSnapshot(updatedAt: Date, weekStart: Date) -> WidgetSnapshot {
         WidgetSnapshot(
             workoutsThisWeek: 3,

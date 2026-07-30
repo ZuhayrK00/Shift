@@ -52,6 +52,33 @@ final class PrivacyAndAccountSafetyTests: XCTestCase {
         )
     }
 
+    func testAccountDeletionBuildsUserScopedStoragePaths() {
+        XCTAssertEqual(
+            AccountDeletionService.storagePaths(
+                userFolder: "/USER-ID/",
+                fileNames: ["avatar.jpg", "progress 1.jpg"]
+            ),
+            ["user-id/avatar.jpg", "user-id/progress 1.jpg"]
+        )
+    }
+
+    func testAccountDeletionRejectsEmptyAndNestedStorageNames() {
+        XCTAssertEqual(
+            AccountDeletionService.storagePaths(
+                userFolder: "user-id",
+                fileNames: ["", "/", "another-user/photo.jpg"]
+            ),
+            []
+        )
+        XCTAssertEqual(
+            AccountDeletionService.storagePaths(
+                userFolder: "/",
+                fileNames: ["photo.jpg"]
+            ),
+            []
+        )
+    }
+
     func testMinimumAgePolicy() {
         XCTAssertFalse(AgePolicy.isEligible(nil))
         XCTAssertFalse(AgePolicy.isEligible(12))

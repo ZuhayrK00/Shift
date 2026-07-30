@@ -82,6 +82,41 @@ struct SyncService {
     private static let lastSyncedKey = "shift:last_synced_at"
     private static let flushCoordinator = SyncFlushCoordinator()
     private static let retryScheduler = SyncRetryScheduler()
+    private static let remotePageSize = 500
+
+    /// Collects deterministic pages until the server returns a partial page.
+    /// This is internal so regression tests can prove boundary behavior without
+    /// making network requests.
+    static func collectAllPages<Row>(
+        pageSize: Int = remotePageSize,
+        fetchPage: (_ from: Int, _ to: Int) async throws -> [Row]
+    ) async throws -> [Row] {
+        precondition(pageSize > 0)
+
+        var rows: [Row] = []
+        var offset = 0
+
+        while true {
+            let page = try await fetchPage(offset, offset + pageSize - 1)
+            rows.append(contentsOf: page)
+
+            if page.count < pageSize {
+                return rows
+            }
+            offset += pageSize
+        }
+    }
+
+    private static func fetchAllRows<Row: Decodable>(
+        _ type: Row.Type = Row.self,
+        decoder: JSONDecoder,
+        fetchPage: (_ from: Int, _ to: Int) async throws -> Data
+    ) async throws -> [Row] {
+        try await collectAllPages { from, to in
+            let data = try await fetchPage(from, to)
+            return try decoder.decode([Row].self, from: data)
+        }
+    }
 
     // MARK: - Queue flush
 
@@ -196,15 +231,20 @@ struct SyncService {
         // Flush first so any pending writes are committed before we read back
         _ = try? await flushQueue()
 
-        // Muscle groups
-        let mgResponse = try await supabase
-            .from("muscle_groups")
-            .select()
-            .execute()
+        let decoder = JSONDecoder()
 
+        // Muscle groups
         let muscleGroups: [MuscleGroup]
         do {
-            muscleGroups = try JSONDecoder().decode([MuscleGroup].self, from: mgResponse.data)
+            muscleGroups = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("muscle_groups")
+                    .select()
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
         } catch {
             logger.error("Failed to decode muscle groups: \(error.localizedDescription)")
             throw error
@@ -214,16 +254,18 @@ struct SyncService {
         }
 
         // Exercises
-        let exResponse = try await supabase
-            .from("exercises")
-            .select()
-            .eq("is_built_in", value: true)
-            .execute()
-
-        let decoder = JSONDecoder()
         let exercises: [Exercise]
         do {
-            exercises = try decoder.decode([Exercise].self, from: exResponse.data)
+            exercises = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("exercises")
+                    .select()
+                    .eq("is_built_in", value: true)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
         } catch {
             logger.error("Failed to decode exercises: \(error.localizedDescription)")
             throw error
@@ -265,13 +307,19 @@ struct SyncService {
         let decoder = JSONDecoder()
 
         // 1. Custom exercises (created by this user)
-        let customExData = try await supabase
-            .from("exercises")
-            .select()
-            .eq("created_by", value: userId)
-            .execute()
         let customExercises: [Exercise]
-        do { customExercises = try decoder.decode([Exercise].self, from: customExData.data) }
+        do {
+            customExercises = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("exercises")
+                    .select()
+                    .eq("created_by", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode custom exercises: \(error.localizedDescription)"); throw error }
         for ex in customExercises where !pendingIds.contains(ex.id) {
             try? await ExerciseRepository.upsert(ex)
@@ -288,13 +336,19 @@ struct SyncService {
         }
 
         // 2. Workout plans
-        let plansData = try await supabase
-            .from("workout_plans")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
         let plans: [WorkoutPlan]
-        do { plans = try decoder.decode([WorkoutPlan].self, from: plansData.data) }
+        do {
+            plans = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("workout_plans")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode workout plans: \(error.localizedDescription)"); throw error }
         let activePlans = plans.filter { !pendingIds.contains($0.id) }
         try await AppDatabase.shared.dbPool.write { db in
@@ -313,38 +367,56 @@ struct SyncService {
         // 3. Plan exercises (for all plans)
         if !activePlans.isEmpty {
             let planIds = activePlans.map { $0.id }
-            let peData = try await supabase
-                .from("plan_exercises")
-                .select()
-                .in("plan_id", values: planIds)
-                .execute()
-            let planExercises: [PlanExercise]
-            do { planExercises = try decoder.decode([PlanExercise].self, from: peData.data) }
-            catch { logger.error("Failed to decode plan exercises: \(error.localizedDescription)"); throw error }
-            try await AppDatabase.shared.dbPool.write { db in
-                for pe in planExercises where !pendingIds.contains(pe.id) {
-                    try pe.save(db)
+            let planBatchSize = 50
+            for batch in stride(from: 0, to: planIds.count, by: planBatchSize) {
+                let batchIds = Array(planIds[batch..<min(batch + planBatchSize, planIds.count)])
+                let planExercises: [PlanExercise]
+                do {
+                    planExercises = try await fetchAllRows(decoder: decoder) { from, to in
+                        try await supabase
+                            .from("plan_exercises")
+                            .select()
+                            .in("plan_id", values: batchIds)
+                            .order("id")
+                            .range(from: from, to: to)
+                            .execute()
+                            .data
+                    }
                 }
-                let planIds = activePlans.map(\.id)
-                try deleteMissingRows(
-                    table: "plan_exercises",
-                    scope: "plan_id IN (\(sqlPlaceholders(planIds.count)))",
-                    scopeArguments: planIds,
-                    remoteIds: Set(planExercises.map(\.id)),
-                    pendingIds: pendingIds,
-                    in: db
-                )
+                catch {
+                    logger.error("Failed to decode plan exercises: \(error.localizedDescription)")
+                    throw error
+                }
+                try await AppDatabase.shared.dbPool.write { db in
+                    for pe in planExercises where !pendingIds.contains(pe.id) {
+                        try pe.save(db)
+                    }
+                    try deleteMissingRows(
+                        table: "plan_exercises",
+                        scope: "plan_id IN (\(sqlPlaceholders(batchIds.count)))",
+                        scopeArguments: batchIds,
+                        remoteIds: Set(planExercises.map(\.id)),
+                        pendingIds: pendingIds,
+                        in: db
+                    )
+                }
             }
         }
 
         // 4. Workout sessions
-        let sessionsData = try await supabase
-            .from("workout_sessions")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
         let sessions: [WorkoutSession]
-        do { sessions = try decoder.decode([WorkoutSession].self, from: sessionsData.data) }
+        do {
+            sessions = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("workout_sessions")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode workout sessions: \(error.localizedDescription)"); throw error }
         let activeSessions = sessions.filter { !pendingIds.contains($0.id) }
         try await AppDatabase.shared.dbPool.write { db in
@@ -365,45 +437,52 @@ struct SyncService {
             // Pull in batches to avoid overly large queries
             let sessionIds = activeSessions.map { $0.id }
             let batchSize = 50
-            var remoteSetIds = Set<String>()
             for batch in stride(from: 0, to: sessionIds.count, by: batchSize) {
                 let batchIds = Array(sessionIds[batch..<min(batch + batchSize, sessionIds.count)])
-                let setsData = try await supabase
-                    .from("session_sets")
-                    .select()
-                    .in("session_id", values: batchIds)
-                    .execute()
                 let sets: [SessionSet]
-                do { sets = try decoder.decode([SessionSet].self, from: setsData.data) }
+                do {
+                    sets = try await fetchAllRows(decoder: decoder) { from, to in
+                        try await supabase
+                            .from("session_sets")
+                            .select()
+                            .in("session_id", values: batchIds)
+                            .order("id")
+                            .range(from: from, to: to)
+                            .execute()
+                            .data
+                    }
+                }
                 catch { logger.error("Failed to decode session sets: \(error.localizedDescription)"); throw error }
-                remoteSetIds.formUnion(sets.map(\.id))
                 try await AppDatabase.shared.dbPool.write { db in
                     for s in sets where !pendingIds.contains(s.id) {
                         try s.save(db)
                     }
+                    try deleteMissingRows(
+                        table: "session_sets",
+                        scope: "session_id IN (\(sqlPlaceholders(batchIds.count)))",
+                        scopeArguments: batchIds,
+                        remoteIds: Set(sets.map(\.id)),
+                        pendingIds: pendingIds,
+                        in: db
+                    )
                 }
-            }
-            let completeRemoteSetIds = remoteSetIds
-            try await AppDatabase.shared.dbPool.write { db in
-                try deleteMissingRows(
-                    table: "session_sets",
-                    scope: "session_id IN (\(sqlPlaceholders(sessionIds.count)))",
-                    scopeArguments: sessionIds,
-                    remoteIds: completeRemoteSetIds,
-                    pendingIds: pendingIds,
-                    in: db
-                )
             }
         }
 
         // 6. Exercise goals
-        let goalsData = try await supabase
-            .from("exercise_goals")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
         let goals: [ExerciseGoal]
-        do { goals = try decoder.decode([ExerciseGoal].self, from: goalsData.data) }
+        do {
+            goals = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("exercise_goals")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode exercise goals: \(error.localizedDescription)"); throw error }
         try await AppDatabase.shared.dbPool.write { db in
             for goal in goals where !pendingIds.contains(goal.id) {
@@ -420,13 +499,19 @@ struct SyncService {
         }
 
         // 7. Weight entries
-        let weightData = try await supabase
-            .from("weight_entries")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
         let weightEntries: [WeightEntry]
-        do { weightEntries = try decoder.decode([WeightEntry].self, from: weightData.data) }
+        do {
+            weightEntries = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("weight_entries")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode weight entries: \(error.localizedDescription)"); throw error }
         try await AppDatabase.shared.dbPool.write { db in
             for entry in weightEntries where !pendingIds.contains(entry.id) {
@@ -443,13 +528,19 @@ struct SyncService {
         }
 
         // 8. Body measurements
-        let measurementsData = try await supabase
-            .from("body_measurements")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
         let measurements: [BodyMeasurement]
-        do { measurements = try decoder.decode([BodyMeasurement].self, from: measurementsData.data) }
+        do {
+            measurements = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("body_measurements")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode body measurements: \(error.localizedDescription)"); throw error }
         try await AppDatabase.shared.dbPool.write { db in
             for m in measurements where !pendingIds.contains(m.id) {
@@ -466,13 +557,19 @@ struct SyncService {
         }
 
         // 9. Progress photos
-        let photosData = try await supabase
-            .from("progress_photos")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
         let progressPhotos: [ProgressPhoto]
-        do { progressPhotos = try decoder.decode([ProgressPhoto].self, from: photosData.data) }
+        do {
+            progressPhotos = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase
+                    .from("progress_photos")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("id")
+                    .range(from: from, to: to)
+                    .execute()
+                    .data
+            }
+        }
         catch { logger.error("Failed to decode progress photos: \(error.localizedDescription)"); throw error }
         try await AppDatabase.shared.dbPool.write { db in
             for p in progressPhotos where !pendingIds.contains(p.id) {
@@ -549,11 +646,8 @@ struct SyncService {
         childDeleteSQL: String? = nil,
         in db: Database
     ) throws {
-        // PostgREST projects commonly cap a response at 1,000 rows. At that
-        // boundary we cannot prove the snapshot is complete, so never reconcile
-        // deletions from it. Upserts still proceed and a later paginated sync can
-        // safely reconcile the remainder.
-        guard remoteIds.count < 1_000 else { return }
+        // Callers only invoke reconciliation after every deterministic remote
+        // page for this scope has completed successfully.
         let keepIds = remoteIds.union(pendingIds)
         let rows = try Row.fetchAll(
             db,
