@@ -47,6 +47,10 @@ struct ProfileService {
         if let weight = patch.weight                     { profile.weight             = weight }
         if let url  = patch.profilePictureUrl            { profile.profilePictureUrl  = url   }
         if let settings = patch.settings                 { profile.settings           = settings }
+        if let storedValue = profile.profilePictureUrl,
+           let path = extractAvatarStoragePath(from: storedValue) {
+            profile.profilePictureUrl = path
+        }
         profile.updatedAt = Date()
 
         // Build remote payload
@@ -144,7 +148,9 @@ struct ProfileService {
             name: remote.name,
             age: remote.age,
             weight: remote.weight,
-            profilePictureUrl: remote.profilePictureUrl,
+            profilePictureUrl: remote.profilePictureUrl.flatMap {
+                extractAvatarStoragePath(from: $0) ?? $0
+            },
             settings: remote.settings ?? .default,
             createdAt: createdAt,
             updatedAt: updatedAt
@@ -156,8 +162,8 @@ struct ProfileService {
 
     // MARK: - Avatar upload
 
-    /// Presents a photo picker, uploads the selected image to Supabase Storage,
-    /// patches the profile with the resulting public URL, and returns that URL.
+    /// Uploads the selected image to private Supabase Storage and returns the
+    /// object path that should be persisted with the profile.
     ///
     /// This function must be called from a SwiftUI context that can present a sheet.
     /// It uses `PhotosUI` / `UIImagePickerController` bridging — the caller is
@@ -172,12 +178,39 @@ struct ProfileService {
             .from("avatars")
             .upload(path, data: imageData, options: .init(contentType: "image/jpeg", upsert: true))
 
-        let publicURL = try supabase.storage
-            .from("avatars")
-            .getPublicURL(path: path)
+        return path
+    }
 
-        let urlString = publicURL.absoluteString
-        try await updateProfile(ProfilePatch(profilePictureUrl: urlString))
-        return urlString
+    /// Produces a short-lived display URL for a private avatar path. Legacy
+    /// public and signed URLs are accepted so existing local caches continue to
+    /// work after the storage bucket is made private.
+    static func profilePictureDisplayURL(from storedValue: String?) async -> String? {
+        guard let storedValue,
+              let path = extractAvatarStoragePath(from: storedValue) else {
+            return nil
+        }
+        do {
+            return try await supabase.storage
+                .from("avatars")
+                .createSignedURL(path: path, expiresIn: 3_600)
+                .absoluteString
+        } catch {
+            logger.error("Failed to create a private avatar URL: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Accepts private object paths plus legacy public and signed avatar URLs.
+    static func extractAvatarStoragePath(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if !trimmed.contains("://") {
+            return trimmed.split(separator: "?", maxSplits: 1).first.map(String.init)
+        }
+
+        guard let range = trimmed.range(of: "avatars/") else { return nil }
+        let suffix = String(trimmed[range.upperBound...])
+        return suffix.split(separator: "?", maxSplits: 1).first.map(String.init)
     }
 }

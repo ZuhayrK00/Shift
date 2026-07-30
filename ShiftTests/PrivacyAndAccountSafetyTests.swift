@@ -27,6 +27,31 @@ final class PrivacyAndAccountSafetyTests: XCTestCase {
         )
     }
 
+    func testAvatarStoragePathSupportsPrivatePath() {
+        XCTAssertEqual(
+            ProfileService.extractAvatarStoragePath(from: "user-id/avatar.jpg"),
+            "user-id/avatar.jpg"
+        )
+    }
+
+    func testAvatarStoragePathMigratesLegacyPublicURL() {
+        XCTAssertEqual(
+            ProfileService.extractAvatarStoragePath(
+                from: "https://example.supabase.co/storage/v1/object/public/avatars/user-id/avatar.jpg"
+            ),
+            "user-id/avatar.jpg"
+        )
+    }
+
+    func testAvatarStoragePathStripsSignedURLToken() {
+        XCTAssertEqual(
+            ProfileService.extractAvatarStoragePath(
+                from: "https://example.supabase.co/storage/v1/object/sign/avatars/user-id/avatar.jpg?token=secret"
+            ),
+            "user-id/avatar.jpg"
+        )
+    }
+
     func testMinimumAgePolicy() {
         XCTAssertFalse(AgePolicy.isEligible(nil))
         XCTAssertFalse(AgePolicy.isEligible(12))

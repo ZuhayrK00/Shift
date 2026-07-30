@@ -118,6 +118,9 @@ class AuthManager {
 
         let settings = profile?.settings ?? .default
         let createdAtDate: Date? = session.user.createdAt
+        let profilePictureURL = await ProfileService.profilePictureDisplayURL(
+            from: profile?.profilePictureUrl
+        )
 
         let newUser = User(
             id: userId,
@@ -125,7 +128,7 @@ class AuthManager {
             name: profile?.name,
             age: profile?.age,
             weight: profile?.weight,
-            profilePictureUrl: profile?.profilePictureUrl,
+            profilePictureUrl: profilePictureURL,
             createdAt: createdAtDate,
             settings: settings
         )
@@ -200,6 +203,9 @@ class AuthManager {
         let profile = try? await ProfileRepository.findById(userId)
         // Only use settings from profile if we actually found one — never reset to defaults
         let settings = profile?.settings ?? user?.settings ?? .default
+        let profilePictureURL = await ProfileService.profilePictureDisplayURL(
+            from: profile?.profilePictureUrl
+        )
 
         let newUser = User(
             id: userId,
@@ -207,7 +213,7 @@ class AuthManager {
             name: profile?.name,
             age: profile?.age,
             weight: profile?.weight,
-            profilePictureUrl: profile?.profilePictureUrl,
+            profilePictureUrl: profilePictureURL,
             createdAt: session.user.createdAt,
             settings: settings
         )
