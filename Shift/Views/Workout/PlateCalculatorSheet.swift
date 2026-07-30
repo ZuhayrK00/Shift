@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct PlateCalculatorRequest: Identifiable {
+    let id = UUID()
+    let targetWeight: Double
+    let unit: String
+}
+
 struct PlateCalculatorSheet: View {
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss) private var dismiss

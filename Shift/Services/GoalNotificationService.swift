@@ -71,11 +71,12 @@ private actor NotificationEventLedger {
     }
 }
 
-/// Event-driven achievement notifications.
+/// Event-driven goal notifications.
 ///
 /// No calendar or future goal reminders are created here. Step notifications
 /// run from HealthKit observer callbacks (best effort in the background), while
-/// exercise and weekly achievements run from completed workout events.
+/// exercise and weekly progress run from completed workout events. Missed
+/// training days are reconciled immediately the next time iOS wakes Shift.
 enum GoalNotificationService {
     private static let stepCacheKey = "shift.notification.stepConfiguration"
 
@@ -84,6 +85,7 @@ enum GoalNotificationService {
     static func prepareForCurrentUser() async {
         await NotificationManager.removeLegacyGoalNotifications()
         await refreshConfiguration()
+        await reconcileMissedTrainingDays()
     }
 
     static func refreshConfiguration() async {
@@ -152,6 +154,7 @@ enum GoalNotificationService {
                 configuration: configuration
             )
         }
+        await reconcileMissedTrainingDays()
     }
 
     /// Compatibility entry point retained for existing foreground hooks.
@@ -214,30 +217,107 @@ enum GoalNotificationService {
         )
     }
 
-    // MARK: - Weekly frequency achievement
+    // MARK: - Weekly training progress
 
     static func notifyFrequencyGoalIfReached() async {
         guard let userId = authManager.currentUserId,
               let settings = await currentSettings(userId: userId),
               settings.notifications.frequencyGoalAchievements,
-              let target = settings.weeklyFrequencyGoal,
               let progress = try? await GoalService.getFrequencyProgress(),
-              NotificationDecisionEngine.shouldNotifyFrequencyGoal(
+              let event = NotificationDecisionEngine.frequencyProgressEvent(
                 completed: progress.completed,
-                target: target
+                target: settings.effectiveWeeklyFrequencyGoal
               ) else { return }
 
         let weekStart = GoalService.startOfCurrentWeek(weekStartsOn: settings.weekStartsOn)
         let weekKey = toLocalDateKey(weekStart)
-        let message = NotificationDecisionEngine.frequencyGoalMessage(target: target)
+        let message = NotificationDecisionEngine.frequencyProgressMessage(for: event)
+
+        let eventSuffix: String
+        let kind: String
+        switch event {
+        case let .oneRemaining(completed, target):
+            eventSuffix = "remaining.\(completed)-of-\(target)"
+            kind = "progress"
+        case let .completed(target):
+            eventSuffix = "completed.\(target)"
+            kind = "achievement"
+        }
 
         await NotificationEventLedger.shared.deliverOnce(
-            eventKey: "\(userId).frequency.\(weekKey).\(target)",
-            identifier: "shift.achievement.frequency.\(userId).\(weekKey).\(target)",
+            eventKey: "\(userId).frequency.\(weekKey).\(eventSuffix)",
+            identifier: "shift.frequency.\(userId).\(weekKey).\(eventSuffix)",
             title: message.title,
             body: message.body,
-            kind: "achievement",
-            userInfo: ["achievement": "frequency"]
+            kind: kind,
+            userInfo: ["goal": "weeklyTraining"]
+        )
+    }
+
+    /// Sends at most one missed-day alert per reconciliation. If Shift was not
+    /// woken for several days, only the latest missed day is surfaced so opening
+    /// the app never creates a burst of stale notifications.
+    static func reconcileMissedTrainingDays(now: Date = Date()) async {
+        guard let userId = authManager.currentUserId,
+              let settings = await currentSettings(userId: userId),
+              settings.notifications.frequencyGoalAchievements,
+              !settings.normalizedWeeklyTrainingDays.isEmpty else { return }
+
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
+        let weekStart = GoalService.startOfCurrentWeek(weekStartsOn: settings.weekStartsOn)
+        guard weekStart < todayStart else { return }
+
+        let sessions =
+            (try? await SessionRepository.findCompletedSince(weekStart, userId: userId)) ?? []
+        var externalDates: [Date] = []
+        if settings.healthKit.countExternalWorkouts {
+            externalDates = await HealthKitService.externalWorkoutDates(
+                from: weekStart,
+                to: now
+            )
+        }
+
+        let selectedDays = Set(settings.normalizedWeeklyTrainingDays)
+        var missedDates: [Date] = []
+        var date = calendar.startOfDay(for: weekStart)
+        while date < todayStart {
+            let candidateDate = date
+            let appleWeekday = calendar.component(.weekday, from: candidateDate)
+            let isoWeekday = appleWeekday == 1 ? 7 : appleWeekday - 1
+            if selectedDays.contains(isoWeekday),
+               settings.weeklyTrainingDaysWereEffective(on: candidateDate, calendar: calendar) {
+                let hasShiftWorkout = sessions.contains {
+                    calendar.isDate($0.startedAt, inSameDayAs: candidateDate)
+                }
+                let hasExternalWorkout = externalDates.contains {
+                    calendar.isDate($0, inSameDayAs: candidateDate)
+                }
+                if !hasShiftWorkout && !hasExternalWorkout {
+                    missedDates.append(candidateDate)
+                }
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: date) else {
+                break
+            }
+            date = next
+        }
+
+        guard let missedDate = missedDates.last else { return }
+        let dateKey = toLocalDateKey(missedDate)
+        let message = NotificationDecisionEngine.missedTrainingDayMessage(
+            dayName: missedDate.formatted(.dateTime.weekday(.wide))
+        )
+        await NotificationEventLedger.shared.deliverOnce(
+            eventKey: "\(userId).frequency.missed.\(dateKey)",
+            identifier: "shift.frequency.missed.\(userId).\(dateKey)",
+            title: message.title,
+            body: message.body,
+            kind: "progress",
+            userInfo: [
+                "goal": "weeklyTraining",
+                "missedDate": dateKey
+            ]
         )
     }
 

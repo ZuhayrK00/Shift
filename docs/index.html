@@ -40,6 +40,61 @@
         .nav-links { display: flex; gap: 24px; }
         .nav-links a { color: var(--muted); font-size: 14px; text-decoration: none; }
         .nav-links a:hover, .nav-links a:focus-visible { color: var(--text); }
+        .mobile-menu { display: none; position: relative; }
+        .mobile-menu summary {
+            display: grid;
+            width: 42px;
+            height: 42px;
+            cursor: pointer;
+            list-style: none;
+            place-items: center;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+        }
+        .mobile-menu summary::-webkit-details-marker { display: none; }
+        .menu-icon, .menu-icon::before, .menu-icon::after {
+            display: block;
+            width: 18px;
+            height: 2px;
+            border-radius: 2px;
+            background: var(--text);
+        }
+        .menu-icon { position: relative; }
+        .menu-icon::before, .menu-icon::after {
+            position: absolute;
+            left: 0;
+            content: "";
+        }
+        .menu-icon::before { top: -6px; }
+        .menu-icon::after { top: 6px; }
+        .mobile-menu[open] .menu-icon { background: transparent; }
+        .mobile-menu[open] .menu-icon::before { top: 0; transform: rotate(45deg); }
+        .mobile-menu[open] .menu-icon::after { top: 0; transform: rotate(-45deg); }
+        .mobile-menu-panel {
+            position: absolute;
+            z-index: 10;
+            top: 50px;
+            right: 0;
+            display: grid;
+            min-width: 210px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #111113;
+            box-shadow: 0 20px 50px rgb(0 0 0 / 45%);
+        }
+        .mobile-menu-panel a {
+            padding: 13px 16px;
+            color: var(--muted);
+            font-size: 15px;
+            text-decoration: none;
+        }
+        .mobile-menu-panel a + a { border-top: 1px solid var(--border); }
+        a:focus-visible, summary:focus-visible {
+            outline: 2px solid var(--text);
+            outline-offset: 4px;
+        }
         .hero {
             max-width: 760px;
             padding: 112px 0 96px;
@@ -127,7 +182,8 @@
         footer div { display: flex; flex-wrap: wrap; gap: 18px; }
         @media (max-width: 760px) {
             .shell { width: min(100% - 28px, 1080px); }
-            .nav-links a:not(:last-child) { display: none; }
+            .nav-links { display: none; }
+            .mobile-menu { display: block; }
             .hero { padding: 82px 0 72px; }
             .grid, .support { grid-template-columns: 1fr; }
             section { padding: 56px 0; }
@@ -143,7 +199,17 @@
                 <a href="#features">Features</a>
                 <a href="#support">Support</a>
                 <a href="privacy-policy.html">Privacy</a>
+                <a href="terms-of-service.html">Terms</a>
             </div>
+            <details class="mobile-menu">
+                <summary aria-label="Open navigation"><span class="menu-icon"></span></summary>
+                <div class="mobile-menu-panel">
+                    <a href="#features">Features</a>
+                    <a href="#support">Support</a>
+                    <a href="privacy-policy.html">Privacy Policy</a>
+                    <a href="terms-of-service.html">Terms of Service</a>
+                </div>
+            </details>
         </nav>
 
         <main>

@@ -8,6 +8,7 @@ struct FrequencyProgress {
     var completed: Int
     var dayOfWeek: Int          // 1 = first day of user's week, 7 = last
     var daysRemainingInWeek: Int
+    var trainingDays: [Int]     // ISO weekdays selected by the user
 }
 
 // MARK: - GoalService
@@ -124,7 +125,7 @@ struct GoalService {
     static func getFrequencyProgress() async throws -> FrequencyProgress? {
         guard let userId = try? authManager.requireUserId() else { return nil }
         let settings = authManager.user?.settings ?? .default
-        guard let target = settings.weeklyFrequencyGoal else { return nil }
+        guard let target = settings.effectiveWeeklyFrequencyGoal else { return nil }
 
         let weekStart = Self.startOfCurrentWeek(weekStartsOn: settings.weekStartsOn)
         let sessions = try await SessionRepository.findCompletedSince(weekStart, userId: userId)
@@ -144,7 +145,8 @@ struct GoalService {
             target: target,
             completed: totalCount,
             dayOfWeek: dayOfWeek,
-            daysRemainingInWeek: daysRemaining
+            daysRemainingInWeek: daysRemaining,
+            trainingDays: settings.normalizedWeeklyTrainingDays
         )
     }
 

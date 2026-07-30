@@ -29,7 +29,7 @@ struct ExerciseLogView: View {
     @State private var isSaving                 = false
     @State private var saveError: String?
     @State private var showReplacementPicker = false
-    @State private var showPlateCalculator = false
+    @State private var plateCalculatorRequest: PlateCalculatorRequest?
     @State private var sessionExerciseIds: Set<String> = []
     @State private var sessionIsCompleted = false
 
@@ -112,10 +112,10 @@ struct ExerciseLogView: View {
                 }
             }
         }
-        .sheet(isPresented: $showPlateCalculator) {
+        .sheet(item: $plateCalculatorRequest) { request in
             PlateCalculatorSheet(
-                targetWeight: weight,
-                unit: weightUnit
+                targetWeight: request.targetWeight,
+                unit: request.unit
             )
         }
     }
@@ -193,7 +193,15 @@ struct ExerciseLogView: View {
                 },
                 onSaveNote: { Task { await saveNote() } },
                 onLogWarmup: { Task { await logWarmupSet() } },
-                onShowPlates: { showPlateCalculator = true }
+                onShowPlates: {
+                    // Snapshot the current values into the presentation item.
+                    // A Boolean sheet can capture the previous render's weight on
+                    // its first presentation.
+                    plateCalculatorRequest = PlateCalculatorRequest(
+                        targetWeight: weight,
+                        unit: weightUnit
+                    )
+                }
             )
         case .info:
             if let ex = exercise { ExerciseDetailView(exercise: ex) }

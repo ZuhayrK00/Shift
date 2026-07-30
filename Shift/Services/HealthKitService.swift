@@ -141,6 +141,7 @@ struct HealthKitService {
                 Task {
                     await GoalNotificationService.notifyFrequencyGoalIfReached()
                     completionHandler()
+                    await GoalNotificationService.reconcileMissedTrainingDays()
                     await WidgetDataService.updateSnapshot()
                     PhoneSessionManager.shared.sendSnapshotToWatch()
                 }
@@ -238,14 +239,24 @@ struct HealthKitService {
 
     // MARK: - External workouts
 
-    /// Counts strength training workouts in HealthKit since a given date
-    /// that were NOT logged by Shift (no "ShiftSessionId" metadata).
-    static func countExternalWorkouts(since startDate: Date) async -> Int {
-        guard isAvailable else { return 0 }
+    /// Returns strength-training start dates in HealthKit that were not logged
+    /// by Shift. Keeping the dates lets weekly scheduling distinguish a workout
+    /// completed on a planned day from a genuinely missed day.
+    static func externalWorkoutDates(
+        from startDate: Date,
+        to endDate: Date = Date()
+    ) async -> [Date] {
+        guard isAvailable, endDate > startDate else { return [] }
 
         let workoutPredicate = HKQuery.predicateForWorkouts(with: .traditionalStrengthTraining)
-        let datePredicate = HKQuery.predicateForSamples(withStart: startDate, end: Date())
-        let compound = NSCompoundPredicate(andPredicateWithSubpredicates: [workoutPredicate, datePredicate])
+        let datePredicate = HKQuery.predicateForSamples(
+            withStart: startDate,
+            end: endDate,
+            options: .strictStartDate
+        )
+        let compound = NSCompoundPredicate(
+            andPredicateWithSubpredicates: [workoutPredicate, datePredicate]
+        )
 
         return await withCheckedContinuation { continuation in
             let query = HKSampleQuery(
@@ -255,13 +266,22 @@ struct HealthKitService {
                 sortDescriptors: nil
             ) { _, samples, _ in
                 let workouts = (samples as? [HKWorkout]) ?? []
-                let external = workouts.filter { workout in
-                    workout.metadata?["ShiftSessionId"] == nil
-                }
-                continuation.resume(returning: external.count)
+                continuation.resume(
+                    returning: workouts.compactMap { workout in
+                        workout.metadata?["ShiftSessionId"] == nil
+                            ? workout.startDate
+                            : nil
+                    }
+                )
             }
             store.execute(query)
         }
+    }
+
+    /// Counts strength training workouts in HealthKit since a given date
+    /// that were NOT logged by Shift (no "ShiftSessionId" metadata).
+    static func countExternalWorkouts(since startDate: Date) async -> Int {
+        (await externalWorkoutDates(from: startDate)).count
     }
 
     // MARK: - Session stats (calories + heart rate)

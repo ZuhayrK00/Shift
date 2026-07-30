@@ -63,6 +63,46 @@ final class NotificationDecisionEngineTests: XCTestCase {
         XCTAssertEqual(message.body, "You completed 3 workouts this week.")
     }
 
+    func testFrequencyProgressOnlyNotifiesOneAwayOrComplete() {
+        XCTAssertNil(
+            NotificationDecisionEngine.frequencyProgressEvent(
+                completed: 1,
+                target: 3
+            )
+        )
+        XCTAssertEqual(
+            NotificationDecisionEngine.frequencyProgressEvent(
+                completed: 2,
+                target: 3
+            ),
+            .oneRemaining(completed: 2, target: 3)
+        )
+        XCTAssertEqual(
+            NotificationDecisionEngine.frequencyProgressEvent(
+                completed: 3,
+                target: 3
+            ),
+            .completed(target: 3)
+        )
+    }
+
+    func testOneRemainingMessageExplainsCurrentProgress() {
+        let message = NotificationDecisionEngine.frequencyProgressMessage(
+            for: .oneRemaining(completed: 2, target: 3)
+        )
+        XCTAssertEqual(message.title, "One workout to go")
+        XCTAssertEqual(message.body, "You’ve completed 2 of 3 workouts this week.")
+    }
+
+    func testMissedTrainingDayMessageNamesTheDayAndOffersOptions() {
+        let message = NotificationDecisionEngine.missedTrainingDayMessage(
+            dayName: "Wednesday"
+        )
+        XCTAssertEqual(message.title, "Planned workout missed")
+        XCTAssertTrue(message.body.contains("Wednesday"))
+        XCTAssertTrue(message.body.contains("update your schedule"))
+    }
+
     // MARK: - Exercise achievement wording
 
     func testExerciseMessageIncludesExerciseTargetAndUnit() {

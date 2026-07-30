@@ -2,6 +2,63 @@ import XCTest
 @testable import Shift
 
 final class ExperienceEnhancementTests: XCTestCase {
+    func testLegacyThreeDayGoalDefaultsToMondayWednesdayFriday() {
+        XCTAssertEqual(
+            WeeklyTrainingScheduleDefaults.days(for: 3),
+            [1, 3, 5]
+        )
+    }
+
+    func testExplicitTrainingDaysAreSanitizedAndDriveWeeklyTarget() throws {
+        let data = Data(
+            """
+            {
+              "weekly_frequency_goal": 5,
+              "weekly_training_days": [5, 1, 3, 3, 8, 0],
+              "weekly_training_days_effective_date": "2026-07-30"
+            }
+            """.utf8
+        )
+
+        let settings = try JSONDecoder().decode(UserSettings.self, from: data)
+        XCTAssertEqual(settings.normalizedWeeklyTrainingDays, [1, 3, 5])
+        XCTAssertEqual(settings.effectiveWeeklyFrequencyGoal, 3)
+    }
+
+    func testNewScheduleDoesNotCreateRetroactiveMissedDays() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        var settings = UserSettings()
+        settings.weeklyTrainingDays = [1, 3, 5]
+        settings.weeklyTrainingDaysEffectiveDate = "2026-07-30"
+
+        let before = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 29)
+        )!
+        let effective = calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 30)
+        )!
+
+        XCTAssertFalse(
+            settings.weeklyTrainingDaysWereEffective(
+                on: before,
+                calendar: calendar
+            )
+        )
+        XCTAssertTrue(
+            settings.weeklyTrainingDaysWereEffective(
+                on: effective,
+                calendar: calendar
+            )
+        )
+    }
+
+    func testPlateCalculatorPresentationSnapshotsCurrentInput() {
+        let request = PlateCalculatorRequest(targetWeight: 102.5, unit: "kg")
+        XCTAssertEqual(request.targetWeight, 102.5)
+        XCTAssertEqual(request.unit, "kg")
+    }
+
     func testTrainingScheduleUsesDateOverrideBeforeWeeklyPlan() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

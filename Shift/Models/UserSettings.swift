@@ -160,6 +160,11 @@ struct UserSettings: Codable, Hashable {
     var theme: String = "dark"
     var restTimer: RestTimerSettings = .init()
     var weeklyFrequencyGoal: Int? = nil
+    /// ISO weekdays selected for the weekly goal (1 = Monday, 7 = Sunday).
+    var weeklyTrainingDays: [Int] = []
+    /// Local yyyy-MM-dd when the current day selection became active.
+    /// This prevents a newly edited schedule from creating retroactive missed-day alerts.
+    var weeklyTrainingDaysEffectiveDate: String? = nil
     var dailyStepGoal: Int? = nil
     var targetWeight: Double? = nil
     var targetWeightDeadline: String? = nil
@@ -171,6 +176,28 @@ struct UserSettings: Codable, Hashable {
 
     static let `default` = UserSettings()
 
+    var normalizedWeeklyTrainingDays: [Int] {
+        Array(Set(weeklyTrainingDays.filter { (1...7).contains($0) })).sorted()
+    }
+
+    /// Explicit weekdays are the source of truth for new settings. The legacy
+    /// integer remains as a fallback for users who have not edited their goal yet.
+    var effectiveWeeklyFrequencyGoal: Int? {
+        let days = normalizedWeeklyTrainingDays
+        if !days.isEmpty { return days.count }
+        guard let weeklyFrequencyGoal, weeklyFrequencyGoal > 0 else { return nil }
+        return min(weeklyFrequencyGoal, 7)
+    }
+
+    func weeklyTrainingDaysWereEffective(
+        on date: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let effectiveDate = weeklyTrainingDaysEffectiveDate,
+              !effectiveDate.isEmpty else { return true }
+        return TrainingScheduleSettings.dateKey(date, calendar: calendar) >= effectiveDate
+    }
+
     enum CodingKeys: String, CodingKey {
         case theme
         case weightUnit = "weight_unit"
@@ -180,6 +207,8 @@ struct UserSettings: Codable, Hashable {
         case weekStartsOn = "week_starts_on"
         case restTimer = "rest_timer"
         case weeklyFrequencyGoal = "weekly_frequency_goal"
+        case weeklyTrainingDays = "weekly_training_days"
+        case weeklyTrainingDaysEffectiveDate = "weekly_training_days_effective_date"
         case dailyStepGoal = "daily_step_goal"
         case targetWeight = "target_weight"
         case targetWeightDeadline = "target_weight_deadline"
@@ -200,6 +229,13 @@ struct UserSettings: Codable, Hashable {
         theme = (try? container.decode(String.self, forKey: .theme)) ?? "dark"
         restTimer = (try? container.decode(RestTimerSettings.self, forKey: .restTimer)) ?? .init()
         weeklyFrequencyGoal = try? container.decode(Int.self, forKey: .weeklyFrequencyGoal)
+        weeklyTrainingDays =
+            (try? container.decode([Int].self, forKey: .weeklyTrainingDays)) ?? []
+        weeklyTrainingDays = Array(
+            Set(weeklyTrainingDays.filter { (1...7).contains($0) })
+        ).sorted()
+        weeklyTrainingDaysEffectiveDate =
+            try? container.decode(String.self, forKey: .weeklyTrainingDaysEffectiveDate)
         dailyStepGoal = try? container.decode(Int.self, forKey: .dailyStepGoal)
         targetWeight = try? container.decode(Double.self, forKey: .targetWeight)
         targetWeightDeadline = try? container.decode(String.self, forKey: .targetWeightDeadline)
@@ -213,4 +249,20 @@ struct UserSettings: Codable, Hashable {
     }
 
     init() {}
+}
+
+enum WeeklyTrainingScheduleDefaults {
+    /// Balanced defaults for legacy numeric goals. They are shown for editing,
+    /// but are not persisted until the user confirms the selected days.
+    static func days(for target: Int?) -> [Int] {
+        switch min(max(target ?? 3, 1), 7) {
+        case 1: return [3]
+        case 2: return [2, 5]
+        case 3: return [1, 3, 5]
+        case 4: return [1, 2, 4, 6]
+        case 5: return [1, 2, 3, 5, 6]
+        case 6: return [1, 2, 3, 4, 5, 6]
+        default: return Array(1...7)
+        }
+    }
 }

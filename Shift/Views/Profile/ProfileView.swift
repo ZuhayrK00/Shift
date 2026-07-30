@@ -594,17 +594,34 @@ struct ProfileView: View {
                         }
                         .foregroundStyle(colors.muted)
 
-                        // Day indicators
-                        HStack(spacing: 6) {
-                            ForEach(0..<progress.target, id: \.self) { i in
-                                Circle()
-                                    .fill(i < progress.completed
-                                          ? (progress.completed >= progress.target ? colors.success : colors.accent)
-                                          : colors.border)
-                                    .frame(width: 10, height: 10)
+                        if progress.trainingDays.isEmpty {
+                            Text("Choose your training days")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(colors.accent)
+                        } else {
+                            HStack(spacing: 5) {
+                                ForEach(1...7, id: \.self) { day in
+                                    Text(weekdayInitial(for: day))
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(
+                                            progress.trainingDays.contains(day)
+                                                ? colors.onAccent
+                                                : colors.muted
+                                        )
+                                        .frame(width: 23, height: 23)
+                                        .background(
+                                            progress.trainingDays.contains(day)
+                                                ? colors.accent
+                                                : colors.surface2,
+                                            in: Circle()
+                                        )
+                                }
                             }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(
+                                "Training days: \(trainingDayNames(progress.trainingDays))"
+                            )
                         }
-                        .padding(.top, 2)
                     }
 
                     Spacer()
@@ -632,6 +649,18 @@ struct ProfileView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(colors.border, lineWidth: 1)
         )
+    }
+
+    private func weekdayInitial(for isoWeekday: Int) -> String {
+        ["M", "T", "W", "T", "F", "S", "S"][isoWeekday - 1]
+    }
+
+    private func trainingDayNames(_ days: [Int]) -> String {
+        let names = Calendar.current.weekdaySymbols
+        return days.map { isoDay in
+            let appleIndex = isoDay == 7 ? 0 : isoDay
+            return names[appleIndex]
+        }.joined(separator: ", ")
     }
 
     // MARK: - Exercise goals card
@@ -915,18 +944,26 @@ struct FrequencyGoalEditorSheet: View {
 
     var onSaved: (() -> Void)?
 
-    @State private var target: Int = 3
+    @State private var selectedDays: Set<Int> = []
     @State private var isSaving = false
     @State private var saveError: String?
 
-    private let weekdays = ["M", "T", "W", "T", "F", "S", "S"]
+    private let weekdays: [(isoDay: Int, short: String, name: String)] = [
+        (1, "M", "Monday"),
+        (2, "T", "Tuesday"),
+        (3, "W", "Wednesday"),
+        (4, "T", "Thursday"),
+        (5, "F", "Friday"),
+        (6, "S", "Saturday"),
+        (7, "S", "Sunday")
+    ]
 
     var body: some View {
         NavigationStack {
             ZStack {
                 colors.bg.ignoresSafeArea()
 
-                VStack(spacing: 32) {
+                VStack(spacing: 28) {
                     Spacer()
 
                     // Icon
@@ -941,63 +978,59 @@ struct FrequencyGoalEditorSheet: View {
 
                     // Value display
                     VStack(spacing: 6) {
-                        Text("\(target)")
+                        Text("\(selectedDays.count)")
                             .font(.system(size: 64, weight: .bold, design: .rounded))
                             .foregroundStyle(colors.text)
                             .contentTransition(.numericText())
-                            .animation(.snappy(duration: 0.2), value: target)
+                            .animation(.snappy(duration: 0.2), value: selectedDays.count)
 
-                        Text(target == 1 ? "session per week" : "sessions per week")
+                        Text(selectedDays.count == 1
+                             ? "training day selected"
+                             : "training days selected")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(colors.muted)
                     }
 
-                    // +/- controls
-                    HStack(spacing: 20) {
-                        Button {
-                            if target > 1 { target -= 1 }
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(target > 1 ? colors.text : colors.muted.opacity(0.4))
-                                .frame(width: 56, height: 56)
-                                .background(colors.surface, in: Circle())
-                        }
-                        .disabled(target <= 1)
+                    Text("Choose the days you normally plan to train. You can change them whenever your routine changes.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(colors.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
 
-                        Button {
-                            if target < 7 { target += 1 }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(target < 7 ? colors.text : colors.muted.opacity(0.4))
-                                .frame(width: 56, height: 56)
-                                .background(colors.surface, in: Circle())
-                        }
-                        .disabled(target >= 7)
-                    }
-
-                    // Day dots
                     HStack(spacing: 10) {
-                        ForEach(0..<7, id: \.self) { index in
-                            VStack(spacing: 6) {
-                                Circle()
-                                    .fill(index < target ? colors.accent : colors.surface)
-                                    .frame(width: 32, height: 32)
-                                    .overlay {
-                                        if index < target {
-                                            Image(systemName: "checkmark")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundStyle(colors.onAccent)
-                                        }
+                        ForEach(weekdays, id: \.isoDay) { weekday in
+                            let isSelected = selectedDays.contains(weekday.isoDay)
+                            Button {
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    if isSelected {
+                                        selectedDays.remove(weekday.isoDay)
+                                    } else {
+                                        selectedDays.insert(weekday.isoDay)
                                     }
-                                Text(weekdays[index])
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(index < target ? colors.text : colors.muted)
+                                }
+                            } label: {
+                                Text(weekday.short)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(isSelected ? colors.onAccent : colors.text)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(
+                                        isSelected ? colors.accent : colors.surface,
+                                        in: RoundedRectangle(cornerRadius: 12)
+                                    )
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(
+                                                isSelected ? colors.accent : colors.border,
+                                                lineWidth: 1
+                                            )
+                                    }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(weekday.name)
+                            .accessibilityValue(isSelected ? "Selected" : "Not selected")
                         }
                     }
-                    .animation(.snappy(duration: 0.2), value: target)
 
                     Spacer()
 
@@ -1040,20 +1073,32 @@ struct FrequencyGoalEditorSheet: View {
                                 .foregroundStyle(colors.accent)
                         }
                     }
-                    .disabled(isSaving)
+                    .disabled(isSaving || selectedDays.isEmpty)
                 }
             }
             .onAppear {
-                target = authManager.user?.settings.weeklyFrequencyGoal ?? 3
+                let settings = authManager.user?.settings ?? .default
+                let savedDays = settings.normalizedWeeklyTrainingDays
+                selectedDays = Set(
+                    savedDays.isEmpty
+                        ? WeeklyTrainingScheduleDefaults.days(
+                            for: settings.weeklyFrequencyGoal
+                        )
+                        : savedDays
+                )
             }
         }
     }
 
     private func save() async {
+        guard !selectedDays.isEmpty else { return }
         isSaving = true
         saveError = nil
         var settings = authManager.user?.settings ?? .default
-        settings.weeklyFrequencyGoal = target
+        settings.weeklyTrainingDays = selectedDays.sorted()
+        settings.weeklyFrequencyGoal = selectedDays.count
+        settings.weeklyTrainingDaysEffectiveDate =
+            TrainingScheduleSettings.dateKey(Date())
         do {
             _ = try await ProfileService.updateSettings(settings)
         } catch {
@@ -1073,6 +1118,8 @@ struct FrequencyGoalEditorSheet: View {
         saveError = nil
         var settings = authManager.user?.settings ?? .default
         settings.weeklyFrequencyGoal = nil
+        settings.weeklyTrainingDays = []
+        settings.weeklyTrainingDaysEffectiveDate = nil
         do {
             _ = try await ProfileService.updateSettings(settings)
         } catch {

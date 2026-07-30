@@ -111,6 +111,7 @@ struct ShiftApp: App {
                     )
                     PhoneSessionManager.shared.sendContextToWatch()
                     await GoalNotificationService.checkAndNotifyGoalCompletion()
+                    await GoalNotificationService.reconcileMissedTrainingDays()
                     await GoalNotificationService.notifyFrequencyGoalIfReached()
                 }
             }

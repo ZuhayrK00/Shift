@@ -13,6 +13,11 @@ enum NotificationDecisionEngine {
         let body: String
     }
 
+    enum FrequencyProgressEvent: Equatable {
+        case oneRemaining(completed: Int, target: Int)
+        case completed(target: Int)
+    }
+
     static func shouldNotifyStepGoal(steps: Int, goal: Int?) -> Bool {
         guard let goal, goal > 0 else { return false }
         return steps >= goal
@@ -21,6 +26,20 @@ enum NotificationDecisionEngine {
     static func shouldNotifyFrequencyGoal(completed: Int, target: Int?) -> Bool {
         guard let target, target > 0 else { return false }
         return completed >= target
+    }
+
+    static func frequencyProgressEvent(
+        completed: Int,
+        target: Int?
+    ) -> FrequencyProgressEvent? {
+        guard let target, target > 0, completed >= 0 else { return nil }
+        if completed >= target {
+            return .completed(target: target)
+        }
+        if target > 1, completed == target - 1 {
+            return .oneRemaining(completed: completed, target: target)
+        }
+        return nil
     }
 
     static func stepGoalMessage(goal: Int, day: StepDay = .today) -> Message {
@@ -35,6 +54,27 @@ enum NotificationDecisionEngine {
         return Message(
             title: "Weekly workout goal complete",
             body: "You completed \(target) \(workout) this week."
+        )
+    }
+
+    static func frequencyProgressMessage(
+        for event: FrequencyProgressEvent
+    ) -> Message {
+        switch event {
+        case let .oneRemaining(completed, target):
+            return Message(
+                title: "One workout to go",
+                body: "You’ve completed \(completed) of \(target) workouts this week."
+            )
+        case let .completed(target):
+            return frequencyGoalMessage(target: target)
+        }
+    }
+
+    static func missedTrainingDayMessage(dayName: String) -> Message {
+        Message(
+            title: "Planned workout missed",
+            body: "\(dayName) was one of your training days, but no workout was logged. You can still adjust this week or update your schedule."
         )
     }
 

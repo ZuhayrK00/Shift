@@ -67,11 +67,16 @@ struct WidgetDataService {
 
         // Streak calculation
         let allCompleted = (try? await SessionRepository.findCompleted(userId: userId)) ?? []
-        let streak = calculateStreak(sessions: allCompleted, weekStartsOn: settings.weekStartsOn, weeklyGoal: settings.weeklyFrequencyGoal)
+        let weeklyGoal = settings.effectiveWeeklyFrequencyGoal
+        let streak = calculateStreak(
+            sessions: allCompleted,
+            weekStartsOn: settings.weekStartsOn,
+            weeklyGoal: weeklyGoal
+        )
 
         let snapshot = WidgetSnapshot(
             workoutsThisWeek: workoutsThisWeek,
-            weeklyGoal: settings.weeklyFrequencyGoal,
+            weeklyGoal: weeklyGoal,
             stepsToday: stepsToday,
             stepGoal: settings.dailyStepGoal,
             workedOutToday: workedOutToday,

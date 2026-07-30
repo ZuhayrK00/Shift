@@ -26,7 +26,7 @@ struct OnboardingView: View {
     @State private var weekStartsOn = "monday"
 
     // Goals & Workout
-    @State private var weeklyGoal: Int? = nil
+    @State private var selectedTrainingDays: Set<Int> = []
     @State private var stepGoal: Int? = nil
     @State private var targetWeightText = ""
     @State private var targetWeightDeadline: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
@@ -55,6 +55,15 @@ struct OnboardingView: View {
 
     @State private var showPaywall = false
     private let totalSteps = 9
+    private let weekdays: [(isoDay: Int, short: String, name: String)] = [
+        (1, "M", "Monday"),
+        (2, "T", "Tuesday"),
+        (3, "W", "Wednesday"),
+        (4, "T", "Thursday"),
+        (5, "F", "Friday"),
+        (6, "S", "Saturday"),
+        (7, "S", "Sunday")
+    ]
 
     var body: some View {
         ZStack {
@@ -334,37 +343,53 @@ struct OnboardingView: View {
                 subtitle: "Set your training targets and workout preferences."
             )
 
-            // Weekly frequency
+            // Weekly schedule
             VStack(alignment: .leading, spacing: 12) {
-                Text("Weekly Workout Goal")
+                Text("Weekly Training Days")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(colors.text)
-                Text("How many days per week do you want to train?")
+                Text("Which days do you normally want to train?")
                     .font(.system(size: 13))
                     .foregroundStyle(colors.muted)
 
                 HStack(spacing: 8) {
-                    ForEach(1...7, id: \.self) { day in
+                    ForEach(weekdays, id: \.isoDay) { weekday in
+                        let isSelected = selectedTrainingDays.contains(weekday.isoDay)
                         Button {
                             withAnimation(.easeInOut(duration: 0.15)) {
-                                weeklyGoal = weeklyGoal == day ? nil : day
+                                if isSelected {
+                                    selectedTrainingDays.remove(weekday.isoDay)
+                                } else {
+                                    selectedTrainingDays.insert(weekday.isoDay)
+                                }
                             }
                         } label: {
-                            Text("\(day)")
+                            Text(weekday.short)
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundStyle(weeklyGoal == day ? colors.onAccent : colors.text)
+                                .foregroundStyle(isSelected ? colors.onAccent : colors.text)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 44)
-                                .background(weeklyGoal == day ? colors.accent : colors.surface2)
+                                .background(isSelected ? colors.accent : colors.surface2)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
-                                        .stroke(weeklyGoal == day ? colors.accent : colors.border, lineWidth: 1)
+                                        .stroke(
+                                            isSelected ? colors.accent : colors.border,
+                                            lineWidth: 1
+                                        )
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(weekday.name)
+                        .accessibilityValue(isSelected ? "Selected" : "Not selected")
                     }
                 }
+
+                Text(selectedTrainingDays.isEmpty
+                     ? "Optional — you can set this later."
+                     : "\(selectedTrainingDays.count) training day\(selectedTrainingDays.count == 1 ? "" : "s") selected")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(colors.muted)
             }
             .padding(16)
             .background(colors.surface)
@@ -505,7 +530,7 @@ struct OnboardingView: View {
                     .foregroundStyle(colors.text)
 
                 toggleRow(icon: "dumbbell.fill", label: "Exercise goal achievements", isOn: $exerciseGoalAchievements)
-                toggleRow(icon: "flame.fill", label: "Weekly goal achievements", isOn: $frequencyGoalAchievements)
+                toggleRow(icon: "flame.fill", label: "Weekly training updates", isOn: $frequencyGoalAchievements)
                 toggleRow(icon: "figure.walk", label: "Step goal achievements", isOn: $stepGoalAchievements)
                 toggleRow(icon: "hourglass", label: "Inactive workout alerts", isOn: $workoutIdleAlerts)
             }
@@ -962,7 +987,12 @@ struct OnboardingView: View {
         settings.weekStartsOn = weekStartsOn
         settings.theme = theme
         settings.restTimer = RestTimerSettings(enabled: restTimerEnabled, durationSeconds: restTimerDuration)
-        settings.weeklyFrequencyGoal = weeklyGoal
+        let trainingDays = selectedTrainingDays.sorted()
+        settings.weeklyTrainingDays = trainingDays
+        settings.weeklyFrequencyGoal = trainingDays.isEmpty ? nil : trainingDays.count
+        settings.weeklyTrainingDaysEffectiveDate = trainingDays.isEmpty
+            ? nil
+            : TrainingScheduleSettings.dateKey(Date())
         settings.dailyStepGoal = stepGoal
         settings.notifications = {
             var n = NotificationSettings()

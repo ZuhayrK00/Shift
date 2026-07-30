@@ -1009,11 +1009,11 @@ private struct NotificationSettingsPage: View {
             colors.bg.ignoresSafeArea()
 
             Form {
-                Section("Achievements") {
+                Section("Goals") {
                     Toggle("Exercise goal achieved", isOn: $exerciseGoalAchievements)
                         .tint(colors.controlTint)
 
-                    Toggle("Weekly workout goal achieved", isOn: $frequencyGoalAchievements)
+                    Toggle("Weekly training updates", isOn: $frequencyGoalAchievements)
                         .tint(colors.controlTint)
 
                     Toggle("Daily step goal achieved", isOn: $stepGoalAchievements)
@@ -1030,7 +1030,7 @@ private struct NotificationSettingsPage: View {
                 .foregroundStyle(colors.text)
 
                 Section {
-                    Text("Achievement alerts are sent only when a goal is completed. Shift does not schedule future goal or progress reminders. iOS may batch step updates while Shift is in the background. Rest-timer alerts are controlled in Workout settings.")
+                    Text("Weekly training alerts are sent when you are one workout away, complete your goal, or Shift notices that a selected training day passed without a logged workout. Missed-day checks run when iOS next wakes Shift; no future goal reminders are scheduled. iOS may batch background updates. Rest-timer alerts are controlled in Workout settings.")
                         .font(.system(size: 13))
                         .foregroundStyle(colors.muted)
                 }
