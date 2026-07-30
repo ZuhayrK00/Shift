@@ -87,8 +87,14 @@ struct ProgressService {
                 return photos
             }
             var displayPhotos = photos
-            for ((index, _), signedURL) in zip(indexedPaths, signedURLs) {
-                displayPhotos[index].imageUrl = signedURL.absoluteString
+            for ((index, _), result) in zip(indexedPaths, signedURLs) {
+                if let signedURL = result.signedURL {
+                    displayPhotos[index].imageUrl = signedURL.absoluteString
+                } else {
+                    logger.error(
+                        "Failed to create a private photo URL: \(result.error ?? "Unknown error")"
+                    )
+                }
             }
             return displayPhotos
         } catch {
