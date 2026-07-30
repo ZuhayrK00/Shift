@@ -50,8 +50,13 @@ struct WidgetDataService {
         let todayStart = Calendar.current.startOfDay(for: Date())
         let workedOutToday = sessionsThisWeek.contains(where: { $0.startedAt >= todayStart })
 
-        // Steps
-        let stepsToday = await HealthKitService.fetchStepsForWidget()
+        // Read steps only for a feature the user explicitly enabled.
+        let stepTrackingEnabled = settings.dailyStepGoal != nil
+            && settings.notifications.stepGoalAchievements
+        let shouldReadSteps = settings.healthKit.showDailyActivity || stepTrackingEnabled
+        let stepsToday = shouldReadSteps
+            ? await HealthKitService.fetchStepsForWidget()
+            : 0
 
         // Weight trend (last 7 entries)
         let allWeights = (try? await WeightEntryRepository.findAll(userId: userId)) ?? []

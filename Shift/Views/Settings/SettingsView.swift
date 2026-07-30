@@ -626,6 +626,12 @@ private struct ProfileSettingsPage: View {
         saveError = nil
         emailSuccess = nil
 
+        if !ageText.isEmpty, !AgePolicy.isEligible(Int(ageText)) {
+            saveError = "Age must be between \(AgePolicy.minimumAge) and \(AgePolicy.maximumAge)."
+            isSaving = false
+            return
+        }
+
         // Handle email change if different from current
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let currentEmail = (authManager.user?.email ?? "").lowercased()
@@ -650,7 +656,7 @@ private struct ProfileSettingsPage: View {
         let parsedAge = Int(ageText)
         var patch = ProfilePatch(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines),
-            age: parsedAge.flatMap { (1...120).contains($0) ? $0 : nil }
+            age: parsedAge.flatMap { AgePolicy.isEligible($0) ? $0 : nil }
         )
 
         if let data = avatarData, let userId = authManager.currentUserId {
@@ -1115,7 +1121,10 @@ private struct NotificationSettingsPage: View {
             permissionState = await NotificationManager.permissionState()
         }
         if stepGoalAchievements, settings.dailyStepGoal != nil {
-            _ = try? await HealthKitService.requestAuthorization()
+            _ = try? await HealthKitService.requestAuthorization(
+                settings: settings.healthKit,
+                stepGoalTracking: true
+            )
         }
 
         do {
@@ -1152,6 +1161,7 @@ private struct HealthSettingsPage: View {
     @State private var syncBodyWeight = false
     @State private var countExternal = false
     @State private var recoveryGuidance = false
+    @State private var showDailyActivity = false
     @State private var isSaving = false
     @State private var showAuthAlert = false
     @State private var saveError: String?
@@ -1161,6 +1171,22 @@ private struct HealthSettingsPage: View {
             colors.bg.ignoresSafeArea()
 
             Form {
+                Section {
+                    Toggle(isOn: $showDailyActivity) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Show daily activity")
+                                .foregroundStyle(colors.text)
+                            Text("Display steps, distance, calories and Activity rings")
+                                .font(.system(size: 12))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }
+                    .tint(colors.controlTint)
+                } header: {
+                    Text("Activity")
+                }
+                .listRowBackground(colors.surface)
+
                 Section {
                     Toggle(isOn: $syncWorkouts) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -1270,6 +1296,7 @@ private struct HealthSettingsPage: View {
         syncBodyWeight = hk.syncBodyWeight
         countExternal = hk.countExternalWorkouts
         recoveryGuidance = hk.recoveryGuidance
+        showDailyActivity = hk.showDailyActivity
     }
 
     private func save() async {
@@ -1281,10 +1308,22 @@ private struct HealthSettingsPage: View {
             || (!wasEnabled.syncBodyWeight && syncBodyWeight)
             || (!wasEnabled.countExternalWorkouts && countExternal)
             || (!wasEnabled.recoveryGuidance && recoveryGuidance)
+            || (!wasEnabled.showDailyActivity && showDailyActivity)
 
         if needsAuth {
             do {
-                try await HealthKitService.requestAuthorization()
+                let requested = HealthKitSettings(
+                    syncWorkouts: syncWorkouts,
+                    syncBodyWeight: syncBodyWeight,
+                    countExternalWorkouts: countExternal,
+                    recoveryGuidance: recoveryGuidance,
+                    showDailyActivity: showDailyActivity
+                )
+                try await HealthKitService.requestAuthorization(
+                    settings: requested,
+                    stepGoalTracking: authManager.user?.settings.dailyStepGoal != nil
+                        && authManager.user?.settings.notifications.stepGoalAchievements == true
+                )
             } catch {
                 showAuthAlert = true
                 isSaving = false
@@ -1297,6 +1336,7 @@ private struct HealthSettingsPage: View {
         settings.healthKit.syncBodyWeight = syncBodyWeight
         settings.healthKit.countExternalWorkouts = countExternal
         settings.healthKit.recoveryGuidance = recoveryGuidance
+        settings.healthKit.showDailyActivity = showDailyActivity
 
         do {
             _ = try await ProfileService.updateSettings(settings)

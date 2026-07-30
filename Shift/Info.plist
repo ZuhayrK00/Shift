@@ -5,13 +5,13 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Shift uses your camera to take progress photos.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Shift uses speech recognition to let you describe your training preferences and goals to the AI plan generator.</string>
+	<string>Shift uses on-device speech recognition when you choose to describe training preferences to the plan generator.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Shift uses the microphone to listen to your training preferences for the AI plan generator.</string>
+	<string>Shift uses the microphone only while you choose to dictate training preferences.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Shift reads your step count and workout data to track your daily activity and goals.</string>
+	<string>Shift reads only the Apple Health data needed for features you enable, such as activity, step goals, recovery guidance, body weight, workout history, calories, and heart rate.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Shift saves your completed workouts to Apple Health.</string>
+	<string>Shift saves completed workouts and body-weight entries to Apple Health when you enable those sync options.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Shift uses Face ID to protect your progress photos.</string>
 	<key>CFBundleURLTypes</key>

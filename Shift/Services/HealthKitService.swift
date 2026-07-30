@@ -46,24 +46,53 @@ struct HealthKitService {
     private static let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
     private static let observerRegistry = HealthObserverRegistry()
 
-    private static let readTypes: Set<HKObjectType> = [
-        workoutType, bodyMassType,
-        activeEnergyType, exerciseTimeType, standTimeType, stepCountType, distanceType,
-        heartRateType, restingHeartRateType, heartRateVariabilityType, sleepType,
-        HKObjectType.activitySummaryType()
-    ]
-    private static let writeTypes: Set<HKSampleType> = [workoutType, bodyMassType]
-
     // MARK: - Availability
 
     static var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     // MARK: - Authorization
 
-    static func requestAuthorization() async throws {
+    static func requestAuthorization(
+        settings: HealthKitSettings,
+        stepGoalTracking: Bool
+    ) async throws {
         guard isAvailable else { return }
+
+        var readTypes: Set<HKObjectType> = []
+        var writeTypes: Set<HKSampleType> = []
+
+        if settings.syncWorkouts {
+            writeTypes.insert(workoutType)
+            readTypes.formUnion([activeEnergyType, heartRateType])
+        }
+        if settings.syncBodyWeight {
+            readTypes.insert(bodyMassType)
+            writeTypes.insert(bodyMassType)
+        }
+        if settings.countExternalWorkouts {
+            readTypes.insert(workoutType)
+        }
+        if settings.recoveryGuidance {
+            readTypes.formUnion([
+                sleepType, restingHeartRateType, heartRateVariabilityType
+            ])
+        }
+        if settings.showDailyActivity {
+            readTypes.formUnion([
+                activeEnergyType, exerciseTimeType, standTimeType,
+                stepCountType, distanceType, HKObjectType.activitySummaryType()
+            ])
+        }
+        if stepGoalTracking {
+            readTypes.insert(stepCountType)
+        }
+
+        guard !readTypes.isEmpty || !writeTypes.isEmpty else { return }
         try await store.requestAuthorization(toShare: writeTypes, read: readTypes)
-        configureBackgroundDelivery()
+        configureBackgroundDelivery(
+            settings: settings,
+            stepGoalTracking: stepGoalTracking
+        )
     }
 
     // MARK: - Background delivery
@@ -71,10 +100,14 @@ struct HealthKitService {
     /// Installs event observers as early as possible during launch. HealthKit can
     /// wake the app for matching saves/deletes, subject to system frequency caps
     /// (step count is capped at hourly on iPhone even when `.immediate` is used).
-    static func configureBackgroundDelivery() {
+    static func configureBackgroundDelivery(
+        settings: HealthKitSettings,
+        stepGoalTracking: Bool
+    ) {
         guard isAvailable else { return }
 
-        if observerRegistry.beginObserving(HKQuantityTypeIdentifier.stepCount.rawValue) {
+        if stepGoalTracking,
+           observerRegistry.beginObserving(HKQuantityTypeIdentifier.stepCount.rawValue) {
             let query = HKObserverQuery(
                 sampleType: stepCountType,
                 predicate: nil
@@ -95,7 +128,8 @@ struct HealthKitService {
             store.execute(query)
         }
 
-        if observerRegistry.beginObserving(workoutType.identifier) {
+        if settings.countExternalWorkouts,
+           observerRegistry.beginObserving(workoutType.identifier) {
             let query = HKObserverQuery(
                 sampleType: workoutType,
                 predicate: nil
@@ -114,8 +148,12 @@ struct HealthKitService {
             store.execute(query)
         }
 
-        enableBackgroundDelivery(for: stepCountType, label: "step count")
-        enableBackgroundDelivery(for: workoutType, label: "workouts")
+        if stepGoalTracking {
+            enableBackgroundDelivery(for: stepCountType, label: "step count")
+        }
+        if settings.countExternalWorkouts {
+            enableBackgroundDelivery(for: workoutType, label: "workouts")
+        }
     }
 
     private static func enableBackgroundDelivery(for type: HKObjectType, label: String) {

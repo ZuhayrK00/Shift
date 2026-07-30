@@ -114,6 +114,7 @@ struct AIPlanGeneratorView: View {
     @State private var saveError: String?
     @State private var planName = ""
     @State private var isRecording = false
+    @State private var speechError: String?
     @State private var audioEngine = AVAudioEngine()
     @State private var speechRecognizer = SFSpeechRecognizer()
     @State private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -520,6 +521,13 @@ struct AIPlanGeneratorView: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
+
+            if let speechError {
+                Text(speechError)
+                    .font(.system(size: 12))
+                    .foregroundStyle(colors.danger)
+                    .multilineTextAlignment(.center)
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -1149,10 +1157,21 @@ struct AIPlanGeneratorView: View {
 
     private func startRecording() {
         SFSpeechRecognizer.requestAuthorization { status in
-            guard status == .authorized else { return }
+            guard status == .authorized else {
+                DispatchQueue.main.async {
+                    speechError = "Voice input is off. You can type your preferences instead."
+                }
+                return
+            }
 
             DispatchQueue.main.async {
+                guard let speechRecognizer,
+                      speechRecognizer.supportsOnDeviceRecognition else {
+                    speechError = "On-device voice input isn’t available here. Type your preferences instead."
+                    return
+                }
                 do {
+                    speechError = nil
                     recognitionTask?.cancel()
                     recognitionTask = nil
 
@@ -1162,15 +1181,19 @@ struct AIPlanGeneratorView: View {
 
                     let request = SFSpeechAudioBufferRecognitionRequest()
                     request.shouldReportPartialResults = true
+                    request.requiresOnDeviceRecognition = true
                     recognitionRequest = request
 
                     let inputNode = audioEngine.inputNode
-                    recognitionTask = speechRecognizer?.recognitionTask(with: request) { result, error in
+                    recognitionTask = speechRecognizer.recognitionTask(with: request) { result, error in
                         if let result = result {
                             personalNotes = result.bestTranscription.formattedString
                         }
                         if result?.isFinal ?? false {
                             stopRecording()
+                        } else if error != nil {
+                            stopRecording()
+                            speechError = "Voice input stopped. You can continue by typing."
                         }
                     }
 
@@ -1183,7 +1206,11 @@ struct AIPlanGeneratorView: View {
                     try audioEngine.start()
                     isRecording = true
                 } catch {
-                    print("Speech recognition failed to start: \(error)")
+                    speechError = "Voice input couldn’t start. Type your preferences instead."
+                    try? AVAudioSession.sharedInstance().setActive(
+                        false,
+                        options: .notifyOthersOnDeactivation
+                    )
                 }
             }
         }

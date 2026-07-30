@@ -37,6 +37,7 @@ struct OnboardingView: View {
     @State private var syncWorkouts = false
     @State private var syncBodyWeight = false
     @State private var countExternal = false
+    @State private var showDailyActivity = false
     @State private var exerciseGoalAchievements = true
     @State private var frequencyGoalAchievements = true
     @State private var stepGoalAchievements = true
@@ -226,7 +227,11 @@ struct OnboardingView: View {
     // MARK: - Step 2: Profile
 
     private var profileStep: some View {
-        stepLayout(continueTitle: "Continue", onContinue: { step = 3 }, skipAction: { step = 3 }) {
+        stepLayout(
+            continueTitle: "Continue",
+            onContinue: { step = 3 },
+            continueDisabled: !AgePolicy.isEligible(Int(ageText))
+        ) {
             stepHeader(
                 icon: "person.fill",
                 title: "About You",
@@ -271,6 +276,13 @@ struct OnboardingView: View {
             VStack(spacing: 16) {
                 onboardingField(label: "Name", placeholder: "Your name", text: $name)
                 onboardingField(label: "Age", placeholder: "e.g. 25", text: $ageText, keyboard: .numberPad)
+                Text("You must be at least \(AgePolicy.minimumAge) to use Shift.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(
+                        ageText.isEmpty || AgePolicy.isEligible(Int(ageText))
+                            ? colors.muted
+                            : colors.danger
+                    )
                 onboardingField(label: "Weight", placeholder: "e.g. 75", text: $weightText, keyboard: .decimalPad, suffix: weightUnit)
             }
         }
@@ -479,6 +491,7 @@ struct OnboardingView: View {
                     toggleRow(icon: "figure.strengthtraining.traditional", label: "Save workouts to Health", isOn: $syncWorkouts)
                     toggleRow(icon: "scalemass", label: "Sync body weight", isOn: $syncBodyWeight)
                     toggleRow(icon: "arrow.triangle.2.circlepath", label: "Count external workouts", isOn: $countExternal)
+                    toggleRow(icon: "figure.walk", label: "Show daily activity", isOn: $showDailyActivity)
                 }
                 .padding(16)
                 .background(colors.surface)
@@ -756,6 +769,7 @@ struct OnboardingView: View {
         continueTitle: String,
         onContinue: @escaping () -> Void,
         skipAction: (() -> Void)? = nil,
+        continueDisabled: Bool = false,
         @ViewBuilder content: () -> some View
     ) -> some View {
         VStack(spacing: 0) {
@@ -773,7 +787,7 @@ struct OnboardingView: View {
                     .overlay(colors.border)
 
                 VStack(spacing: 4) {
-                    continueButton(continueTitle, action: onContinue)
+                    continueButton(continueTitle, disabled: continueDisabled, action: onContinue)
 
                     if let skipAction {
                         skipButton(action: skipAction)
@@ -869,7 +883,11 @@ struct OnboardingView: View {
         }
     }
 
-    private func continueButton(_ title: String, action: @escaping () -> Void) -> some View {
+    private func continueButton(
+        _ title: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button {
             action()
         } label: {
@@ -896,7 +914,8 @@ struct OnboardingView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
-        .disabled(isSaving)
+        .disabled(isSaving || disabled)
+        .opacity(disabled ? 0.55 : 1)
     }
 
     private func skipButton(action: @escaping () -> Void) -> some View {
@@ -956,13 +975,18 @@ struct OnboardingView: View {
         settings.healthKit = HealthKitSettings(
             syncWorkouts: syncWorkouts,
             syncBodyWeight: syncBodyWeight,
-            countExternalWorkouts: countExternal
+            countExternalWorkouts: countExternal,
+            showDailyActivity: showDailyActivity
         )
         settings.lockPhotos = lockPhotos
 
         // Request HealthKit authorization if any toggle enabled
-        if syncWorkouts || syncBodyWeight || countExternal || (stepGoal != nil && stepGoalAchievements) {
-            _ = try? await HealthKitService.requestAuthorization()
+        let stepTracking = stepGoal != nil && stepGoalAchievements
+        if syncWorkouts || syncBodyWeight || countExternal || showDailyActivity || stepTracking {
+            _ = try? await HealthKitService.requestAuthorization(
+                settings: settings.healthKit,
+                stepGoalTracking: stepTracking
+            )
         }
 
         if exerciseGoalAchievements
@@ -984,7 +1008,7 @@ struct OnboardingView: View {
         let parsedWeight = Double(weightText)
         var patch = ProfilePatch(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name.trimmingCharacters(in: .whitespacesAndNewlines),
-            age: parsedAge.flatMap { (1...120).contains($0) ? $0 : nil },
+            age: parsedAge.flatMap { AgePolicy.isEligible($0) ? $0 : nil },
             weight: parsedWeight.flatMap { $0 > 0 ? $0 : nil },
             settings: settings
         )

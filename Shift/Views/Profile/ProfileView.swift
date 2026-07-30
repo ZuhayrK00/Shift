@@ -802,9 +802,15 @@ struct ProfileView: View {
     }
 
     private func loadTodaySteps() async {
-        if HealthKitService.isAvailable {
+        let settings = user?.settings ?? .default
+        let stepTrackingEnabled = settings.dailyStepGoal != nil
+            && settings.notifications.stepGoalAchievements
+        if HealthKitService.isAvailable,
+           settings.healthKit.showDailyActivity || stepTrackingEnabled {
             let activity = await HealthKitService.fetchTodayActivity()
             todaySteps = activity?.steps ?? 0
+        } else {
+            todaySteps = 0
         }
     }
 
@@ -1236,7 +1242,10 @@ struct StepGoalEditorSheet: View {
         var settings = authManager.user?.settings ?? .default
         settings.dailyStepGoal = stepGoal
         if settings.notifications.stepGoalAchievements {
-            _ = try? await HealthKitService.requestAuthorization()
+            _ = try? await HealthKitService.requestAuthorization(
+                settings: settings.healthKit,
+                stepGoalTracking: true
+            )
             _ = await NotificationManager.requestAuthorizationIfNeeded()
         }
         do {

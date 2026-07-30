@@ -10,9 +10,10 @@ struct SignUpView: View {
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @State private var isLoading = false
+    @State private var acceptsTerms = false
 
     private var canSubmit: Bool {
-        !email.isEmpty && password.count >= 6 && !isLoading
+        !email.isEmpty && password.count >= 6 && acceptsTerms && !isLoading
     }
 
     var body: some View {
@@ -55,6 +56,30 @@ struct SignUpView: View {
                         )
                     }
                     .padding(.bottom, 8)
+
+                    Toggle(isOn: $acceptsTerms) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("I confirm I am at least \(AgePolicy.minimumAge).")
+                                .foregroundStyle(colors.text)
+                            HStack(spacing: 4) {
+                                Text("I agree to the")
+                                    .foregroundStyle(colors.muted)
+                                Link(
+                                    "Terms",
+                                    destination: URL(string: "https://shiftfitness.pro/terms-of-service.html")!
+                                )
+                                Text("and")
+                                    .foregroundStyle(colors.muted)
+                                Link(
+                                    "Privacy Policy",
+                                    destination: URL(string: "https://shiftfitness.pro/privacy-policy.html")!
+                                )
+                            }
+                        }
+                        .font(.system(size: 13))
+                    }
+                    .tint(colors.controlTint)
+                    .padding(.vertical, 8)
 
                     // Feedback
                     if let errorMessage {

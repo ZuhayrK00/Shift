@@ -136,6 +136,27 @@ struct SignInView: View {
                     }
                     .padding(.top, 10)
 
+                    VStack(spacing: 4) {
+                        Text("By continuing, you confirm you are at least \(AgePolicy.minimumAge) and agree to the")
+                            .foregroundStyle(colors.muted)
+                        HStack(spacing: 5) {
+                            Link(
+                                "Terms of Service",
+                                destination: URL(string: "https://shiftfitness.pro/terms-of-service.html")!
+                            )
+                            Text("and")
+                                .foregroundStyle(colors.muted)
+                            Link(
+                                "Privacy Policy",
+                                destination: URL(string: "https://shiftfitness.pro/privacy-policy.html")!
+                            )
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 12)
+
                     // Sign up link
                     Button {
                         showSignUp = true

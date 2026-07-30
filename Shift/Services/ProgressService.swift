@@ -69,12 +69,40 @@ struct ProgressService {
 
     static func getPhotos() async throws -> [ProgressPhoto] {
         let userId = try authManager.requireUserId()
-        return try await ProgressPhotoRepository.findAll(userId: userId)
+        let photos = try await ProgressPhotoRepository.findAll(userId: userId)
+        let indexedPaths = photos.enumerated().compactMap { index, photo in
+            extractStoragePath(from: photo.imageUrl).map { (index, $0) }
+        }
+        guard !indexedPaths.isEmpty else { return photos }
+
+        do {
+            let signedURLs = try await supabase.storage
+                .from("progress-photos")
+                .createSignedURLs(
+                    paths: indexedPaths.map(\.1),
+                    expiresIn: 3_600
+                )
+            guard signedURLs.count == indexedPaths.count else {
+                logger.error("Private photo URL response count did not match the request.")
+                return photos
+            }
+            var displayPhotos = photos
+            for ((index, _), signedURL) in zip(indexedPaths, signedURLs) {
+                displayPhotos[index].imageUrl = signedURL.absoluteString
+            }
+            return displayPhotos
+        } catch {
+            logger.error("Failed to create private photo URLs: \(error.localizedDescription)")
+            return photos
+        }
     }
 
     static func getLatestPhoto() async throws -> ProgressPhoto? {
         let userId = try authManager.requireUserId()
-        return try await ProgressPhotoRepository.findLatest(userId: userId)
+        guard let photo = try await ProgressPhotoRepository.findLatest(userId: userId) else {
+            return nil
+        }
+        return await photoWithTemporaryURL(photo)
     }
 
     static func uploadPhoto(imageData: Data, recordedAt: Date = Date()) async throws -> ProgressPhoto {
@@ -88,22 +116,21 @@ struct ProgressService {
             .from("progress-photos")
             .upload(path, data: imageData, options: .init(contentType: "image/jpeg", upsert: true))
 
-        let publicURL = try supabase.storage
-            .from("progress-photos")
-            .getPublicURL(path: path)
-
-        let photo = ProgressPhoto(
-            id: id, userId: userId, imageUrl: publicURL.absoluteString, recordedAt: recordedAt
+        // Persist only the private object path. A short-lived signed URL is
+        // generated when the photo is displayed and is never synced or cached
+        // as part of the user's record.
+        let storedPhoto = ProgressPhoto(
+            id: id, userId: userId, imageUrl: path, recordedAt: recordedAt
         )
         let mutation = LocalMutation(
             table: "progress_photos",
             op: "insert",
-            payload: photoPayload(photo)
+            payload: photoPayload(storedPhoto)
         )
         try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
-            try photo.save(db)
+            try storedPhoto.save(db)
         }
-        return photo
+        return await photoWithTemporaryURL(storedPhoto)
     }
 
     static func deletePhoto(_ photo: ProgressPhoto) async throws {
@@ -154,9 +181,32 @@ struct ProgressService {
         ]
     }
 
-    /// Extracts the storage path from a public URL.
-    private static func extractStoragePath(from urlString: String) -> String? {
-        guard let range = urlString.range(of: "progress-photos/") else { return nil }
-        return String(urlString[range.upperBound...])
+    /// Accepts new path-only records plus legacy public and signed URLs.
+    static func extractStoragePath(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if !trimmed.contains("://") {
+            return trimmed.split(separator: "?", maxSplits: 1).first.map(String.init)
+        }
+
+        guard let range = trimmed.range(of: "progress-photos/") else { return nil }
+        let suffix = String(trimmed[range.upperBound...])
+        return suffix.split(separator: "?", maxSplits: 1).first.map(String.init)
+    }
+
+    private static func photoWithTemporaryURL(_ photo: ProgressPhoto) async -> ProgressPhoto {
+        guard let path = extractStoragePath(from: photo.imageUrl) else { return photo }
+        do {
+            let signedURL = try await supabase.storage
+                .from("progress-photos")
+                .createSignedURL(path: path, expiresIn: 3_600)
+            var displayPhoto = photo
+            displayPhoto.imageUrl = signedURL.absoluteString
+            return displayPhoto
+        } catch {
+            logger.error("Failed to create a private photo URL: \(error.localizedDescription)")
+            return photo
+        }
     }
 }

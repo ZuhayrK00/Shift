@@ -73,7 +73,6 @@ struct ShiftApp: App {
         setAuthManager(authManager)
         NotificationManager.registerCategories()
         UNUserNotificationCenter.current().delegate = notificationDelegate
-        HealthKitService.configureBackgroundDelivery()
         PhoneSessionManager.shared.activate()
         Task { await NotificationManager.removeLegacyGoalNotifications() }
     }

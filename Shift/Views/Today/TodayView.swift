@@ -636,9 +636,17 @@ struct TodayView: View {
         }
 
         // Load HealthKit activity in background
-        if HealthKitService.isAvailable {
-            _ = try? await HealthKitService.requestAuthorization()
+        if HealthKitService.isAvailable,
+           let user = authManager.user,
+           user.settings.healthKit.showDailyActivity {
+            _ = try? await HealthKitService.requestAuthorization(
+                settings: user.settings.healthKit,
+                stepGoalTracking: user.settings.dailyStepGoal != nil
+                    && user.settings.notifications.stepGoalAchievements
+            )
             activityData = await HealthKitService.fetchActivity(for: selectedDate)
+        } else {
+            activityData = nil
         }
         if authManager.user?.settings.healthKit.recoveryGuidance == true {
             recoverySnapshot = await RecoveryGuidanceService.load()
@@ -655,8 +663,11 @@ struct TodayView: View {
         inProgressSessions = (try? await inProgress) ?? []
 
         // Load activity for selected date
-        if HealthKitService.isAvailable {
+        if HealthKitService.isAvailable,
+           authManager.user?.settings.healthKit.showDailyActivity == true {
             activityData = await HealthKitService.fetchActivity(for: selectedDate)
+        } else {
+            activityData = nil
         }
     }
 
@@ -675,8 +686,11 @@ struct TodayView: View {
         completedDates = (try? await completedDatesResult) ?? []
         inProgressDates = (try? await inProgressDatesResult) ?? []
 
-        if HealthKitService.isAvailable {
+        if HealthKitService.isAvailable,
+           authManager.user?.settings.healthKit.showDailyActivity == true {
             activityData = await HealthKitService.fetchActivity(for: selectedDate)
+        } else {
+            activityData = nil
         }
 
         await loadStreak()

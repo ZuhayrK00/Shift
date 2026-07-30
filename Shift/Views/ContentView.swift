@@ -78,7 +78,13 @@ struct ContentView: View {
             }
         }
         .task(id: authManager.user?.id) {
-            guard authManager.user != nil else { return }
+            guard let user = authManager.user else { return }
+            let stepTracking = user.settings.dailyStepGoal != nil
+                && user.settings.notifications.stepGoalAchievements
+            HealthKitService.configureBackgroundDelivery(
+                settings: user.settings.healthKit,
+                stepGoalTracking: stepTracking
+            )
             await GoalNotificationService.prepareForCurrentUser()
         }
         .alert("Something went wrong", isPresented: Binding(

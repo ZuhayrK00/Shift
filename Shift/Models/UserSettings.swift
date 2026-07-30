@@ -19,24 +19,28 @@ struct HealthKitSettings: Codable, Hashable {
     var syncBodyWeight: Bool = false
     var countExternalWorkouts: Bool = false
     var recoveryGuidance: Bool = false
+    var showDailyActivity: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case syncWorkouts = "sync_workouts"
         case syncBodyWeight = "sync_body_weight"
         case countExternalWorkouts = "count_external_workouts"
         case recoveryGuidance = "recovery_guidance"
+        case showDailyActivity = "show_daily_activity"
     }
 
     init(
         syncWorkouts: Bool = false,
         syncBodyWeight: Bool = false,
         countExternalWorkouts: Bool = false,
-        recoveryGuidance: Bool = false
+        recoveryGuidance: Bool = false,
+        showDailyActivity: Bool = false
     ) {
         self.syncWorkouts = syncWorkouts
         self.syncBodyWeight = syncBodyWeight
         self.countExternalWorkouts = countExternalWorkouts
         self.recoveryGuidance = recoveryGuidance
+        self.showDailyActivity = showDailyActivity
     }
 
     init(from decoder: Decoder) throws {
@@ -47,6 +51,8 @@ struct HealthKitSettings: Codable, Hashable {
             (try? container.decode(Bool.self, forKey: .countExternalWorkouts)) ?? false
         recoveryGuidance =
             (try? container.decode(Bool.self, forKey: .recoveryGuidance)) ?? false
+        showDailyActivity =
+            (try? container.decode(Bool.self, forKey: .showDailyActivity)) ?? false
     }
 }
 
