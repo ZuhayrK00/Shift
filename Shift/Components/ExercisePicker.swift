@@ -36,7 +36,7 @@ struct ExercisePicker: View {
         return ["All"] + Array(Set(all)).sorted()
     }
     private var equipment: [String] {
-        let all = allExercises.compactMap { $0.equipment }
+        let all = allExercises.flatMap(\.allEquipment)
         return ["All"] + Array(Set(all)).sorted()
     }
     private var levels: [String] {
@@ -52,7 +52,7 @@ struct ExercisePicker: View {
                 || ex.category  == muscleFilter
             // Equipment
             let equipOk = equipFilter == "All"
-                || ex.equipment == equipFilter
+                || ex.allEquipment.contains(equipFilter)
             // Level
             let levelOk = levelFilter == "All"
                 || ex.level == levelFilter

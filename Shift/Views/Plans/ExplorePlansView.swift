@@ -327,10 +327,8 @@ struct TemplateDetailView: View {
             }
         }
 
-        // Load all exercises and match using keyword scoring since
-        // exercise names/slugs may differ between template definitions
-        // and the current ExerciseDB-imported catalogue.
-        let allExercises = (try? await ExerciseRepository.findAll()) ?? []
+        // History-only entries must never be added to new programs.
+        let allExercises = (try? await ExerciseService.listExercises()) ?? []
 
         // Noise words to skip when scoring keyword matches
         let noise: Set<String> = ["with", "the", "a", "an", "on", "of", "full", "range", "motion"]
@@ -340,6 +338,7 @@ struct TemplateDetailView: View {
 
         for day in template.days {
             for templateEx in day.exercises {
+                if map[templateEx.slug] != nil { continue }
                 // 1. Try exact slug match
                 if let match = allExercises.first(where: { $0.slug == templateEx.slug && !usedIds.contains($0.id) }) {
                     map[templateEx.slug] = match
@@ -357,6 +356,9 @@ struct TemplateDetailView: View {
                     continue
                 }
 
+                // RepDB templates have explicit slugs. Never silently substitute
+                // a different movement because a common word happens to match.
+                if allExercises.contains(where: { $0.catalogueSource == "repdb" }) { continue }
                 // 3. Keyword scoring — split slug into keywords, score each
                 //    exercise by how many keywords its name contains.
                 //    Handles plural forms (e.g. "triceps" matches "tricep")
@@ -404,6 +406,10 @@ struct TemplateDetailView: View {
 
     private func addAllDays() async {
         addError = nil
+        guard template.days.flatMap(\.exercises).allSatisfy({ exerciseMap[$0.slug] != nil }) else {
+            addError = "Some exercises are unavailable. Refresh the exercise library before adding this program."
+            return
+        }
         let missingDays = template.days.filter { !addedDays.contains($0.id) }
         let missingCount = missingDays.count
         guard missingCount > 0 else { return }
@@ -455,6 +461,10 @@ struct TemplateDetailView: View {
     }
 
     private func addDayToPlan(_ day: PlanTemplateDay) async -> Bool {
+        guard day.exercises.allSatisfy({ exerciseMap[$0.slug] != nil }) else {
+            addError = "Refresh your exercise library before adding this plan."
+            return false
+        }
         var createdPlanId: String?
         do {
             let plan = try await PlanService.createPlan(name: day.name)

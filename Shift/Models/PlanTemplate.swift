@@ -36,22 +36,43 @@ struct PlanTemplateDay: Identifiable {
 }
 
 struct PlanTemplateExercise {
-    let slug: String       // used for keyword matching against Exercise.name
+    let slug: String       // canonical catalogue ID used for exact matching
     let sets: Int
     let repsMin: Int
     let repsMax: Int?
     let restSeconds: Int
     let groupTag: String?  // exercises with same non-nil groupTag form a superset
+
+    init(slug: String, sets: Int, repsMin: Int, repsMax: Int?, restSeconds: Int, groupTag: String?) {
+        self.slug = Self.repdbSlugs[slug] ?? slug
+        self.sets = sets
+        self.repsMin = repsMin
+        self.repsMax = repsMax
+        self.restSeconds = restSeconds
+        self.groupTag = groupTag
+    }
+    // Explicit mappings for curated programs; never guess an unrelated move.
+    static let repdbSlugs = [
+        "barbell-bench-press": "bench-press", "barbell-bent-over-row": "barbell-row",
+        "barbell-deadlift": "deadlift", "barbell-front-squat": "front-squat",
+        "barbell-squat": "squat", "barbell-romanian-deadlift": "romanian-deadlift",
+        "barbell-upright-row": "upright-row",
+        "barbell-lying-triceps-extension": "ez-bar-lying-tricep-extension",
+        "cable-rear-delt-fly": "face-pull", "cable-seated-row": "seated-cable-row",
+        "chest-dip": "dips", "dumbbell-curl": "bicep-curl",
+        "dumbbell-hammer-curl": "hammer-curl", "dumbbell-incline-bench-press": "incline-db-press",
+        "dumbbell-lateral-raise": "lateral-raise", "dumbbell-rear-lunge": "reverse-lunge",
+        "dumbbell-sumo-squat": "db-sumo-squat", "lying-leg-curl": "leg-curl",
+        "triceps-pushdown": "tricep-pushdown"
+    ]
 }
 
 // MARK: - Plan Template Library
 //
-// All exercise slugs below are chosen to keyword-match the ExerciseDB
-// exercise catalogue that populates the local database. Each slug is
-// split on hyphens into keywords and scored against every exercise name
-// to find the best match. When an exercise exists under a slightly
-// different name (e.g. "dumbbell incline bench press" instead of
-// "incline dumbbell press"), the keyword overlap still finds it.
+// Exercise slugs are explicitly resolved to the RepDB catalogue above.
+// Legacy template labels below are retained for compatibility, not API data.
+// Each legacy label is resolved to an explicit RepDB slug. Missing entries
+// block adding a program instead of creating incomplete workouts.
 
 struct PlanTemplateLibrary {
 

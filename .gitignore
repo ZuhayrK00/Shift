@@ -36,6 +36,7 @@ Pods/
 # Misc
 *.orig
 .env
+migration-preparation/
 
 # Supabase CLI machine-local link and connection state
 supabase/.temp/

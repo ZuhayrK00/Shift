@@ -14,6 +14,7 @@ struct PlanEditorView: View {
     @State private var showExercisePicker = false
     @State private var showDeleteAlert = false
     @State private var configuring: PlanExercise?
+    @State private var replacing: PlanExercise?
     @State private var showSavedToast = false
     @State private var errorMessage: String?
     @State private var showAIEdit = false
@@ -91,6 +92,8 @@ struct PlanEditorView: View {
                                 configuring = pe
                             } onDelete: {
                                 Task { await removeExercise(pe) }
+                            } onReplace: {
+                                replacing = pe
                             }
                             .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                             .listRowBackground(Color.clear)
@@ -144,6 +147,23 @@ struct PlanEditorView: View {
         .sheet(item: $configuring) { pe in
             PlanExerciseConfigSheet(planExercise: pe, exercise: exerciseMap[pe.exerciseId]) { updated in
                 Task { await updateExercise(updated) }
+            }
+        }
+        .sheet(item: $replacing) { pe in
+            ExercisePicker(
+                isPresented: Binding(get: { replacing != nil }, set: { if !$0 { replacing = nil } }),
+                excludeIds: Set(exercises.map(\.exerciseId)),
+                selectionLimit: 1,
+                confirmTitle: "Replace"
+            ) { selected, _ in
+                guard let replacement = selected.first else { return }
+                Task {
+                    do {
+                        try await PlanService.replaceExercise(pe.id, with: replacement.id)
+                        await loadExercises()
+                        PhoneSessionManager.shared.sendContextToWatch()
+                    } catch { errorMessage = error.localizedDescription }
+                }
             }
         }
         #if canImport(FoundationModels)
@@ -324,6 +344,7 @@ private struct PlanExerciseRow: View {
     var position: Int = 0
     let onTap: () -> Void
     let onDelete: () -> Void
+    let onReplace: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -343,6 +364,11 @@ private struct PlanExerciseRow: View {
                 Text(planExercise.subtitle())
                     .font(.system(size: 12))
                     .foregroundStyle(colors.muted)
+                if exercise?.isArchived == true {
+                    Button("Archived exercise · choose replacement", action: onReplace)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(colors.accent).buttonStyle(.plain)
+                }
             }
 
             Spacer()

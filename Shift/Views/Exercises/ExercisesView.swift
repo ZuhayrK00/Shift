@@ -18,10 +18,10 @@ struct ExercisesView: View {
     @State private var showLevelFilter = false
     @State private var showCreateSheet = false
 
-    private let levels = ["beginner", "intermediate", "expert"]
+    private let levels = ["beginner", "intermediate", "advanced"]
 
     private var availableEquipment: [String] {
-        let all = exercises.compactMap { $0.equipment }.filter { !$0.isEmpty }
+        let all = exercises.flatMap(\.allEquipment).filter { !$0.isEmpty }
         return Array(Set(all)).sorted()
     }
 
@@ -36,8 +36,9 @@ struct ExercisesView: View {
                 || ex.name.localizedCaseInsensitiveContains(trimmedSearch)
             let matchesMuscle = activeMuscleId == nil
                 || ex.primaryMuscleId == activeMuscleId
+                || ex.secondaryMuscleIds.contains(activeMuscleId ?? "")
             let matchesEquipment = activeEquipment == nil
-                || ex.equipment == activeEquipment
+                || ex.allEquipment.contains(activeEquipment ?? "")
             let matchesLevel = activeLevel == nil
                 || ex.level == activeLevel
             let matchesMine = !showMyExercises || !ex.isBuiltIn
@@ -102,13 +103,13 @@ struct ExercisesView: View {
                         ) { showMuscleFilter = true }
 
                         FilterChip(
-                            label: activeEquipment ?? "Equipment",
+                            label: activeEquipment?.capitalized ?? "Equipment",
                             icon: "dumbbell.fill",
                             isActive: activeEquipment != nil
                         ) { showEquipmentFilter = true }
 
                         FilterChip(
-                            label: activeLevel.map { $0.capitalized } ?? "Level",
+                            label: activeLevel.map { $0.capitalized } ?? "Difficulty",
                             icon: "chart.bar.fill",
                             isActive: activeLevel != nil
                         ) { showLevelFilter = true }
@@ -144,7 +145,7 @@ struct ExercisesView: View {
                     Spacer()
                     ProgressView().tint(colors.accent)
                     Spacer()
-                } else if filtered.isEmpty {
+                } else if filtered.isEmpty && recentExercises.isEmpty {
                     Spacer()
                     VStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
@@ -153,6 +154,17 @@ struct ExercisesView: View {
                         Text("No exercises found")
                             .font(.system(size: 15))
                             .foregroundStyle(colors.muted)
+                        if exercises.isEmpty && !hasActiveFilters {
+                            Text("Connect to the internet to refresh your exercise library.")
+                                .font(.system(size: 13)).foregroundStyle(colors.muted)
+                                .multilineTextAlignment(.center)
+                            Button("Refresh library") {
+                                Task {
+                                    do { _ = try await SyncService.pullReferenceData(); await loadData() }
+                                    catch { AppErrorCenter.shared.present(error) }
+                                }
+                            }.buttonStyle(.bordered)
+                        }
                     }
                     Spacer()
                 } else {
@@ -337,6 +349,10 @@ struct ExerciseRow: View {
                 }
                 Text(muscleName.uppercased())
                     .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(colors.muted)
+                    .lineLimit(1)
+                Text([exercise.equipmentLabel, exercise.difficultyLabel].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 11))
                     .foregroundStyle(colors.muted)
                     .lineLimit(1)
             }

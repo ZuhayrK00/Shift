@@ -47,10 +47,9 @@ struct PlanRepository {
 
             // Fetch details for every plan in one query.
             let detailSql = """
-                SELECT pe.plan_id, mg.name AS muscle_group, e.image_url
+                SELECT pe.plan_id, e.*
                 FROM plan_exercises pe
                 JOIN exercises e ON e.id = pe.exercise_id
-                JOIN muscle_groups mg ON mg.id = e.primary_muscle_id
                 WHERE pe.plan_id IN (\(placeholders))
                 ORDER BY pe.plan_id, pe.position ASC
                 """
@@ -68,6 +67,10 @@ struct PlanRepository {
                 $0["plan_id"] as String
             }
             let exercisesByPlan = Dictionary(grouping: allPlanExercises, by: \.planId)
+            let knownMuscles = try MuscleGroup.fetchAll(db)
+            let broadMuscles = knownMuscles.filter {
+                !["lats", "middle-back", "lower-back", "quads", "core"].contains($0.slug)
+            }
             let countByPlan = Dictionary(uniqueKeysWithValues: planRows.map {
                 ($0["id"] as String, $0["exercise_count"] as Int? ?? 0)
             })
@@ -80,8 +83,11 @@ struct PlanRepository {
                 var imageUrls: [String] = []
 
                 for detailRow in detailsByPlan[plan.id] ?? [] {
-                    if let group: String = detailRow["muscle_group"], seenGroups.insert(group).inserted {
-                        muscleGroups.append(group)
+                    if let exercise = try? Exercise(row: detailRow) {
+                        let groups = exercise.primaryMuscles?.isEmpty == false ? broadMuscles : knownMuscles
+                        for group in groups where exercise.primarilyTargets(group) && seenGroups.insert(group.name).inserted {
+                            muscleGroups.append(group.name)
+                        }
                     }
                     if let url: String = detailRow["image_url"], imageUrls.count < 4 {
                         imageUrls.append(url)

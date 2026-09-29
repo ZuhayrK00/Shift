@@ -683,7 +683,7 @@ struct OnboardingView: View {
 
                         ForEach(selectedExercises, id: \.id) { exercise in
                             HStack(spacing: 12) {
-                                AnimatedExerciseImage(imageUrl: exercise.imageUrl, exerciseName: exercise.name)
+                                AnimatedExerciseImage(imageUrl: exercise.imageUrl, exerciseName: exercise.name, secondaryImageUrl: exercise.secondaryImageUrl)
                                     .frame(width: 40, height: 40)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
 

@@ -19,7 +19,7 @@ enum ExerciseSubstitutionService {
         limit: Int = 12
     ) -> [ExerciseSubstitution] {
         catalogue
-            .filter { $0.id != exercise.id && !excludedIDs.contains($0.id) }
+            .filter { $0.isSelectable && $0.id != exercise.id && !excludedIDs.contains($0.id) }
             .map { candidate in
                 let match = similarity(candidate, to: exercise)
                 return ExerciseSubstitution(
@@ -95,7 +95,8 @@ enum ExerciseSubstitutionService {
     private static func isCommonGymEquipment(_ value: String?) -> Bool {
         let common = [
             "barbell", "dumbbell", "cable", "machine", "smith machine",
-            "ez curl bar", "kettlebell"
+            "ez curl bar", "ez bar", "kettlebell", "leg press", "leg curl",
+            "leg extension", "hack squat", "pec deck"
         ]
         let equipment = normalized(value)
         return common.contains { equipment.contains($0) }

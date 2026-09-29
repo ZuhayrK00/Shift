@@ -220,6 +220,10 @@ struct SettingsView: View {
 
                 // Support & Legal
                 Section {
+                    Link(destination: URL(string: "https://repdb.co")!) {
+                        settingsRow(icon: "figure.strengthtraining.traditional", iconColor: colors.muted,
+                                    title: "Exercise data by RepDB", subtitle: "Illustrations and exercise guidance")
+                    }
                     Button {
                         if let url = URL(string: "mailto:support@shiftfitness.pro") {
                             UIApplication.shared.open(url)

@@ -32,7 +32,7 @@ struct CreateExerciseView: View {
         "Barbell", "Dumbbell", "Cable", "Machine",
         "Bodyweight", "Kettlebell", "Bands", "Other"
     ]
-    private let levelOptions = ["beginner", "intermediate", "expert"]
+    private let levelOptions = ["beginner", "intermediate", "advanced"]
     private let categoryOptions = ["Strength", "Stretching", "Cardio", "Plyometrics"]
 
     private var canSave: Bool {

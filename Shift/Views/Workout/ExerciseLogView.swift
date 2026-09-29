@@ -264,10 +264,7 @@ struct ExerciseLogView: View {
     }
 
     private var supportsPlateLoading: Bool {
-        guard let equipment = exercise?.equipment?.lowercased() else { return false }
-        return equipment.contains("barbell")
-            || equipment.contains("smith")
-            || equipment.contains("olympic")
+        exercise?.supportsPlateLoading == true
     }
 
     private func seedStepperValues(from allSets: [SessionSet]) {

@@ -33,7 +33,8 @@ enum GymExercisePreferenceService {
             value,
             [
                 "barbell", "dumbbell", "cable", "machine", "smith",
-                "e-z curl", "ez curl", "trap bar", "landmine"
+                "e-z curl", "ez curl", "ez bar", "trap bar", "landmine",
+                "leg press", "leg curl", "leg extension", "hack squat", "pec deck"
             ]
         ) {
             return 0

@@ -284,7 +284,25 @@ struct SyncService {
             logger.error("Failed to decode exercises: \(error.localizedDescription)")
             throw error
         }
-        try await ExerciseRepository.replaceBuiltIn(exercises)
+        let redirects: [ExerciseRepository.CatalogueRedirect]
+        if exercises.contains(where: { $0.catalogueSource == "repdb" }) {
+            redirects = try await fetchAllRows(decoder: decoder) { from, to in
+                try await supabase.from("exercise_catalogue_redirects").select()
+                    .order("old_id").range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
+                    .execute().data
+            }
+        } else { redirects = [] }
+        try await ExerciseRepository.replaceBuiltIn(exercises, redirects: redirects)
+        if exercises.contains(where: { $0.catalogueSource == "repdb" && $0.isSelectable }) {
+            UserDefaults.standard.set("repdb-v1", forKey: "shift:reference_catalogue_version")
+        }
+        if exercises.contains(where: { $0.catalogueSource == "repdb" }),
+           !UserDefaults.standard.bool(forKey: "repdbImageCachePurged") {
+            ImageCache.shared.removeAll()
+            URLCache.shared.removeAllCachedResponses()
+            UserDefaults.standard.set(true, forKey: "repdbImageCachePurged")
+        }
 
         // Cache profile — but only if there are no pending profile mutations
         if let userId = authManager.currentUserId {
@@ -300,6 +318,7 @@ struct SyncService {
             forKey: lastSyncedKey
         )
         NotificationCenter.default.post(name: .shiftReferenceDataDidSync, object: nil)
+        PhoneSessionManager.shared.sendContextToWatch()
 
         return (muscleGroups: muscleGroups.count, exercises: exercises.count)
     }
@@ -617,6 +636,7 @@ struct SyncService {
             forKey: userLastSyncedKey(userId)
         )
         NotificationCenter.default.post(name: .shiftUserDataDidSync, object: nil)
+        PhoneSessionManager.shared.sendContextToWatch()
     }
 
     // MARK: - Last synced
@@ -628,6 +648,7 @@ struct SyncService {
     }
 
     static func shouldPullReferenceData(maxAge: TimeInterval = 6 * 3_600) -> Bool {
+        guard UserDefaults.standard.string(forKey: "shift:reference_catalogue_version") == "repdb-v1" else { return true }
         guard let lastSync = getLastSyncedAt() else { return true }
         return Date().timeIntervalSince(lastSync) >= maxAge
     }

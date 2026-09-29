@@ -45,6 +45,50 @@ struct Exercise: Identifiable, Hashable, Codable {
     var instructionsSteps: [String]?
     var bodyPart: String?
     var description: String?
+    var catalogueSource: String? = nil
+    var sourceId: String? = nil
+    var primaryMuscles: [String]? = nil
+    var secondaryMuscles: [String]? = nil
+    var formTips: [String]? = nil
+    var secondaryEquipment: [String]? = nil
+    var isArchived: Bool? = nil
+
+    var isSelectable: Bool { isArchived != true }
+    var difficultyLabel: String? {
+        level.map { $0 == "expert" ? "Advanced" : $0.capitalized }
+    }
+    var equipmentLabel: String { (equipment ?? "bodyweight").replacingOccurrences(of: "_", with: " ").capitalized }
+    var allEquipment: [String] { [equipment ?? "bodyweight"] + (secondaryEquipment ?? []) }
+    var supportsPlateLoading: Bool {
+        guard isSelectable, let equipment else { return false }
+        let value = equipment.lowercased()
+        return ["barbell", "smith", "olympic", "ez bar", "ez curl", "e-z curl", "trap bar"].contains(where: value.contains)
+    }
+    static func muscleLabel(_ slug: String) -> String {
+        slug.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    /// RepDB may have several equally primary targets; array order is not a
+    /// ranking. Match all of them when building a focused program.
+    func primarilyTargets(_ group: MuscleGroup) -> Bool {
+        guard let primaryMuscles, !primaryMuscles.isEmpty else { return primaryMuscleId == group.id }
+        let targets: [String: Set<String>] = [
+            "chest": ["pectoralis_major", "serratus_anterior"],
+            "shoulders": ["anterior_deltoid", "lateral_deltoid", "posterior_deltoid", "supraspinatus"],
+            "back": ["latissimus_dorsi", "rhomboids", "erector_spinae", "quadratus_lumborum"],
+            "lats": ["latissimus_dorsi"], "middle-back": ["rhomboids"],
+            "lower-back": ["erector_spinae", "quadratus_lumborum"], "traps": ["trapezius"],
+            "biceps": ["biceps_brachii", "brachialis"], "triceps": ["triceps_brachii"],
+            "forearms": ["forearms", "forearm_flexors", "forearm_extensors", "brachioradialis"],
+            "quadriceps": ["quadriceps"], "quads": ["quadriceps"], "hamstrings": ["hamstrings"],
+            "glutes": ["gluteus_maximus", "gluteus_medius"], "calves": ["gastrocnemius", "soleus"],
+            "abdominals": ["rectus_abdominis", "transverse_abdominis", "obliques"],
+            "core": ["rectus_abdominis", "transverse_abdominis", "obliques", "hip_flexors"],
+            "adductors": ["adductors"], "abductors": ["abductors", "gluteus_medius"]
+        ]
+        guard let matching = targets[group.slug] else { return primaryMuscleId == group.id }
+        return !matching.isDisjoint(with: primaryMuscles)
+    }
 
     // "exercise: equipment" or just "exercise" when equipment is nil
     var displayName: String { equipment.map { "\(name): \($0)" } ?? name }
@@ -61,6 +105,13 @@ struct Exercise: Identifiable, Hashable, Codable {
         case secondaryImageUrl = "secondary_image_url"
         case instructionsSteps = "instructions_steps"
         case bodyPart = "body_part"
+        case catalogueSource = "catalogue_source"
+        case sourceId = "source_id"
+        case primaryMuscles = "primary_muscles"
+        case secondaryMuscles = "secondary_muscles"
+        case formTips = "form_tips"
+        case secondaryEquipment = "secondary_equipment"
+        case isArchived = "is_archived"
     }
 }
 
@@ -87,6 +138,13 @@ extension Exercise: FetchableRecord {
         instructionsSteps = decodeJSONStringArrayOptional(row["instructions_steps"])
         bodyPart = row["body_part"]
         description = row["description"]
+        catalogueSource = row["catalogue_source"]
+        sourceId = row["source_id"]
+        primaryMuscles = decodeJSONStringArrayOptional(row["primary_muscles"])
+        secondaryMuscles = decodeJSONStringArrayOptional(row["secondary_muscles"])
+        formTips = decodeJSONStringArrayOptional(row["form_tips"])
+        secondaryEquipment = decodeJSONStringArrayOptional(row["secondary_equipment"])
+        isArchived = (row["is_archived"] as Int?) == 1
     }
 }
 
@@ -112,6 +170,13 @@ extension Exercise: PersistableRecord {
         container["instructions_steps"] = encodeJSONStringArrayOptional(instructionsSteps)
         container["body_part"] = bodyPart
         container["description"] = description
+        container["catalogue_source"] = catalogueSource
+        container["source_id"] = sourceId
+        container["primary_muscles"] = encodeJSONStringArrayOptional(primaryMuscles)
+        container["secondary_muscles"] = encodeJSONStringArrayOptional(secondaryMuscles)
+        container["form_tips"] = encodeJSONStringArrayOptional(formTips)
+        container["secondary_equipment"] = encodeJSONStringArrayOptional(secondaryEquipment)
+        container["is_archived"] = isArchived == true ? 1 : 0
     }
 }
 

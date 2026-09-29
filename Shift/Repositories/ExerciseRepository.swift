@@ -2,8 +2,21 @@ import Foundation
 @preconcurrency import GRDB
 
 struct ExerciseRepository {
+    struct CatalogueRedirect: Decodable, Sendable {
+        let oldId: String
+        let newId: String
+        enum CodingKeys: String, CodingKey { case oldId = "old_id", newId = "new_id" }
+    }
 
     // MARK: - Reads
+
+    static func resolveId(_ id: String) async throws -> String {
+        try await AppDatabase.shared.dbPool.read { db in try resolveId(id, in: db) }
+    }
+
+    static func resolveId(_ id: String, in db: Database) throws -> String {
+        try String.fetchOne(db, sql: "SELECT new_id FROM exercise_catalogue_redirects WHERE old_id = ?", arguments: [id]) ?? id
+    }
 
     static func findAll() async throws -> [Exercise] {
         let userId = authManager.currentUserId
@@ -94,21 +107,49 @@ struct ExerciseRepository {
 
     /// Replace the full built-in catalogue with the remote snapshot.
     /// Exercises created by users (is_built_in = 0) are untouched.
-    static func replaceBuiltIn(_ remote: [Exercise]) async throws {
+    static func replaceBuiltIn(_ remote: [Exercise], redirects: [CatalogueRedirect] = []) async throws {
         guard !remote.isEmpty else { return }
         try await AppDatabase.shared.dbPool.write { db in
-            // Remove stale built-ins no longer in the remote list
-            let remoteIds = remote.map { $0.id }
-            let placeholders = remoteIds.map { _ in "?" }.joined(separator: ", ")
-            try db.execute(
-                sql: "DELETE FROM exercises WHERE is_built_in = 1 AND id NOT IN (\(placeholders))",
-                arguments: StatementArguments(remoteIds)
-            )
-            // Upsert every remote exercise (PersistenceConflictPolicy is .replace)
-            for exercise in remote {
-                try exercise.save(db)
-            }
+            try applyBuiltIn(remote, redirects: redirects, in: db)
         }
+    }
+
+    /// Called inside a single transaction, including the offline queue rewrite.
+    static func applyBuiltIn(_ remote: [Exercise], redirects: [CatalogueRedirect], in db: Database) throws {
+        guard !remote.isEmpty else { return }
+        for redirect in redirects {
+            try db.execute(sql: """
+                INSERT INTO exercise_catalogue_redirects(old_id,new_id) VALUES(?,?)
+                ON CONFLICT(old_id) DO UPDATE SET new_id=excluded.new_id
+                WHERE new_id <> excluded.new_id
+                """, arguments: [redirect.oldId, redirect.newId])
+        }
+        // After the first migration, none of the old IDs remain. Avoid thousands
+        // of pointless UPDATEs on each routine refresh, particularly large histories.
+        let referenced = Set(try String.fetchAll(db, sql: """
+            SELECT exercise_id FROM plan_exercises UNION SELECT exercise_id FROM session_sets
+            UNION SELECT exercise_id FROM exercise_goals UNION
+            SELECT CASE WHEN json_valid(payload) THEN json_extract(payload, '$.exercise_id') END
+            FROM mutation_queue WHERE table_name IN ('plan_exercises','session_sets','exercise_goals')
+              AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.exercise_id') END IS NOT NULL
+            """).map { $0.lowercased() })
+        for redirect in redirects where referenced.contains(redirect.oldId.lowercased()) {
+            for table in ["plan_exercises", "session_sets", "exercise_goals"] {
+                try db.execute(sql: "UPDATE \(table) SET exercise_id = ? WHERE exercise_id = ? COLLATE NOCASE",
+                               arguments: [redirect.newId, redirect.oldId])
+            }
+            try db.execute(
+                sql: """
+                UPDATE mutation_queue SET payload = json_set(payload, '$.exercise_id', ?)
+                WHERE table_name IN ('plan_exercises', 'session_sets', 'exercise_goals')
+                  AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.exercise_id') END = ? COLLATE NOCASE
+                """, arguments: [redirect.newId, redirect.oldId])
+        }
+        let remoteIds = remote.map { $0.id }
+        let placeholders = remoteIds.map { _ in "?" }.joined(separator: ", ")
+        try db.execute(sql: "DELETE FROM exercises WHERE is_built_in = 1 AND id NOT IN (\(placeholders))",
+                       arguments: StatementArguments(remoteIds))
+        for exercise in remote { try exercise.save(db) }
     }
 
     static func upsert(_ exercise: Exercise) async throws {

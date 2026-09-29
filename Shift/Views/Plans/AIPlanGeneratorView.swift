@@ -208,10 +208,10 @@ struct AIPlanGeneratorView: View {
         .task {
             muscleGroups = (try? await MuscleGroupRepository.findAll()) ?? []
             selectedMuscleGroupIds = Set(muscleGroups.map(\.id))
-            allExercises = (try? await ExerciseRepository.findAll()) ?? []
+            allExercises = (try? await ExerciseService.listExercises()) ?? []
 
             // Equipment types
-            allEquipmentTypes = Array(Set(allExercises.compactMap(\.equipment))).sorted()
+            allEquipmentTypes = Array(Set(allExercises.flatMap(\.allEquipment))).sorted()
             selectedEquipment = Set(allEquipmentTypes)
 
             // Recently used exercises for history-aware selection
@@ -1254,7 +1254,10 @@ struct AIPlanGeneratorView: View {
         } else {
             effectiveMuscleIds = selectedMuscleGroupIds
         }
-        var filtered = allExercises.filter { effectiveMuscleIds.contains($0.primaryMuscleId) }
+        let focusGroups = muscleGroups.filter { effectiveMuscleIds.contains($0.id) }
+        var filtered = allExercises.filter { exercise in
+            focusGroups.contains { exercise.primarilyTargets($0) }
+        }
 
         // 2. Filter by equipment — voice overrides UI if specific equipment mentioned
         let effectiveEquipment: Set<String>
@@ -1268,8 +1271,7 @@ struct AIPlanGeneratorView: View {
 
         if effectiveEquipment.count < allEquipmentTypes.count {
             filtered = filtered.filter { exercise in
-                guard let equip = exercise.equipment?.lowercased() else { return false }
-                return effectiveEquipment.contains(equip)
+                return exercise.allEquipment.allSatisfy { effectiveEquipment.contains($0.lowercased()) }
             }
         }
 
@@ -1278,7 +1280,7 @@ struct AIPlanGeneratorView: View {
             switch experienceLevel {
             case .beginner: return ["beginner"]
             case .intermediate: return ["beginner", "intermediate"]
-            case .advanced: return ["beginner", "intermediate", "expert"]
+            case .advanced: return ["beginner", "intermediate", "advanced", "expert"]
             }
         }()
         filtered = filtered.filter { exercise in
@@ -1490,9 +1492,13 @@ struct AIPlanGeneratorView: View {
             "barbell": ["barbell", "barbells", "bar bell", "bar bells"],
             "cable": ["cable", "cables"],
             "machine": ["machine", "machines"],
+            "bodyweight": ["bodyweight", "body weight", "no equipment", "just my body"],
             "body only": ["bodyweight", "body weight", "no equipment", "just my body"],
             "kettlebell": ["kettlebell", "kettlebells", "kettle bell"],
             "bands": ["bands", "band", "resistance band"],
+            "resistance band": ["bands", "band", "resistance band"],
+            "loop band": ["bands", "band", "loop band"],
+            "ez bar": ["ez bar", "ez curl", "curl bar"],
             "e-z curl bar": ["ez bar", "ez curl", "curl bar"],
             "smith machine": ["smith machine"],
         ]
@@ -1500,6 +1506,11 @@ struct AIPlanGeneratorView: View {
         var matched: [String] = []
         for equip in available {
             let equipLower = equip.lowercased()
+            if lower.range(of: "\\bmachines\\b|\\bmachine only\\b", options: .regularExpression) != nil,
+               (equipLower.contains("machine") || ["leg press", "leg curl", "leg extension", "hack squat", "pec deck"].contains(equipLower)) {
+                matched.append(equip)
+                continue
+            }
             if lower.contains(equipLower) {
                 matched.append(equip)
                 continue

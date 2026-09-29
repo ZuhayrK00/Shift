@@ -311,7 +311,7 @@ final class PhoneSessionManager: NSObject {
             guard let ids = try? await ExerciseService.getRecentlyUsedExerciseIds(),
                   let exercises = try? await ExerciseService.getByIds(Array(ids.prefix(20))) else { return [] }
             return ids.prefix(20).compactMap { id in
-                guard let ex = exercises[id] else { return nil }
+                guard let ex = exercises[id], ex.isSelectable else { return nil }
                 return WatchExercise(id: ex.id, name: ex.name, equipment: ex.equipment)
             }
         }()
@@ -519,9 +519,10 @@ final class PhoneSessionManager: NSObject {
                 do {
                     let weight = message["weight"] as? Double
                     let setType = message["setType"] as? String
+                    let resolvedExerciseId = try await ExerciseRepository.resolveId(exerciseId)
                     let newSet = try await WorkoutService.addSet(
                         sessionId: sessionId,
-                        exerciseId: exerciseId,
+                        exerciseId: resolvedExerciseId,
                         reps: reps,
                         weight: weight,
                         setType: SetType(rawValue: setType ?? "normal")
@@ -540,7 +541,8 @@ final class PhoneSessionManager: NSObject {
                     return
                 }
                 do {
-                    try await WorkoutService.addExercisesToSession(sessionId, exerciseIds: [exerciseId])
+                    let resolvedExerciseId = try await ExerciseRepository.resolveId(exerciseId)
+                    try await WorkoutService.addExercisesToSession(sessionId, exerciseIds: [resolvedExerciseId])
                     respond(["success": true], succeeded: true)
                     sendWorkoutUpdateToWatch()
                     NotificationCenter.default.post(name: .watchDidUpdateWorkout, object: nil)

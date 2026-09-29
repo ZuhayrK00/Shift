@@ -8,7 +8,7 @@ import Foundation
 struct ExerciseService {
 
     static func listExercises() async throws -> [Exercise] {
-        try await ExerciseRepository.findAll()
+        try await ExerciseRepository.findAll().filter(\.isSelectable)
     }
 
     static func getById(_ id: String) async throws -> Exercise? {

@@ -103,7 +103,8 @@ enum NaturalLanguagePlanEditorService {
         )
         let commonEquipment = [
             "barbell", "dumbbell", "cable", "machine", "smith",
-            "kettlebell", "ez curl"
+            "kettlebell", "ez curl", "ez bar", "leg press", "leg curl",
+            "leg extension", "hack squat", "pec deck"
         ]
 
         return catalogue

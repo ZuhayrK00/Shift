@@ -374,6 +374,36 @@ final class AppDatabase {
             """)
         }
 
+        migrator.registerMigration("repdbCatalogueMetadata") { db in
+            try db.alter(table: "exercises") { table in
+                table.add(column: "catalogue_source", .text)
+                table.add(column: "source_id", .text)
+                table.add(column: "primary_muscles", .text)
+                table.add(column: "secondary_muscles", .text)
+                table.add(column: "form_tips", .text)
+                table.add(column: "secondary_equipment", .text)
+                table.add(column: "is_archived", .integer).notNull().defaults(to: 0)
+            }
+            // Do not serve retired third-party instructional content while offline.
+            // IDs and user-entered workout records remain until the atomic sync remap.
+            try db.execute(sql: """
+                UPDATE exercises SET image_url = NULL, secondary_image_url = NULL,
+                  instructions = NULL, instructions_steps = NULL, description = NULL,
+                  is_archived = 1, catalogue_source = 'history'
+                WHERE is_built_in = 1
+                """)
+        }
+        migrator.registerMigration("repdbOfflineCompatibility") { db in
+            try db.execute(sql: """
+                CREATE TABLE exercise_catalogue_redirects (
+                    old_id TEXT PRIMARY KEY COLLATE NOCASE NOT NULL,
+                    new_id TEXT NOT NULL
+                )
+                """)
+            for table in ["plan_exercises", "session_sets", "exercise_goals"] {
+                try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_\(table)_exercise_catalogue ON \(table)(exercise_id COLLATE NOCASE)")
+            }
+        }
         return migrator
     }
 }

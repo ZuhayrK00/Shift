@@ -118,7 +118,8 @@ struct ExerciseDetailView: View {
     private var heroImage: some View {
         AnimatedExerciseImage(
             imageUrl: exercise.imageUrl,
-            exerciseName: exercise.name
+            exerciseName: exercise.name,
+            secondaryImageUrl: exercise.secondaryImageUrl
         )
     }
 
@@ -130,12 +131,39 @@ struct ExerciseDetailView: View {
                 // Hero image
                 heroImage
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(4 / 3, contentMode: .fit)
-                    .background(Color.white)
+                    .aspectRatio(1, contentMode: .fit)
+                    .background(colors.surface2)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 // Metadata chips
                 metadataChips
+
+                if exercise.isArchived == true {
+                    infoCard(title: "Archived exercise") {
+                        Text("Retained for your workout history. Choose a replacement from the new library when editing your plan.")
+                            .font(.system(size: 14)).foregroundStyle(colors.muted)
+                    }
+                }
+                if let primary = exercise.primaryMuscles, !primary.isEmpty {
+                    infoCard(title: "Muscles worked") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Primary: " + primary.map(Exercise.muscleLabel).joined(separator: ", "))
+                            if let secondary = exercise.secondaryMuscles, !secondary.isEmpty {
+                                Text("Supporting: " + secondary.map(Exercise.muscleLabel).joined(separator: ", "))
+                                    .foregroundStyle(colors.muted)
+                            }
+                        }.font(.system(size: 14))
+                    }
+                }
+                if exercise.isSelectable { infoCard(title: "Equipment") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(exercise.equipmentLabel)
+                        if let supporting = exercise.secondaryEquipment, !supporting.isEmpty {
+                            Text("Also needed: " + supporting.map { $0.capitalized }.joined(separator: ", "))
+                                .foregroundStyle(colors.muted)
+                        }
+                    }.font(.system(size: 14))
+                } }
 
                 // Description
                 if let description = exercise.description, !description.isEmpty {
@@ -149,7 +177,7 @@ struct ExerciseDetailView: View {
 
                 // Instructions
                 if let steps = exercise.instructionsSteps, !steps.isEmpty {
-                    infoCard(title: "Instructions") {
+                    infoCard(title: "How to") {
                         VStack(alignment: .leading, spacing: 12) {
                             ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                                 HStack(alignment: .top, spacing: 12) {
@@ -176,6 +204,19 @@ struct ExerciseDetailView: View {
                             .lineSpacing(4)
                     }
                 }
+                if let tips = exercise.formTips, !tips.isEmpty {
+                    infoCard(title: "Form tips") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(Array(tips.enumerated()), id: \.offset) { _, tip in
+                                Text("• " + tip).font(.system(size: 14)).foregroundStyle(colors.text)
+                            }
+                        }
+                    }
+                }
+                if exercise.catalogueSource == "repdb" {
+                    Link("Exercise data by RepDB (repdb.co)", destination: URL(string: "https://repdb.co")!)
+                        .font(.system(size: 12)).foregroundStyle(colors.muted)
+                }
             }
             .padding(20)
         }
@@ -185,7 +226,7 @@ struct ExerciseDetailView: View {
 
     private var metadataChips: some View {
         let chips: [(String?, String)] = [
-            (exercise.level?.capitalized, "figure.strengthtraining.traditional"),
+            (exercise.difficultyLabel, "figure.strengthtraining.traditional"),
             (exercise.category?.capitalized, "tag"),
             (exercise.bodyPart?.capitalized, "person"),
             (exercise.force?.capitalized, "arrow.up.and.down"),

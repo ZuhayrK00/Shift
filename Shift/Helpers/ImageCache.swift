@@ -42,7 +42,6 @@ final class ImageCache: @unchecked Sendable {
 
     func removeAll() {
         images.removeAllObjects()
-        GIFDataCache.shared.removeAll()
     }
 
     /// Prefetches only a small leading batch. Callers should prefer demand loading.
@@ -93,40 +92,10 @@ final class ImageCache: @unchecked Sendable {
             let waiters = pending.removeValue(forKey: key) ?? []
             lock.unlock()
 
-            // Also cache raw data so the GIF decoder doesn't need a second fetch
-            if let validData { GIFDataCache.shared.store(validData, for: url) }
-
             DispatchQueue.main.async {
                 for w in waiters { w(img) }
             }
         }.resume()
-    }
-}
-
-// MARK: - GIFDataCache
-
-/// Memory-bounded raw-data cache used by the GIF decoder.
-final class GIFDataCache: @unchecked Sendable {
-    static let shared = GIFDataCache()
-
-    private let storage = NSCache<NSString, NSData>()
-
-    private init() {
-        storage.countLimit = 20
-        storage.totalCostLimit = 30 * 1_024 * 1_024
-    }
-
-    func data(for url: URL) -> Data? {
-        storage.object(forKey: url.absoluteString as NSString) as Data?
-    }
-
-    func store(_ data: Data, for url: URL) {
-        guard data.count <= 20 * 1_024 * 1_024 else { return }
-        storage.setObject(data as NSData, forKey: url.absoluteString as NSString, cost: data.count)
-    }
-
-    func removeAll() {
-        storage.removeAllObjects()
     }
 }
 
@@ -150,10 +119,12 @@ struct CachedAsyncImage<Content: View>: View {
     @ViewBuilder let content: (AsyncImagePhase) -> Content
 
     @State private var phase: AsyncImagePhase
+    @State private var loadedURL: URL?
 
     init(url: URL?, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
         self.url = url
         self.content = content
+        _loadedURL = State(initialValue: url)
         if let url, let cached = ImageCache.shared.image(for: url) {
             _phase = State(initialValue: .success(Image(uiImage: cached)))
         } else {
@@ -164,7 +135,9 @@ struct CachedAsyncImage<Content: View>: View {
     var body: some View {
         content(phase)
             .task(id: url) {
-                if case .success = phase { return }
+                if loadedURL == url, case .success = phase { return }
+                loadedURL = url
+                phase = .empty
                 guard let url else {
                     phase = .empty
                     return
@@ -173,18 +146,13 @@ struct CachedAsyncImage<Content: View>: View {
                     phase = .success(Image(uiImage: cached))
                     return
                 }
-                await withCheckedContinuation { continuation in
-                    ImageCache.shared.fetch(url) { [self] img in
-                        Task { @MainActor in
-                            if let img {
-                                phase = .success(Image(uiImage: img))
-                            } else {
-                                phase = .empty
-                            }
-                            continuation.resume()
-                        }
+                let image: UIImage? = await withCheckedContinuation { continuation in
+                    ImageCache.shared.fetch(url) { img in
+                        continuation.resume(returning: img)
                     }
                 }
+                guard !Task.isCancelled, loadedURL == url else { return }
+                phase = image.map { .success(Image(uiImage: $0)) } ?? .empty
             }
     }
 }

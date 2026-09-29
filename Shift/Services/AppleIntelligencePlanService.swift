@@ -162,9 +162,10 @@ enum AppleIntelligencePlanService {
                 "ID=\(exercise.id)",
                 "NAME=\(exercise.name)",
                 "MUSCLE=\(exercise.primaryMuscleId)",
-                "EQUIPMENT=\(exercise.equipment ?? "none")",
+                "EQUIPMENT=\(exercise.allEquipment.joined(separator: ", "))",
                 "LEVEL=\(exercise.level ?? "unspecified")",
                 "MECHANIC=\(exercise.mechanic ?? "unspecified")",
+                "TARGETS=\((exercise.primaryMuscles ?? []).joined(separator: ", "))",
                 "HISTORY=\(familiarity)"
             ].joined(separator: " | ")
         }.joined(separator: "\n")

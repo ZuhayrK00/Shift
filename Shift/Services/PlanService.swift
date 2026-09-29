@@ -524,6 +524,31 @@ struct PlanService {
         return added
     }
 
+    static func replaceExercise(_ id: String, with replacementId: String) async throws {
+        let userId = try authManager.requireUserId()
+        guard let replacement = try await ExerciseRepository.findById(replacementId), replacement.isSelectable else {
+            throw PlanServiceError.invalidDraft("Choose an exercise from the current library.")
+        }
+        let mutation = LocalMutation(table: "plan_exercises", op: "update", payload: [
+            "id": id, "exercise_id": replacement.id, "target_weight": NSNull()
+        ])
+        try await MutationQueueRepository.performAtomically(mutations: [mutation]) { db in
+            try applyExerciseReplacement(id, with: replacement.id, owner: userId, in: db)
+        }
+    }
+
+    static func applyExerciseReplacement(_ id: String, with replacementId: String, owner userId: String, in db: Database) throws {
+        guard var item = try PlanExercise.fetchOne(db, key: id),
+              let plan = try WorkoutPlan.fetchOne(db, key: item.planId), plan.userId == userId,
+              let replacement = try Exercise.fetchOne(db, key: replacementId), replacement.isSelectable else {
+            throw PlanServiceError.invalidDraft("Choose a current exercise in your own plan.")
+        }
+        item.exerciseId = replacement.id
+        // A load from a different implement should never carry over silently.
+        item.targetWeight = nil
+        try item.update(db)
+    }
+
     static func updateExercise(_ id: String, patch: PlanExercisePatch) async throws {
         var payload: [String: Any] = ["id": id]
         if let v = patch.targetSets    { payload["target_sets"]     = v }
