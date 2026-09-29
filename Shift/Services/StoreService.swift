@@ -143,6 +143,7 @@ final class StoreService {
             self.isCheckingEntitlement = false
         }
         WidgetSnapshot.clearSharedState()
+        StoreEntitlementCache.clear()
         WidgetCenter.shared.reloadAllTimelines()
         PhoneSessionManager.shared.sendSignedOutStateToWatch()
     }

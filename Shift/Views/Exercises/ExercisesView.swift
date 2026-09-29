@@ -248,6 +248,9 @@ struct ExercisesView: View {
             ExerciseDetailView(exercise: exercise)
         }
         .task { await loadData() }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftReferenceDataDidSync)) { _ in
+            Task { await loadData() }
+        }
         .sheet(isPresented: $showCreateSheet) {
             CreateExerciseView { _ in
                 Task { await loadData() }

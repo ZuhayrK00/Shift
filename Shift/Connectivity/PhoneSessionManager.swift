@@ -147,6 +147,8 @@ final class PhoneSessionManager: NSObject {
             dict["entitlementVerifiedAt"] =
                 StoreEntitlementCache.read()?.verifiedAt.timeIntervalSince1970
                 ?? Date().timeIntervalSince1970
+            dict["entitlementExpiresAt"] =
+                StoreEntitlementCache.read()?.expiresAt?.timeIntervalSince1970
 
             do {
                 try WCSession.default.updateApplicationContext(dict)
@@ -238,7 +240,7 @@ final class PhoneSessionManager: NSObject {
         // here but the singleton may not have been refreshed.
         let isPro = UserDefaults(suiteName: "group.com.zuhayrk.shift")?.bool(forKey: "isPro") ?? false
         snapDict["isPro"] = isPro
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "stateType": "snapshot",
             "schemaVersion": 2,
             "snapshot": snapDict,
@@ -247,6 +249,9 @@ final class PhoneSessionManager: NSObject {
                 StoreEntitlementCache.read()?.verifiedAt.timeIntervalSince1970
                 ?? Date().timeIntervalSince1970
         ]
+        if let expiresAt = StoreEntitlementCache.read()?.expiresAt {
+            payload["entitlementExpiresAt"] = expiresAt.timeIntervalSince1970
+        }
 
         for transfer in WCSession.default.outstandingUserInfoTransfers
         where transfer.userInfo["stateType"] as? String == "snapshot" {

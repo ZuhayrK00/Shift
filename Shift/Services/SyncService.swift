@@ -5,6 +5,11 @@ import Supabase
 
 private let logger = Logger(subsystem: "com.shift.app", category: "SyncService")
 
+extension Notification.Name {
+    static let shiftReferenceDataDidSync = Notification.Name("shiftReferenceDataDidSync")
+    static let shiftUserDataDidSync = Notification.Name("shiftUserDataDidSync")
+}
+
 private actor SyncFlushCoordinator {
     typealias Summary = (flushed: Int, failed: Int)
 
@@ -228,6 +233,13 @@ struct SyncService {
     /// - Returns: Counts of upserted muscle groups and exercises.
     @discardableResult
     static func pullReferenceData() async throws -> (muscleGroups: Int, exercises: Int) {
+        // During first sign-in the auth event may reach the UI before the SDK's
+        // PostgREST token adapter observes the new session. Use the session that
+        // unlocked the signed-in UI so RLS never returns a misleading empty
+        // catalogue for an authenticated user.
+        guard let accessToken = authManager.session?.accessToken else {
+            throw SyncError.missingSession
+        }
         // Flush first so any pending writes are committed before we read back
         _ = try? await flushQueue()
 
@@ -242,6 +254,7 @@ struct SyncService {
                     .select()
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -263,6 +276,7 @@ struct SyncService {
                     .eq("is_built_in", value: true)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -285,6 +299,7 @@ struct SyncService {
             ISO8601DateFormatter.shared.string(from: Date()),
             forKey: lastSyncedKey
         )
+        NotificationCenter.default.post(name: .shiftReferenceDataDidSync, object: nil)
 
         return (muscleGroups: muscleGroups.count, exercises: exercises.count)
     }
@@ -296,6 +311,9 @@ struct SyncService {
     /// Uses upsert (replace) so it's safe to call multiple times.
     static func pullUserData() async throws {
         guard let userId = authManager.currentUserId else { return }
+        guard let accessToken = authManager.session?.accessToken else {
+            throw SyncError.missingSession
+        }
 
         // Flush pending local writes first so nothing is lost
         _ = try? await flushQueue()
@@ -316,6 +334,7 @@ struct SyncService {
                     .eq("created_by", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -345,6 +364,7 @@ struct SyncService {
                     .eq("user_id", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -379,6 +399,7 @@ struct SyncService {
                             .in("plan_id", values: batchIds)
                             .order("id")
                             .range(from: from, to: to)
+                            .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                             .execute()
                             .data
                     }
@@ -413,6 +434,7 @@ struct SyncService {
                     .eq("user_id", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -448,6 +470,7 @@ struct SyncService {
                             .in("session_id", values: batchIds)
                             .order("id")
                             .range(from: from, to: to)
+                            .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                             .execute()
                             .data
                     }
@@ -479,6 +502,7 @@ struct SyncService {
                     .eq("user_id", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -508,6 +532,7 @@ struct SyncService {
                     .eq("user_id", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -537,6 +562,7 @@ struct SyncService {
                     .eq("user_id", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -566,6 +592,7 @@ struct SyncService {
                     .eq("user_id", value: userId)
                     .order("id")
                     .range(from: from, to: to)
+                    .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                     .execute()
                     .data
             }
@@ -589,6 +616,7 @@ struct SyncService {
             ISO8601DateFormatter.shared.string(from: Date()),
             forKey: userLastSyncedKey(userId)
         )
+        NotificationCenter.default.post(name: .shiftUserDataDidSync, object: nil)
     }
 
     // MARK: - Last synced
@@ -620,6 +648,9 @@ struct SyncService {
     // MARK: - Private Supabase helpers
 
     private static func executeInsert(table: String, payload: [String: Any]) async throws {
+        guard let accessToken = authManager.session?.accessToken else {
+            throw SyncError.missingSession
+        }
         let jsonData = try JSONSerialization.data(withJSONObject: payload)
         guard let jsonValue = try? JSONDecoder().decode(AnyJSON.self, from: jsonData) else {
             throw SyncError.encodingFailed
@@ -628,6 +659,7 @@ struct SyncService {
         try await supabase
             .from(table)
             .upsert(jsonValue)
+            .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
             .execute()
     }
 
@@ -667,6 +699,9 @@ struct SyncService {
     }
 
     private static func executeUpdate(table: String, id: String, payload: [String: Any]) async throws {
+        guard let accessToken = authManager.session?.accessToken else {
+            throw SyncError.missingSession
+        }
         let jsonData = try JSONSerialization.data(withJSONObject: payload)
         guard let jsonValue = try? JSONDecoder().decode(AnyJSON.self, from: jsonData) else {
             throw SyncError.encodingFailed
@@ -682,21 +717,27 @@ struct SyncService {
             try await supabase
                 .from(table)
                 .upsert(upsertValue)
+                .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                 .execute()
         } else {
             try await supabase
                 .from(table)
                 .update(jsonValue)
                 .eq("id", value: id)
+                .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
                 .execute()
         }
     }
 
     private static func executeDelete(table: String, id: String) async throws {
+        guard let accessToken = authManager.session?.accessToken else {
+            throw SyncError.missingSession
+        }
         try await supabase
             .from(table)
             .delete()
             .eq("id", value: id)
+            .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
             .execute()
     }
 }
@@ -705,10 +746,12 @@ struct SyncService {
 
 enum SyncError: LocalizedError {
     case encodingFailed
+    case missingSession
 
     var errorDescription: String? {
         switch self {
         case .encodingFailed: return "Failed to encode mutation payload for Supabase."
+        case .missingSession: return "Sign in again to sync your data."
         }
     }
 }

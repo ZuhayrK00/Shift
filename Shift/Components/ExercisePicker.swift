@@ -26,6 +26,7 @@ struct ExercisePicker: View {
     @State private var selectedIds: [String]    = []  // ordered
     @State private var showMyExercises = false
     @State private var loading = true
+    @State private var loadError: String?
     @State private var showCreateSheet = false
 
     // MARK: - Derived
@@ -119,6 +120,16 @@ struct ExercisePicker: View {
                     Spacer()
                     ProgressView().tint(colors.accent)
                     Spacer()
+                } else if allExercises.isEmpty {
+                    ContentUnavailableView {
+                        Label("Exercises unavailable", systemImage: "dumbbell")
+                    } description: {
+                        Text(loadError ?? "No exercises are available yet.")
+                    } actions: {
+                        Button("Try Again") {
+                            Task { await loadData() }
+                        }
+                    }
                 } else {
                     exerciseList
                 }
@@ -350,9 +361,18 @@ struct ExercisePicker: View {
     private func loadData() async {
         loading = true
         defer { loading = false }
-        // ExerciseService is a static service — load all exercises
-        if let exercises = try? await ExerciseService.listExercises() {
+        loadError = nil
+        do {
+            var exercises = try await ExerciseService.listExercises()
+            // The onboarding screen starts its own reference sync. A picker opened
+            // before that finishes must not settle permanently on an empty cache.
+            if exercises.isEmpty {
+                try await SyncService.pullReferenceData()
+                exercises = try await ExerciseService.listExercises()
+            }
             allExercises = exercises
+        } catch {
+            loadError = "Couldn’t load the exercise catalogue. Check your connection and try again."
         }
         if let recent = try? await ExerciseService.getRecentlyUsedExerciseIds() {
             recentIds = Array(recent.prefix(10))

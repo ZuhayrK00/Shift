@@ -39,6 +39,9 @@ struct WidgetSnapshot: Codable {
     static var isProUser: Bool {
         guard let defaults = UserDefaults(suiteName: suiteName),
               defaults.string(forKey: activeUserIdKey) != nil else { return false }
+        if let cached = StoreEntitlementCache.read() {
+            return cached.hasUnexpiredPro() || (cached.isPro && cached.verifiedAt > Date().addingTimeInterval(-60 * 60))
+        }
         return defaults.bool(forKey: "isPro")
     }
 
@@ -47,9 +50,14 @@ struct WidgetSnapshot: Codable {
     static func refreshProEntitlement() async -> Bool {
         guard let defaults = UserDefaults(suiteName: suiteName),
               defaults.string(forKey: activeUserIdKey) != nil else { return false }
-        let isPro = (await StoreEntitlementVerifier.currentSnapshot()).isPro
-        defaults.set(isPro, forKey: "isPro")
-        return isPro
+        let fresh = await StoreEntitlementVerifier.currentSnapshot()
+        let resolved = StoreEntitlementCache.resolveForExtension(
+            fresh,
+            cached: StoreEntitlementCache.read()
+        )
+        StoreEntitlementCache.write(resolved)
+        defaults.set(resolved.isPro, forKey: "isPro")
+        return resolved.isPro
     }
 
     func normalized(for date: Date, calendar: Calendar = .current) -> WidgetSnapshot {

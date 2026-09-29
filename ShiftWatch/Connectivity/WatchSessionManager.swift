@@ -14,7 +14,7 @@ final class WatchSessionManager: NSObject {
 
     private(set) var context: WatchContext?
     private(set) var isPhoneReachable = false
-    private(set) var isPro = StoreEntitlementCache.read()?.isPro ?? false
+    private(set) var isPro = StoreEntitlementCache.read()?.hasUnexpiredPro() ?? false
     private(set) var isCheckingEntitlement = true
     private(set) var lastSyncError: String?
 
@@ -54,7 +54,11 @@ final class WatchSessionManager: NSObject {
     // MARK: - Independent StoreKit entitlement
 
     func refreshEntitlement() async {
-        let snapshot = await StoreEntitlementVerifier.currentSnapshot()
+        let fresh = await StoreEntitlementVerifier.currentSnapshot()
+        let snapshot = StoreEntitlementCache.resolveForExtension(
+            fresh,
+            cached: StoreEntitlementCache.read()
+        )
         StoreEntitlementCache.write(snapshot)
         await MainActor.run {
             isPro = snapshot.isPro
@@ -73,14 +77,17 @@ final class WatchSessionManager: NSObject {
     }
 
     @MainActor
-    private func applyPhoneEntitlement(isPro: Bool, verifiedAt: Date) {
-        if let cached = StoreEntitlementCache.read(), cached.verifiedAt > verifiedAt {
+    private func applyPhoneEntitlement(isPro: Bool, verifiedAt: Date, expiresAt: Date?) {
+        if let cached = StoreEntitlementCache.read(),
+           cached.verifiedAt > verifiedAt,
+           (cached.isPro || !isPro) {
             return
         }
         let snapshot = StoreEntitlementSnapshot(
             isPro: isPro,
             activeProductIDs: [],
-            verifiedAt: verifiedAt
+            verifiedAt: verifiedAt,
+            expiresAt: expiresAt
         )
         StoreEntitlementCache.write(snapshot)
         self.isPro = isPro
@@ -259,6 +266,8 @@ final class WatchSessionManager: NSObject {
     @MainActor
     private func applySignedOutState() {
         context = nil
+        StoreEntitlementCache.clear()
+        isPro = false
         UserDefaults(suiteName: Self.contextSuite)?.removeObject(forKey: Self.contextKey)
         UserDefaults(suiteName: Self.contextSuite)?.removeObject(forKey: WidgetSnapshot.key)
         updateSharedProState()
@@ -269,9 +278,12 @@ final class WatchSessionManager: NSObject {
         guard let pro = dictionary["isPro"] as? Bool else { return }
         let timestamp = dictionary["entitlementVerifiedAt"] as? Double
             ?? Date().timeIntervalSince1970
+        let expiresAt = (dictionary["entitlementExpiresAt"] as? Double)
+            .map(Date.init(timeIntervalSince1970:))
         applyPhoneEntitlement(
             isPro: pro,
-            verifiedAt: Date(timeIntervalSince1970: timestamp)
+            verifiedAt: Date(timeIntervalSince1970: timestamp),
+            expiresAt: expiresAt
         )
     }
 

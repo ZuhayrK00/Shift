@@ -138,6 +138,9 @@ struct TodayView: View {
         .onReceive(NotificationCenter.default.publisher(for: .watchDidUpdateWorkout)) { _ in
             Task { await loadData() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftUserDataDidSync)) { _ in
+            Task { await loadData() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkStartWorkout)) { _ in
             Task { await startWorkout(plan: nil) }
         }

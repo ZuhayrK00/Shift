@@ -159,6 +159,9 @@ struct PlansView: View {
             }
         }
         .task { await loadPlans() }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftUserDataDidSync)) { _ in
+            Task { await loadPlans() }
+        }
         .sheet(isPresented: $showPaywall) {
             ProPaywallView()
         }

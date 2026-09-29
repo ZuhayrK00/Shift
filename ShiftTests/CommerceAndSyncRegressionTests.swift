@@ -48,7 +48,8 @@ final class CommerceAndSyncRegressionTests: XCTestCase {
         let original = StoreEntitlementSnapshot(
             isPro: true,
             activeProductIDs: [StoreProduct.yearlyPro.rawValue],
-            verifiedAt: Date(timeIntervalSince1970: 1_785_283_200)
+            verifiedAt: Date(timeIntervalSince1970: 1_785_283_200),
+            expiresAt: Date(timeIntervalSince1970: 1_816_819_200)
         )
 
         let decoded = try JSONDecoder().decode(
@@ -57,6 +58,50 @@ final class CommerceAndSyncRegressionTests: XCTestCase {
         )
 
         XCTAssertEqual(decoded, original)
+    }
+
+    func testExtensionRetainsVerifiedProUntilExpiryWhenStoreKitIsEmpty() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let paid = StoreEntitlementSnapshot(
+            isPro: true,
+            activeProductIDs: [StoreProduct.yearlyPro.rawValue],
+            verifiedAt: now.addingTimeInterval(-86_400),
+            expiresAt: now.addingTimeInterval(86_400)
+        )
+        let empty = StoreEntitlementSnapshot(
+            isPro: false,
+            activeProductIDs: [],
+            verifiedAt: now
+        )
+
+        XCTAssertEqual(StoreEntitlementCache.resolveForExtension(empty, cached: paid, at: now), paid)
+        XCTAssertEqual(
+            StoreEntitlementCache.resolveForExtension(
+                empty,
+                cached: paid,
+                at: now.addingTimeInterval(86_401)
+            ),
+            empty
+        )
+        XCTAssertEqual(StoreEntitlementCache.resolveForExtension(empty, cached: nil, at: now), empty)
+    }
+
+    func testExtensionAcceptsFreshRenewalOverCachedExpiry() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let previous = StoreEntitlementSnapshot(
+            isPro: true,
+            activeProductIDs: [StoreProduct.monthlyPro.rawValue],
+            verifiedAt: now.addingTimeInterval(-86_400),
+            expiresAt: now.addingTimeInterval(-60)
+        )
+        let renewed = StoreEntitlementSnapshot(
+            isPro: true,
+            activeProductIDs: [StoreProduct.monthlyPro.rawValue],
+            verifiedAt: now,
+            expiresAt: now.addingTimeInterval(2_592_000)
+        )
+
+        XCTAssertEqual(StoreEntitlementCache.resolveForExtension(renewed, cached: previous, at: now), renewed)
     }
 
     func testSyncPaginationFetchesEveryPageIncludingBoundaryPage() async throws {

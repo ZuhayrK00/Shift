@@ -115,11 +115,15 @@ struct ProfileService {
             }
         }
 
+        guard let accessToken = authManager.session?.accessToken else {
+            throw SyncError.missingSession
+        }
         let response = try await supabase
             .from("profiles")
             .select()
             .eq("id", value: userId)
             .single()
+            .setHeader(name: "Authorization", value: "Bearer \(accessToken)")
             .execute()
 
         guard let remote = try? JSONDecoder().decode(RemoteProfile.self, from: response.data) else {

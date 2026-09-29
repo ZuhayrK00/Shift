@@ -118,6 +118,14 @@ struct ProfileView: View {
             await loadTodaySteps()
             frequencyProgress = try? await GoalService.getFrequencyProgress()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftUserDataDidSync)) { _ in
+            Task {
+                await loadPersonalBests()
+                await loadExerciseGoals()
+                await loadProgressData()
+                frequencyProgress = try? await GoalService.getFrequencyProgress()
+            }
+        }
         .overlay(alignment: .bottom) {
             if showToast {
                 Text(toastMessage)

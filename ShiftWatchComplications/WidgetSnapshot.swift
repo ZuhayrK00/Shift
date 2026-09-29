@@ -33,16 +33,25 @@ struct WidgetSnapshot: Codable {
     }
 
     static var isProUser: Bool {
-        UserDefaults(suiteName: suiteName)?.bool(forKey: "isPro") ?? false
+        guard read()?.ownerUserId != nil else { return false }
+        if let cached = StoreEntitlementCache.read() {
+            return cached.hasUnexpiredPro() || (cached.isPro && cached.verifiedAt > Date().addingTimeInterval(-60 * 60))
+        }
+        return UserDefaults(suiteName: suiteName)?.bool(forKey: "isPro") ?? false
     }
 
     /// Verifies the subscription from StoreKit in the complication extension,
     /// rather than requiring a recent iPhone or Watch app launch.
     static func refreshProEntitlement() async -> Bool {
         guard read()?.ownerUserId != nil else { return false }
-        let isPro = (await StoreEntitlementVerifier.currentSnapshot()).isPro
-        UserDefaults(suiteName: suiteName)?.set(isPro, forKey: "isPro")
-        return isPro
+        let fresh = await StoreEntitlementVerifier.currentSnapshot()
+        let resolved = StoreEntitlementCache.resolveForExtension(
+            fresh,
+            cached: StoreEntitlementCache.read()
+        )
+        StoreEntitlementCache.write(resolved)
+        UserDefaults(suiteName: suiteName)?.set(resolved.isPro, forKey: "isPro")
+        return resolved.isPro
     }
 
     func normalized(for date: Date, calendar: Calendar = .current) -> WidgetSnapshot {
