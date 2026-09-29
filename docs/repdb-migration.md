@@ -26,7 +26,10 @@ Equipment-dependent recommendations recognise the new machine/EZ-bar vocabulary.
 - 179 automated tests passed with zero failures, including atomic reference/queue remapping, custom-exercise preservation, history isolation during plan replacements, primary muscle targeting and loadable-bar detection.
 - The simulator displayed the hosted WebP illustrations, exercise instructions and regenerated review-account plans. Screenshots are saved in `~/Documents/Shift RepDB Review`.
 - The paired Watch simulator launches; its dedicated free review account correctly displays the Pro requirement. This is not verification of a real paid entitlement or physical-device background sync.
-- The project build number is 16. A signed archive is prepared separately; archiving does not publish a TestFlight update or deploy website changes.
+- Build 2.0.10 (16) was signed with stable Xcode, uploaded successfully and finished processing. App Store Connect shows it as Testing in the existing internal Team (Expo) group.
+- Main is pushed and GitHub Pages has deployed the updated legal/website attribution. Both public policy pages were checked after deployment.
+- Old iPhone/iPad listing screenshots were replaced with verified captures of the new catalogue. Copies and App Store status captures are saved in `~/Documents/Shift RepDB Review`.
+- Content Rights is completed. The App Store draft uses build 16 and is Ready for Review, with the Shift Pro group and monthly/yearly subscriptions in the same draft submission. Reviewer account access and licence notes are configured. Manual release remains selected.
 
 ## Provenance and licence
 
@@ -40,7 +43,6 @@ The complete source/import content is deliberately excluded from Git: the licenc
 
 1. Sign into Cloudflare so the old `exercise-images` R2 objects can be removed through its Storage API/dashboard. R2 deletion is not yet verified; removing database links does not delete those files.
 2. Install the new TestFlight build on a physical iPhone and Apple Watch. Confirm upgrade refresh, saved-plan replacements, actual Pro entitlements/widgets and offline Watch logging.
-3. Use the new build in App Store Connect, and refresh any listing screenshot that still depicts retired exercise artwork. Do not submit the former catalogue build.
-4. Content Rights and public App Store submission remain a separate launch action; this migration is not a public release.
+3. After Cloudflare cleanup and the physical-device check, submit the prepared draft for App Review. The final Submit for Review button has not been pressed. Apple approval and the later manual public release remain separate actions.
 
 Private local preparation records contain a pre-migration record-ID/reference backup and the production verification results. They are not included in the repository or exposed by the app.
