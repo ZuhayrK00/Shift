@@ -29,7 +29,9 @@ Equipment-dependent recommendations recognise the new machine/EZ-bar vocabulary.
 - Build 2.0.10 (16) was signed with stable Xcode, uploaded successfully and finished processing. App Store Connect shows it as Testing in the existing internal Team (Expo) group.
 - Main is pushed and GitHub Pages has deployed the updated legal/website attribution. Both public policy pages were checked after deployment.
 - Old iPhone/iPad listing screenshots were replaced with verified captures of the new catalogue. Copies and App Store status captures are saved in `~/Documents/Shift RepDB Review`.
-- Content Rights is completed. The App Store draft uses build 16 and is Ready for Review, with the Shift Pro group and monthly/yearly subscriptions in the same draft submission. Reviewer account access and licence notes are configured. Manual release remains selected.
+- Content Rights is completed. On 30 September 2026 at 12:27 PM, build 16, the Shift Pro subscription group, Shift Pro Monthly and Shift Pro Yearly were submitted together to Apple. All four items show Waiting for Review. Submission ID: `487f2206-390d-4f16-9e38-aeca80ae0288`. Reviewer account access and licence notes are configured. Manual release remains selected; submission does not publish the app.
+- App Store Connect Business was checked before submission: Paid Apps Agreement, Free Apps Agreement, bank account, both listed U.S. tax forms, Digital Services Act and Model Reporting Rules for Digital Platforms all show Active. No financial details or declarations were changed.
+- The owner reported testing the new build successfully and authorised submission. Physical paid-entitlement/background-sync testing was not independently performed by the agent.
 - On 30 September, the retired Cloudflare R2 `exercise-images` bucket was emptied through the dashboard and its public development URL disabled. A refreshed Objects view is empty; former GIF URLs return HTTP 401 after access was disabled. The new Supabase WebP image endpoint still returns HTTP 200. The empty bucket configuration was retained; no unrelated buckets or user storage were changed. Deleted objects cannot be restored through this operation.
 
 ## Provenance and licence
@@ -42,7 +44,9 @@ The complete source/import content is deliberately excluded from Git: the licenc
 
 ## Remaining launch checks
 
-1. Install the new TestFlight build on a physical iPhone and Apple Watch. Confirm upgrade refresh, saved-plan replacements, actual Pro entitlements/widgets and offline Watch logging.
-2. After the physical-device check, submit the prepared draft for App Review. The final Submit for Review button has not been pressed. Apple approval and the later manual public release remain separate actions.
+1. Await Apple's review of the four submitted items and address any reviewer questions or requested changes.
+2. After approval, explicitly release the app manually when the owner is ready. No public release was performed as part of this submission.
+
+Submission confirmation and Waiting for Review captures are saved alongside the review screenshots in `~/Documents/Shift RepDB Review`.
 
 Private local preparation records contain a pre-migration record-ID/reference backup and the production verification results. They are not included in the repository or exposed by the app.
