@@ -75,7 +75,7 @@ Choose a sport, frequency, session length and available time windows. Availabili
 - Calendar checking reads busy intervals on device. Shift does not modify Apple Calendar events or include event titles, locations or attendees in AI prompts or cloud sync.
 - Missing forecasts and infeasible availability are explained. Saved sessions do not automatically move when the weather changes.
 
-### Forecast change suggestions (next update)
+### Forecast change suggestions (2.1.1)
 
 With **Shift Pro**, optionally enable **Watch for forecast changes** when saving a generated week. Existing or manually scheduled endurance sessions can opt in through their weather preferences after choosing availability and a duration. Shift compares later forecasts against the saved baseline and suggests a better time if conditions worsen.
 
@@ -83,7 +83,7 @@ Review the original time, changed conditions and proposed replacement, then choo
 
 <p align="center"><img src="screenshots/weather-changes.png" alt="Forecast change review showing an original run time and a drier alternative, using fictional demo data" width="250"></p>
 
-Checks run on opening Shift and during opportunistic iOS background refresh. Optional forecast-change notifications are separate from ordinary reminders. Background checks are not guaranteed to run at a particular time. This feature is source work for the next update and is **not in the already-approved build 24**. See [implementation and validation notes](docs/weather-rescheduling.md).
+Checks run on opening Shift and during opportunistic iOS background refresh. Optional forecast-change notifications are separate from ordinary reminders. Background checks are not guaranteed to run at a particular time. This feature is included in **2.1.1 (25)**, uploaded for the next App Store update. It is not in 2.1.0 (24). See [implementation and validation notes](docs/weather-rescheduling.md).
 
 <p align="center">
   <img src="screenshots/training-calendar.png" alt="Combined Strength and Endurance calendar" width="220">
@@ -154,7 +154,7 @@ One optional monthly or yearly subscription covers both training modes. Existing
 | Apple Health workout imports | Yes | Yes |
 | Basic Endurance goals, personal bests and milestones | Yes | Yes |
 | Current weather, manual scheduling and reminders | Yes | Yes |
-| Forecast monitoring and confirmed reschedule suggestions (next update) | — | Yes |
+| Forecast monitoring and confirmed reschedule suggestions (2.1.1) | — | Yes |
 | Complete generated endurance week with optional weather/Calendar checks | One saved week per account | Continued planning |
 | On-device Endurance coach | — | Yes, on supported devices |
 | New endurance training-plan schedules and six-month trends | — | Yes |
@@ -234,7 +234,7 @@ Store and promo fixtures are compiled only with `SHIFT_STORE_CAPTURE` **and** a 
 
 ## Release notes
 
-Version **2.1.0 (24)** contains the Endurance release. Apple has approved it; the last verified App Store Connect status on **29 October 2026** was **Pending Developer Release**. Publication is a separate manual action.
+Version **2.1.0 (24)** contains the Endurance release and was verified **Ready for Distribution** on 29 October 2026. Version **2.1.1 (25)** adds forecast-change suggestions and was uploaded on the same date. It is **Waiting for Review**, with automatic release after approval selected; see the [2.1.1 release record](docs/release-2.1.1.md).
 
 - [Endurance recording and initial release](docs/endurance-release.md)
 - [Calendar, routes, records, Watch, widgets and notifications](docs/endurance-v2.md)

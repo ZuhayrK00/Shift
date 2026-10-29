@@ -1,6 +1,6 @@
 # Forecast change suggestions
 
-Source work for the next update. This feature is not part of the already-approved 2.1.0 (24) binary, and no new App Store or TestFlight build has been uploaded for it.
+Included in version 2.1.1 (25), uploaded to App Store Connect on 29 October 2026. This feature is not part of the 2.1.0 (24) binary. See the [release record](release-2.1.1.md) for the verified processing/review state.
 
 ## Behaviour
 
