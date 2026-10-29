@@ -29,6 +29,7 @@ struct EndurancePlannerView: View {
     @State private var aiTask: Task<Void, Never>?
     @State private var ownerAtOpen: String?
     @State private var programID = UUID().uuidString.lowercased()
+    @State private var watchForecast = false
     private let days = [(1,"Monday"),(2,"Tuesday"),(3,"Wednesday"),(4,"Thursday"),(5,"Friday"),(6,"Saturday"),(7,"Sunday")]
     private var selected: [EndurancePlanSuggestion] { result?.suggestions.filter { !excluded.contains($0.id) } ?? [] }
     var body: some View {
@@ -135,6 +136,15 @@ struct EndurancePlannerView: View {
                 }.enduranceCard()
             }
             calendarConnection
+            VStack(alignment: .leading, spacing: 10) {
+                if store.isPro {
+                    Toggle("Watch for forecast changes", isOn: $watchForecast)
+                } else {
+                    Button { showPro = true } label: { Label("Forecast change suggestions · Pro", systemImage: "cloud.rain") }
+                }
+                Text("If conditions worsen, Shift can suggest a better time within this week's availability. Nothing moves until you confirm. Checks run when you open Shift and when iOS allows background refresh.")
+                    .font(.caption).foregroundStyle(colors.muted)
+            }.enduranceCard()
             VStack(alignment: .leading, spacing: 15) {
                 Toggle("Prefer drier conditions", isOn: $request.preferDry)
                 Toggle("Daylight only where forecast is available", isOn: $request.daylightOnly)
@@ -172,7 +182,7 @@ struct EndurancePlannerView: View {
                     if let caution = item.caution { Text(caution).font(.caption).foregroundStyle(colors.warning) }
                 }.enduranceCard()
             }
-            Text("Times stay fixed after saving. Forecasts can change; check conditions before you go. You can move or edit any session in your calendar.").font(.footnote).foregroundStyle(colors.muted)
+            Text(watchForecast ? "Shift will watch the forecast for this plan and suggest changes for you to approve. Your times stay fixed until you confirm a move." : "Times stay fixed after saving. You can turn on forecast change suggestions in a session's weather preferences with Shift Pro.").font(.footnote).foregroundStyle(colors.muted)
             nextButton(saving ? "Saving…" : "Save \(selected.count) sessions to Shift") { Task { await save() } }.disabled(saving || selected.isEmpty)
         }
     }
@@ -279,9 +289,22 @@ struct EndurancePlannerView: View {
         } catch { self.error = error.localizedDescription; return }
         guard approved.allSatisfy({ $0.start > Date() }) else { error = "A suggested time has passed. Go back and find times again."; return }
         do {
-            let records = EndurancePlanningEngine.sessions(from: approved, sport: request.sport, owner: owner, programID: programID,
+            var records = EndurancePlanningEngine.sessions(from: approved, sport: request.sport, owner: owner, programID: programID,
                 place: reviewedWeather?.place ?? "", forecastFetchedAt: reviewedWeather?.fetchedAt)
+            if watchForecast {
+                try await EnduranceProService.requirePro()
+                guard let reviewedWeather, reviewedWeather.isFresh(at: Date()) else {
+                    error = "Refresh the weather and find times again before watching this plan's forecast."; return
+                }
+                for index in records.indices {
+                    guard let context = WeatherReschedulingPolicy.context(request: request, session: records[index], weather: reviewedWeather, checkCalendar: calendarWasChecked) else {
+                        error = "A complete forecast is needed for every session. Find times again, or turn off forecast change suggestions."; return
+                    }
+                    records[index].weatherPlan = context
+                }
+            }
             try await EnduranceProService.saveGeneratedWeek(records, programID: programID)
+            WeatherReschedulingService.shared.scheduleBackgroundCheck()
             showCalendar = true
         } catch let error as EnduranceProService.AccessError { await handleAccessError(error) }
         catch { self.error = error.localizedDescription }

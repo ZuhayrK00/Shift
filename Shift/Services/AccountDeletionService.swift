@@ -27,6 +27,7 @@ struct AccountDeletionService {
         PhoneSessionManager.shared.removeDeletedAccountOnWatch(userID: userId)
         EnduranceHealthPreferences.clear(userID: userId)
         await EnduranceWeatherService.shared.clearDeletedAccount(userId)
+        await WeatherReschedulingService.shared.clearDeletedAccount(userId)
 
         do {
             try await deleteLocalData(userId: userId)

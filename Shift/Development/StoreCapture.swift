@@ -117,6 +117,7 @@ struct StoreCaptureRoot: View {
             if let failure { Text(failure).textSelection(.enabled) }
             else if ready {
                 switch StoreCaptureConfiguration.screen {
+                case "weather-changes": NavigationStack { WeatherChangesView() }
                 case "widgets": StoreCaptureWidgetsView()
                 case "route": NavigationStack { EnduranceDetailView(activity: StoreCapture.routeActivity) }
                 case "progress": NavigationStack { EnduranceProgressView() }

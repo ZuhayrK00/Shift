@@ -53,7 +53,9 @@ enum TrainingSummaryService {
             walkMeters: current.filter { $0.sport == .walk }.reduce(0) { $0 + $1.distanceMeters },
             cycleMeters: current.filter { $0.sport == .cycle }.reduce(0) { $0 + $1.distanceMeters },
             nextSessions: Array(calendarSessions.filter { $0.userId == userID && $0.status == .scheduled
-                && $0.scheduledAt >= Calendar.current.startOfDay(for: now) && !completed.contains($0.id) }.sorted { $0.scheduledAt < $1.scheduledAt }.prefix(8)),
+                && $0.scheduledAt >= Calendar.current.startOfDay(for: now) && !completed.contains($0.id) }.sorted { $0.scheduledAt < $1.scheduledAt }.prefix(8)).map {
+                    var summary = $0; summary.weatherPlan = nil; return summary
+                },
             weather: EnduranceWeatherService.shared.brief(for: userID))
     }
 }

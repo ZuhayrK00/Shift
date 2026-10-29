@@ -8,6 +8,7 @@ struct ShiftProBenefitsView: View {
             group("Strength + Endurance", endurance: true) {
                 row("sparkles", "Personalised endurance weeks", "Plan runs, walks and rides around your availability.", endurance: true)
                 row("cloud.sun", "Weather + Calendar planning", "Find suitable forecast windows and avoid busy events.", endurance: true)
+                row("calendar.badge.clock", "Forecast change suggestions", "Review better times if the forecast worsens. You confirm every move.", endurance: true)
                 row("bubble.left.and.text.bubble.right", "Your endurance coach", "Talk through goals and routines with on-device AI.", endurance: true)
                 row("chart.xyaxis.line", "Plans and longer-term trends", "Use the training plan library and explore six months of endurance progress.", endurance: true)
             }

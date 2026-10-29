@@ -132,10 +132,14 @@ struct ShiftApp: App {
                     }
                 }
         }
+        .backgroundTask(.appRefresh(WeatherReschedulingService.backgroundID)) {
+            await WeatherReschedulingService.shared.backgroundRefresh()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task {
                     await StoreService.shared.updatePurchasedProducts(syncWatch: false)
+                    await WeatherReschedulingService.shared.refresh()
                     await WidgetDataService.updateSnapshot(
                         knownProStatus: StoreService.shared.isPro
                     )
@@ -147,6 +151,7 @@ struct ShiftApp: App {
                 }
             }
             if newPhase == .background {
+                WeatherReschedulingService.shared.scheduleBackgroundCheck()
                 Task { await WidgetDataService.updateSnapshot() }
             }
         }

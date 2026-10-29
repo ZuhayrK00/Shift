@@ -107,6 +107,7 @@ struct NotificationSettings: Codable, Hashable {
     var workoutIdleAlerts: Bool = true
     var trainingReminders: Bool = false
     var enduranceAchievements: Bool = false
+    var weatherChanges: Bool = false
     var trainingReminderMinutes: Int = 30
 
     enum CodingKeys: String, CodingKey {
@@ -116,6 +117,7 @@ struct NotificationSettings: Codable, Hashable {
         case workoutIdleAlerts = "workout_idle_alerts"
         case trainingReminders = "training_reminders"
         case enduranceAchievements = "endurance_achievements"
+        case weatherChanges = "weather_changes"
         case trainingReminderMinutes = "training_reminder_minutes"
 
         // Legacy keys retained for a one-way migration from the old scheduled
@@ -129,6 +131,7 @@ struct NotificationSettings: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         trainingReminders = (try? container.decode(Bool.self, forKey: .trainingReminders)) ?? false
         enduranceAchievements = (try? container.decode(Bool.self, forKey: .enduranceAchievements)) ?? false
+        weatherChanges = (try? container.decode(Bool.self, forKey: .weatherChanges)) ?? false
         let lead = (try? container.decode(Int.self, forKey: .trainingReminderMinutes)) ?? 30
         trainingReminderMinutes = [15, 30, 60].contains(lead) ? lead : 30
         exerciseGoalAchievements =
@@ -158,6 +161,7 @@ struct NotificationSettings: Codable, Hashable {
         try container.encode(workoutIdleAlerts, forKey: .workoutIdleAlerts)
         try container.encode(trainingReminders, forKey: .trainingReminders)
         try container.encode(enduranceAchievements, forKey: .enduranceAchievements)
+        try container.encode(weatherChanges, forKey: .weatherChanges)
         try container.encode(trainingReminderMinutes, forKey: .trainingReminderMinutes)
     }
 }

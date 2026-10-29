@@ -21,6 +21,9 @@ struct TrainingCalendarView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     TrainingCalendarGrid(selected: $date, sessions: data.sessions, activities: data.activities,
                         workouts: data.workouts, weekStartsOn: auth.user?.settings.weekStartsOn ?? "monday", weeklySchedule: auth.user?.settings.trainingSchedule ?? .init())
+                    NavigationLink { WeatherChangesView() } label: {
+                        Label(WeatherReschedulingService.shared.suggestions.isEmpty ? "Forecast changes · Pro" : "Review forecast changes (\(WeatherReschedulingService.shared.suggestions.count))", systemImage: "cloud.sun")
+                    }.font(.subheadline).foregroundStyle(colors.enduranceAccent)
                     Text(date.formatted(.dateTime.weekday(.wide).day().month())).font(.title3.bold())
                     ForEach(appointments) { item in appointment(item) }
                     if !workouts.isEmpty || !activities.isEmpty { Text("Completed").font(.headline) }
@@ -118,6 +121,7 @@ struct TrainingSessionEditor: View {
     @State private var busy = false
     @State private var error: String?
     @State private var confirmDelete = false
+    @State private var latestSession: TrainingSession?
     private var unit: String { auth.user?.settings.distanceUnit ?? "km" }
     var body: some View {
         NavigationStack {
@@ -143,6 +147,14 @@ struct TrainingSessionEditor: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                 }
                 if let session {
+                    if session.kind == .endurance && session.status == .scheduled && session.scheduledAt > Date() {
+                        Section("Weather") {
+                            NavigationLink { WeatherPlanPreferencesView(session: latestSession ?? session, onSaved: { latestSession = $0 }) } label: {
+                                Label("Forecast change preferences · Pro", systemImage: "cloud.sun")
+                            }
+                            Text("Save any edits before changing weather preferences. Changing a session's time, sport or duration resets forecast watching.").font(.caption).foregroundStyle(colors.muted)
+                        }
+                    }
                     Section {
                         Button(session.status == .skipped ? "Restore session" : "Skip session") {
                             var copy = session; copy.status = session.status == .skipped ? .scheduled : .skipped
@@ -169,6 +181,10 @@ struct TrainingSessionEditor: View {
                     if let id = auth.currentUserId { routes = (try? await EnduranceStore.shared.all(SavedEnduranceRoute.self, userID: id)) ?? [] }
                 }
                 .onChange(of: sport) { _, value in if let route = routes.first(where: { $0.id == routeID }), route.sport != value { routeID = "" } }
+                .onReceive(NotificationCenter.default.publisher(for: .shiftEnduranceDidChange)) { _ in
+                    guard let session else { return }
+                    Task { latestSession = try? await EnduranceStore.shared.all(TrainingSession.self, userID: session.userId).first { $0.id == session.id } }
+                }
                 .confirmationDialog("Delete this planned session?", isPresented: $confirmDelete) {
                     Button("Delete session", role: .destructive) { if let session { perform { try await EnduranceService.delete(session) } } }
                 }
@@ -181,7 +197,8 @@ struct TrainingSessionEditor: View {
         if kind == .endurance && ((!meters.isEmpty && !(distance.map { $0.isFinite && $0 > 0 } ?? false)) || (!minutes.isEmpty && !(duration.map { $0.isFinite && $0 > 0 } ?? false))) {
             error = "Enter a positive distance or duration, or leave the target blank."; return
         }
-        var item = session ?? TrainingSession(userId: owner, title: title, scheduledAt: scheduledAt, kind: kind)
+        let original = latestSession ?? session
+        var item = original ?? TrainingSession(userId: owner, title: title, scheduledAt: scheduledAt, kind: kind)
         item.isAllDay = nil
         item.title = title.trimmingCharacters(in: .whitespacesAndNewlines); item.scheduledAt = scheduledAt
         item.kind = kind; item.sport = kind == .endurance ? sport : nil; item.notes = notes
@@ -189,6 +206,7 @@ struct TrainingSessionEditor: View {
         item.routeID = kind == .endurance && routes.contains(where: { $0.id == routeID && $0.sport == sport }) ? routeID : nil
         item.targetMeters = kind == .endurance ? distance.map { $0 * (unit == "mi" ? 1_609.344 : 1_000) } : nil
         item.targetSeconds = kind == .endurance ? duration.map { $0 * 60 } : nil
+        if item.scheduledAt != original?.scheduledAt || item.kind != original?.kind || item.sport != original?.sport || item.targetSeconds != original?.targetSeconds { item.weatherPlan = nil }
         perform { try await EnduranceService.save(item) }
     }
     private func perform(_ action: @escaping () async throws -> Void) {

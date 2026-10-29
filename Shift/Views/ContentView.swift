@@ -252,9 +252,13 @@ struct MainTabView: View {
             plansPath = NavigationPath()
             await enduranceRecorder.activate(userID: authManager.currentUserId)
             await EnduranceWeatherService.shared.activate(owner: authManager.currentUserId)
+            await WeatherReschedulingService.shared.refresh()
             openPendingTrainingLink()
         }
         .onChange(of: trainingMode) { _, _ in selectedTab = 0; plansPath = NavigationPath() }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftEnduranceDidChange)) { _ in Task { await WeatherReschedulingService.shared.reconcileSavedSessions() } }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftUserDataDidSync)) { _ in Task { await WeatherReschedulingService.shared.reconcileSavedSessions() } }
+        .onChange(of: StoreService.shared.isPro) { _, _ in Task { await WeatherReschedulingService.shared.refresh(force: true, notify: false) } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil); EnduranceWeatherService.shared.refresh() }
         }

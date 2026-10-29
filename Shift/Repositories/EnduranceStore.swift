@@ -84,6 +84,38 @@ struct EnduranceStore: @unchecked Sendable {
         }
     }
 
+    /// Recheck the session and local conflicts in the same transaction as its
+    /// replacement, so a deleted/edited/started session cannot be resurrected.
+    func updateWeatherPreferences(_ expected: TrainingSession, with replacement: TrainingSession) async throws {
+        var withoutPreferenceChange = replacement; withoutPreferenceChange.weatherPlan = expected.weatherPlan
+        guard withoutPreferenceChange == expected, replacement.weatherPlan?.isValid != false else { throw WeatherReviewError.changed }
+        try await replaceWeatherSession(expected, with: replacement, requiringWatch: false)
+    }
+    func replaceWeatherSession(_ expected: TrainingSession, with replacement: TrainingSession, requiringWatch: Bool = true) async throws {
+        guard expected.userId == replacement.userId, expected.id == replacement.id, replacement.isValid else { throw WeatherReviewError.changed }
+        try await database.dbPool.write { db in
+            let rows = try String.fetchAll(db, sql: "SELECT details FROM training_sessions WHERE user_id = ?", arguments: [expected.userId])
+            let sessions = try rows.map { try EnduranceCoding.decoder().decode(TrainingSession.self, from: Data($0.utf8)) }
+            let completed = try String.fetchAll(db, sql: "SELECT details FROM endurance_activities WHERE user_id = ?", arguments: [expected.userId])
+                .map { try EnduranceCoding.decoder().decode(EnduranceActivity.self, from: Data($0.utf8)) }
+            let draft = try String.fetchOne(db, sql: "SELECT details FROM endurance_recordings WHERE user_id = ?", arguments: [expected.userId])
+                .map { try EnduranceCoding.decoder().decode(EnduranceDraft.self, from: Data($0.utf8)) }
+            let completedIDs = Set(completed.compactMap(\.trainingSessionID)).union([draft?.trainingSessionID].compactMap { $0 })
+            guard sessions.first(where: { $0.id == expected.id }) == expected, expected.kind == .endurance,
+                  expected.status == .scheduled, expected.scheduledAt > Date().addingTimeInterval(1_800),
+                  !completedIDs.contains(expected.id), expected.isAllDay != true else { throw WeatherReviewError.changed }
+            if requiringWatch && !WeatherReschedulingPolicy.eligible(expected, owner: expected.userId, completed: completedIDs, now: Date()) { throw WeatherReviewError.changed }
+            if replacement.scheduledAt != expected.scheduledAt {
+                let busy = WeatherReschedulingPolicy.busyTimes(sessions: sessions, excluding: expected, completed: completedIDs)
+                guard replacement.scheduledAt > Date().addingTimeInterval(1_800),
+                      !busy.contains(where: { $0.start < replacement.scheduledAt.addingTimeInterval(replacement.targetSeconds ?? 2_700) && $0.end > replacement.scheduledAt }) else { throw WeatherReviewError.changed }
+            }
+            try Self.upsert(replacement, in: db)
+            try Self.enqueue(table: TrainingSession.table, op: "insert", id: replacement.id, userID: replacement.userId,
+                payload: EnduranceCoding.encoder().encode(EnduranceEnvelope(replacement)), in: db)
+        }
+    }
+
     func delete<T: EnduranceEntity>(_ record: T) async throws {
         let payload = try JSONSerialization.data(withJSONObject: ["id": record.id, "user_id": record.userId])
         try await database.dbPool.write { db in

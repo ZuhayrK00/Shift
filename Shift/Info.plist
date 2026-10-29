@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array><string>com.zuhayrk.shift.weather-review</string></array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Shift checks when you are busy so your weekly training plan can fit around your calendar. Your events stay on this device. Shift does not edit them.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -9,6 +11,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>fetch</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Shift uses your camera to take progress photos.</string>

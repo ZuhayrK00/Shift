@@ -19,6 +19,7 @@ struct TrainingSession: EnduranceEntity, Hashable {
     var routeID: String?
     var status: TrainingSessionStatus = .scheduled
     var isAllDay: Bool?
+    var weatherPlan: WeatherPlanContext?
     var sortDate: Date { scheduledAt }
     var isValid: Bool {
         UUID(uuidString: id) != nil && !userId.isEmpty && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -200,7 +201,9 @@ struct EnduranceWidgetData: Codable {
             copy.distanceMeters = 0; copy.activeSeconds = 0; copy.activities = 0
             copy.runMeters = 0; copy.walkMeters = 0; copy.cycleMeters = 0
         }
-        copy.nextSessions = nextSessions.filter { $0.status == .scheduled && $0.scheduledAt >= calendar.startOfDay(for: date) }
+        copy.nextSessions = nextSessions.filter { $0.status == .scheduled && $0.scheduledAt >= calendar.startOfDay(for: date) }.map {
+            var summary = $0; summary.weatherPlan = nil; return summary
+        }
         return copy
     }
 }

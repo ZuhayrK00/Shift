@@ -19,6 +19,7 @@ struct OutdoorWeatherSnapshot: Codable, Hashable, Sendable {
     var place: String
     var current: OutdoorWeatherHour
     var hours: [OutdoorWeatherHour]
+    var location: WeatherPlanLocation?
     func isFresh(at now: Date) -> Bool { (-60...3_600).contains(now.timeIntervalSince(fetchedAt)) }
 }
 

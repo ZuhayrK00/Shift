@@ -119,6 +119,7 @@ enum GoalNotificationService {
     }
 
     static func clearUserState(userId: String?) async {
+        await WeatherReschedulingService.shared.clear()
         await TrainingNotificationService.clear(userID: userId)
         if let userId {
             await NotificationEventLedger.shared.clear(userId: userId)

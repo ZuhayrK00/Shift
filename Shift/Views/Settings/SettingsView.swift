@@ -1006,6 +1006,7 @@ struct NotificationSettingsPage: View {
     @State private var workoutIdleAlerts = true
     @State private var trainingReminders = false
     @State private var enduranceAchievements = false
+    @State private var weatherChanges = false
     @State private var trainingReminderMinutes = 30
     @State private var permissionState: NotificationPermissionState = .notDetermined
     @State private var isSaving = false
@@ -1053,6 +1054,8 @@ struct NotificationSettingsPage: View {
                         }
                     }
                     Toggle("Endurance achievements", isOn: $enduranceAchievements).tint(colors.controlTint)
+                    Toggle("Forecast changes · Pro", isOn: $weatherChanges).tint(colors.controlTint)
+                    Text("For sessions with forecast watching enabled. Shift checks when it opens and during available background refresh. Alerts ask you to review a change; they never move a session automatically. Requires Shift Pro.").font(.footnote).foregroundStyle(colors.muted)
                     Text("Reminders cover sessions in your training calendar and update when you move, skip or complete one. Achievements celebrate new Shift recordings, personal bests, milestones and endurance goals. Historical imports update progress quietly.")
                         .font(.footnote).foregroundStyle(colors.muted)
                 }.listRowBackground(colors.surface)
@@ -1113,6 +1116,7 @@ struct NotificationSettingsPage: View {
             workoutIdleAlerts = s.notifications.workoutIdleAlerts
             trainingReminders = s.notifications.trainingReminders
             enduranceAchievements = s.notifications.enduranceAchievements
+            weatherChanges = s.notifications.weatherChanges
             trainingReminderMinutes = s.notifications.trainingReminderMinutes
             Task { permissionState = await NotificationManager.permissionState() }
         }
@@ -1137,13 +1141,14 @@ struct NotificationSettingsPage: View {
         notifs.workoutIdleAlerts = workoutIdleAlerts
         notifs.trainingReminders = trainingReminders
         notifs.enduranceAchievements = enduranceAchievements
+        notifs.weatherChanges = weatherChanges
         notifs.trainingReminderMinutes = trainingReminderMinutes
         settings.notifications = notifs
 
         if exerciseGoalAchievements
             || frequencyGoalAchievements
             || stepGoalAchievements
-            || workoutIdleAlerts || trainingReminders || enduranceAchievements {
+            || workoutIdleAlerts || trainingReminders || enduranceAchievements || weatherChanges {
             _ = await NotificationManager.requestAuthorizationIfNeeded()
             permissionState = await NotificationManager.permissionState()
         }
@@ -1163,6 +1168,9 @@ struct NotificationSettingsPage: View {
         }
         await authManager.refreshUser()
         await GoalNotificationService.refreshConfiguration()
+        if !weatherChanges, let owner = authManager.currentUserId {
+            await NotificationManager.removeNotifications(withPrefixes: ["shift.weather.change.\(owner)."])
+        }
         if !workoutIdleAlerts {
             await NotificationManager.cancelAllIdleWorkoutNotifications()
         }

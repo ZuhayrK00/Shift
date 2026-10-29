@@ -153,13 +153,36 @@ final class EnduranceWeatherService: NSObject, CLLocationManagerDelegate {
                     rainChance: hours.first(where: { $0.date <= Date() && $0.date.addingTimeInterval(3_600) > Date() })?.rainChance ?? 0,
                     windKPH: now.wind.speed.converted(to: .kilometersPerHour).value, gustKPH: now.wind.gust?.converted(to: .kilometersPerHour).value ?? 0,
                     uv: now.uvIndex.value, daylight: now.isDaylight, hazardous: Self.hazardous(now.condition),
-                    condition: now.condition.description, symbol: now.symbolName), hours: hours)
+                    condition: now.condition.description, symbol: now.symbolName), hours: hours,
+                location: .init(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, place: place))
             attribution = mark; alerts = weather.weatherAlerts ?? []; loading = false; error = nil
             await WidgetDataService.updateSnapshot(); PhoneSessionManager.shared.sendContextToWatch()
         } catch {
             guard pass == current else { return }
             failed("Apple Weather is unavailable right now. Try again; planning without a forecast is still available.")
         }
+    }
+    /// Refresh a saved planning area without requesting or tracking live location.
+    static func forecast(for location: WeatherPlanLocation) async throws -> OutdoorWeatherSnapshot {
+        guard location.isValid else { throw EnduranceError.invalidActivity }
+        let owner = authManager.currentUserId
+        async let forecast = WeatherService.shared.weather(for: CLLocation(latitude: location.latitude, longitude: location.longitude))
+        async let branding = WeatherService.shared.attribution
+        let (report, attribution) = try await (forecast, branding)
+        try Task.checkCancellation()
+        guard authManager.currentUserId == owner else { throw EnduranceError.wrongAccount }
+        shared.attribution = attribution
+        func hour(_ value: HourWeather) -> OutdoorWeatherHour {
+            .init(date: value.date, celsius: value.temperature.converted(to: .celsius).value, rainChance: value.precipitationChance,
+                windKPH: value.wind.speed.converted(to: .kilometersPerHour).value,
+                gustKPH: value.wind.gust?.converted(to: .kilometersPerHour).value ?? 0, uv: value.uvIndex.value,
+                daylight: value.isDaylight, hazardous: hazardous(value.condition), condition: value.condition.description, symbol: value.symbolName)
+        }
+        let hours = report.hourlyForecast.map(hour)
+        guard let current = hours.first(where: { $0.date <= Date() && $0.date.addingTimeInterval(3_600) > Date() }) ?? hours.first else {
+            throw EnduranceError.invalidActivity
+        }
+        return .init(fetchedAt: Date(), place: location.place, current: current, hours: hours, location: location)
     }
     private static func hazardous(_ value: WeatherCondition) -> Bool {
         switch value {

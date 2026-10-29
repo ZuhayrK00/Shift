@@ -78,6 +78,18 @@ struct EnduranceHomeView: View {
                     .font(.caption2).foregroundStyle(colors.muted)
             }.enduranceCard()
             OutdoorWeatherPanel(sport: selectedSport).enduranceCard()
+            if StoreService.shared.isPro, !WeatherReschedulingService.shared.suggestions.isEmpty {
+                NavigationLink { WeatherChangesView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "cloud.rain.fill").foregroundStyle(colors.warning)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Your training forecast changed").font(.headline)
+                            Text("Review a better time. Nothing has moved.").font(.caption).foregroundStyle(colors.muted)
+                        }
+                        Spacer(); Image(systemName: "chevron.right").font(.caption)
+                    }.enduranceCard()
+                }.buttonStyle(.plain)
+            }
 
             VStack(alignment: .leading, spacing: 18) {
                 Text("This week").font(.headline)
@@ -93,6 +105,8 @@ struct EnduranceHomeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Your training").font(.title3.bold()).padding(.bottom, 10)
                 trainingLink("Build my week", detail: "Your goal, your time, better weather", icon: "sparkles") { EnduranceCoachView() }
+                Divider().overlay(colors.border)
+                trainingLink("Forecast changes", detail: "Review suggested moves with Shift Pro", icon: "cloud.sun") { WeatherChangesView() }
                 Divider().overlay(colors.border)
                 trainingLink("Progress", detail: "Trends, records and milestones", icon: "chart.xyaxis.line") { EnduranceProgressView() }
                 Divider().overlay(colors.border)
