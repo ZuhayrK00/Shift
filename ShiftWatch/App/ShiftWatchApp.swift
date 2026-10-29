@@ -15,7 +15,16 @@ struct ShiftWatchApp: App {
         WindowGroup {
             Group {
                 #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
-                if StoreCaptureConfiguration.enabled && StoreCaptureConfiguration.screen != "home" {
+                if StoreCaptureConfiguration.enabled && StoreCaptureConfiguration.screen == "gym" {
+                    NavigationStack { WatchWorkoutView() }.task {
+                        workoutState.start(sessionId: "capture-watch-gym", name: "Upper body A", planId: "capture-plan-0", startedAt: Date().addingTimeInterval(-1_620), exercises: StoreCaptureWatchData.gymExercises)
+                    }
+                } else if StoreCaptureConfiguration.enabled && StoreCaptureConfiguration.screen == "sets" {
+                    NavigationStack { WatchExerciseLogView(exercise: StoreCaptureWatchData.gymExercises[0]) }.task {
+                        workoutState.start(sessionId: "capture-watch-gym", name: "Upper body A", planId: "capture-plan-0", startedAt: Date().addingTimeInterval(-1_620), exercises: StoreCaptureWatchData.gymExercises)
+                        workoutState.loggedSetDetails["capture-ex-0"] = [.init(weight: 70, reps: 10), .init(weight: 70, reps: 10)]
+                    }
+                } else if StoreCaptureConfiguration.enabled && StoreCaptureConfiguration.screen != "home" {
                     NavigationStack { WatchEnduranceView() }.task {
                         if StoreCaptureConfiguration.screen == "recording" { WatchEnduranceRecorder.shared.loadStoreCapture() }
                     }

@@ -232,6 +232,8 @@ Release notes record the checks and device-testing limits for each build. Simula
 
 Store and promo fixtures are compiled only with `SHIFT_STORE_CAPTURE` **and** a simulator target, then activated with `--store-capture`. They use fictional local data and an unreachable backend endpoint. Normal Debug/Release builds exclude this capture code. Generated artwork, review recordings, archives and video exports remain local and are ignored by Git.
 
+The [iPad and Watch artwork workflow](docs/store-device-artwork.md) documents native device captures, the nine-image iPad set, four Watch screens and their reproducible renderer. New listing images are reviewed before upload.
+
 ## Release notes
 
 Version **2.1.0 (24)** contains the Endurance release and was verified **Ready for Distribution** on 29 October 2026. Version **2.1.1 (25)** adds forecast-change suggestions and was uploaded on the same date. It is **Waiting for Review**, with automatic release after approval selected; see the [2.1.1 release record](docs/release-2.1.1.md).

@@ -2,6 +2,12 @@
 import Foundation
 
 enum StoreCaptureWatchData {
+    static var gymExercises: [WatchSessionExercise] {
+        [
+            .init(exerciseId: "capture-ex-0", exerciseName: "Bench press", equipment: "barbell", completedSets: 2, totalSets: 3),
+            .init(exerciseId: "capture-ex-1", exerciseName: "Seated row", equipment: "cable", completedSets: 3, totalSets: 3)
+        ]
+    }
     static var summary: EnduranceWidgetData {
         .init(weekStart: Calendar.current.dateInterval(of: .weekOfYear, for: Date())!.start,
             distanceMeters: 18_400, activeSeconds: 9_403, activities: 4, distanceUnit: "km", distanceGoalMeters: 30_000,
