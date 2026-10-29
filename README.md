@@ -2,251 +2,235 @@
   <img src="screenshots/logo.png" alt="Shift" width="140">
 </p>
 
-<h1 align="center">Shift</h1>
+<h1 align="center">Shift — Fitness Tracker</h1>
+
+<p align="center"><em>Strength. Endurance. One Shift.</em></p>
 
 <p align="center">
-  <em>Your workout. Your way.</em>
-</p>
-
-<p align="center">
-  A modern, offline-first workout tracker for iPhone, iPad, and Apple Watch.<br>
-  Built entirely with SwiftUI.
+  An offline-first fitness tracker for iPhone, iPad and Apple Watch.<br>
+  Log gym workouts, record runs, walks and rides, and plan your training week.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/iOS-17.0+-007AFF?logo=apple&logoColor=white" alt="iOS 17+">
   <img src="https://img.shields.io/badge/watchOS-10.0+-34C759?logo=apple&logoColor=white" alt="watchOS 10+">
-  <img src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white" alt="Swift 6">
+  <img src="https://img.shields.io/badge/Swift-5-F05138?logo=swift&logoColor=white" alt="Swift 5 language mode">
   <img src="https://img.shields.io/badge/SwiftUI-0A84FF?logo=swift&logoColor=white" alt="SwiftUI">
-  <img src="https://img.shields.io/badge/Status-Work_in_Progress-FFD60A" alt="WIP">
 </p>
 
-<br>
+<p align="center"><a href="https://apps.apple.com/app/id6761838910">App Store</a> · <a href="https://shiftfitness.pro/">Website</a> · <a href="docs/privacy-policy.html">Privacy policy</a></p>
 
-> [!NOTE]
-> This project is under active development and has not yet been released on the App Store. Features, UI, and architecture are subject to change.
+## Two ways to train
 
-<br>
+Switch between **Strength** and **Endurance** using the glass mode selector beside the Shift heading. Both modes share your account, profile, goals and training calendar. Violet and teal accents distinguish the modes in light and dark themes.
 
 <p align="center">
-  <img src="screenshots/today-completed.png" alt="Today" width="180">
+  <img src="screenshots/today-completed.png" alt="Strength home" width="200">
   &nbsp;
-  <img src="screenshots/active-workout.png" alt="Workout" width="180">
+  <img src="screenshots/endurance-home.png" alt="Endurance home with local weather and weekly totals" width="200">
   &nbsp;
-  <img src="screenshots/plans-list.png" alt="Plans" width="180">
+  <img src="screenshots/endurance-activity.png" alt="Recorded run with route and activity statistics" width="200">
+</p>
+
+Screenshots of the Endurance release use the real native app with fictional demonstration data.
+
+## Strength training
+
+- Log weight, reps and RPE, with normal, warm-up and drop sets, supersets, exercise notes and mid-workout exercise changes.
+- Use rest timers, lock-screen Live Activities, plate loading and previous-session results while you train.
+- Create plans with exercise ordering, set counts, rep ranges, rest periods and weight targets, or choose a ready-made template.
+- Browse exercise instructions, muscle targets and equipment information; add custom exercises and track exercise goals and personal bests.
+- Generate personalised strength plans on device with Apple Foundation Models on compatible Apple Intelligence devices (**Pro**).
+- Share a workout summary when you finish.
+
+## Run, walk and ride
+
+Record outdoor running, walking and cycling with **Core Location and Apple Maps**. The preparation screen brings together a neighbourhood map, GPS readiness, optional local weather and the Start action.
+
+Activities include distance, active time, average pace or cycling speed, elevation and kilometre splits where recorded data supports them. Pause and resume manually, continue recording with the screen locked, and recover a saved draft after an interruption. Pauses and GPS gaps appear as separate route segments.
+
+Look back through your activity history, save routes from completed activities and share an activity summary with or without a map. Saved routes do not provide turn-by-turn navigation or road snapping. Swimming, automatic pause, social feeds and competitive segments are not included in this release.
+
+### Goals, records and milestones
+
+Set distance, active-time and activity-count targets by sport or across Endurance. The target-first goal editor includes presets, increment controls, units and timeframe choices. Follow personal bests and open milestone badges to see what you earned, when you earned it and the activity that crossed the threshold. Badges support interactive rotation and respect Reduce Motion.
+
+<p align="center">
+  <img src="screenshots/endurance-goals.png" alt="Endurance distance, active-time and activity goals" width="220">
   &nbsp;
-  <img src="screenshots/exercise-library.png" alt="Exercises" width="180">
+  <img src="screenshots/endurance-progress.png" alt="Distance trends and personal bests" width="220">
 </p>
 
-<br>
+### Your training calendar
 
----
+Strength appointments, endurance sessions and completed activities appear together. Schedule sessions, move or skip them, and start a planned workout from the calendar. Only explicitly saved appointments and completed activities appear; legacy weekly gym preferences do not create dated sessions automatically.
 
-<br>
+### Build your week
 
-## Workout Tracking
+Choose a sport, frequency, session length and available time windows. Availability can differ each day. Shift suggests a week within those windows and can consider available hourly weather forecasts and optional Apple Calendar busy-time checks. Review the suggested sessions before saving them together.
 
-Log every set with weight, reps, and RPE. Shift supports normal sets, warm-up sets, drop sets, and supersets — with a built-in rest timer that shows as a Live Activity on your lock screen. Add exercises mid-workout, attach notes, and share a summary card when you're done.
+- **One complete generated week is free per account.** Saving consumes the allowance; a failed save does not. The server records usage across devices and reinstalls.
+- **Shift Pro** includes continued week planning, new training-plan library schedules and the on-device Endurance coach.
+- The planner's manual controls work without Apple Intelligence. On supported devices, **Fill in my plan** can interpret a written goal and explicit availability.
+- Calendar checking reads busy intervals on device. Shift does not modify Apple Calendar events or include event titles, locations or attendees in AI prompts or cloud sync.
+- Missing forecasts and infeasible availability are explained. Saved sessions do not automatically move when the weather changes.
 
 <p align="center">
-  <img src="screenshots/active-workout.png" alt="Active workout" width="230">
-  &nbsp;&nbsp;
-  <img src="screenshots/exercise-log.png" alt="Exercise logging" width="230">
+  <img src="screenshots/training-calendar.png" alt="Combined Strength and Endurance calendar" width="220">
+  &nbsp;
+  <img src="screenshots/endurance-planner.png" alt="A generated endurance week with weather notes" width="220">
 </p>
 
-<br>
+### Local weather
 
-## Plans
+Opt in using a one-time location lookup or a city search. Current conditions, rounded temperatures, wind, rain, UV and linked provider warnings appear on Endurance home, activity preparation and weather settings. Apple Weather attribution and data-source links are retained. Weather is optional and separate from GPS recording.
 
-Create workout plans with drag-to-reorder exercises, target sets, rep ranges, rest periods, and weight targets. Browse a library of pre-made templates — from 3-day full body programs to 6-day PPL splits — or build your own from scratch.
+### Apple Health
 
-<p align="center">
-  <img src="screenshots/explore-plans.png" alt="Explore plans" width="230">
-  &nbsp;&nbsp;
-  <img src="screenshots/plan-editor.png" alt="Plan editor" width="230">
-  &nbsp;&nbsp;
-  <img src="screenshots/exercise-config.png" alt="Exercise config" width="230">
-</p>
+Import recorded running, walking, hiking and cycling workouts, including indoor workouts. **All history** is the default, with no lower date bound or result limit; Last year and Last 90 days are optional filters. A separate opt-in requests available workout routes.
 
-<br>
+Imports use stable, account-scoped Health workout identities to prevent duplicates. Reimporting can add a missing map without duplicating the workout. Missing route data does not block workout details, and the report distinguishes new activities, existing records and unavailable maps. Imports are manual; daily steps and walking-distance aggregates without a recorded workout are not turned into sessions.
 
-## AI Plan Generation
+Existing Health integration also supports steps, active energy, exercise minutes, stand hours, optional workout and body-weight writes, and counting workouts from other apps. Access depends on the permissions you grant and the data available in Apple Health.
 
-Generate personalized workout plans on-device using Apple's Foundation Models (iOS 26+). A guided wizard walks through your goals, schedule, experience level, and preferences — including voice input for injuries and equipment notes. Everything runs locally for privacy.
+## Profile and progress
 
-**Goal types:** Build Muscle · Increase Strength · Tone & Define · General Fitness · Improve Endurance · Athletic Performance · Rehab · Body Recomposition
-
-<br>
-
-## Exercise Library
-
-A comprehensive built-in database with illustrated instructions, muscle targets, and equipment info. Filter by muscle group, equipment, or difficulty. Create custom exercises, track personal bests, and set exercise-specific goals.
-
-<p align="center">
-  <img src="screenshots/exercise-library.png" alt="Exercise library" width="260">
-</p>
-
-<br>
-
-## Progress Tracking
-
-Track your progress across three dimensions:
-
-- **Weight** — log entries, visualize trends over time, set a target weight with a deadline
-- **Measurements** — chest, waist, arms, thighs, calves, neck *(Pro)*
-- **Photos** — progress photo capture with before/after comparison, protected with Face ID *(Pro)*
-
-<p align="center">
-  <img src="screenshots/progress-weight.png" alt="Weight tracking" width="260">
-</p>
-
-<br>
-
-## Today
-
-The home screen gives you everything at a glance: a week calendar with workout indicators, your current streak, completed sessions, and a HealthKit activity card showing move calories, exercise minutes, stand hours, steps, and distance.
-
-<p align="center">
-  <img src="screenshots/today-empty.png" alt="Today — ready to start" width="230">
-  &nbsp;&nbsp;
-  <img src="screenshots/today-completed.png" alt="Today — workout done" width="230">
-</p>
-
-<br>
+A shared profile groups your weekly overview, goals, body journal and records. Log body weight, follow trends and set a target. Pro adds body measurements and progress photos with before/after comparison and Face ID protection. The six-month Endurance distance chart is also included with Pro.
 
 ## Apple Watch
 
-Start and log workouts from your wrist, or continue an active iPhone workout on the watch. Features a rest timer, live step count, workout summary, and two-way sync via WatchConnectivity. Watch complications show workout progress and daily steps on your watch face. *(Pro)*
+The Pro companion supports gym logging, rest timers, daily steps, summaries and two-way WatchConnectivity sync. Endurance adds run, walk and cycle recording with a HealthKit workout session, GPS route samples, heart rate, distance and pace or speed.
 
-<br>
+Watch recordings are saved locally and queued for transfer to the paired iPhone when it is reachable. The Watch also shows upcoming training and a recent weather summary supplied by iPhone. Watch complications include Endurance weekly progress and quick access alongside existing workout and step views.
 
-## Widgets
+## Widgets and Live Activities
 
-Home screen widgets keep you on track without opening the app:
+All home-screen widgets and Watch complications are included with Pro.
 
 | Widget | What it shows |
-|---|---|
-| Today's Activity | Steps, workouts, streak at a glance |
-| Streak Counter | Current streak with flame icon |
+| --- | --- |
+| Today's Activity | Steps, workouts and streak |
+| Streak Counter | Current training streak |
 | Step Counter | Daily step progress |
-| Weekly Progress | Workouts completed vs. goal |
-| Quick Start | One-tap workout launch |
+| Weekly Progress | Gym sessions completed against your goal |
+| Quick Start | A shortcut into a gym workout |
+| Endurance this week | Distance, activities, active time, goal progress and run/walk/ride shortcuts; medium widgets can show recent weather |
+| Up next in Shift | Upcoming Strength and Endurance appointments |
 
-<br>
-
-## Smart Notifications
-
-Event-driven notifications celebrate completed exercise, weekly workout, and daily step goals. Rest completion and inactive-workout alerts use system-owned timers so they remain reliable while the app is suspended; Shift does not schedule future goal or progress reminders.
-
-<br>
-
-## HealthKit
-
-Sync completed workouts and body weight to Apple Health. Import step count, active energy, exercise time, and stand hours. Background step monitoring keeps your goal tracking up to date in real time. Optionally count workouts from other fitness apps.
-
-<br>
-
----
-
-<br>
-
-## Pro
-
-Shift is free for core workout tracking. A Pro subscription unlocks the full experience:
+Endurance supports small, medium and rectangular accessory widgets. Rest timers retain their lock-screen Live Activity. Widget timelines and Watch summaries use private shared snapshots; they do not independently request WeatherKit.
 
 <p align="center">
-  <img src="screenshots/pro-paywall.png" alt="Shift Pro" width="280">
+  <img src="screenshots/endurance-watch.png" alt="Apple Watch Endurance recording" width="190">
+  &nbsp;&nbsp;
+  <img src="screenshots/endurance-widget.png" alt="Endurance weekly progress widget" width="380">
 </p>
 
-| | Free | Pro |
-|---|:---:|:---:|
-| Workout tracking & logging | ✓ | ✓ |
-| Exercise library & custom exercises | ✓ | ✓ |
-| Weight tracking & graphs | ✓ | ✓ |
-| Workout plans | 3 | Unlimited |
-| AI plan generation | | ✓ |
-| Progress photos (Face ID) | | ✓ |
-| Body measurements | | ✓ |
-| Apple Watch app | | ✓ |
-| Watch complications | | ✓ |
-| Home screen widgets | | ✓ |
+## Notifications
 
-<br>
+Choose training reminders **15, 30 or 60 minutes** before scheduled sessions. Reminders are rebuilt when sessions, settings or account data change, and started, completed, skipped or deleted sessions are excluded. Notification links open the relevant calendar date or Endurance view.
 
----
+Optional Endurance achievement alerts celebrate newly recorded personal bests, milestones and reached goals. Historical Health imports do not trigger retrospective celebrations, and the event ledger prevents repeated alerts. Existing exercise, weekly workout, daily step, rest-completion and inactive-workout notifications remain available. Delivery requires notification permission and follows the device's notification settings.
 
-<br>
+## Free and Shift Pro
 
-## Architecture
+One optional monthly or yearly subscription covers both training modes. Existing saved sessions remain accessible after the free week is used or a subscription ends.
 
+| Feature | Free | Shift Pro |
+| --- | --- | --- |
+| Gym workout tracking, exercise library and custom exercises | Yes | Yes |
+| Weight tracking and graphs | Yes | Yes |
+| Gym plans | Up to 3 | Unlimited |
+| Run, walk and cycle recording, maps and activity history | Yes | Yes |
+| Apple Health workout imports | Yes | Yes |
+| Basic Endurance goals, personal bests and milestones | Yes | Yes |
+| Current weather, manual scheduling and reminders | Yes | Yes |
+| Complete generated endurance week with optional weather/Calendar checks | One saved week per account | Continued planning |
+| On-device Endurance coach | — | Yes, on supported devices |
+| New endurance training-plan schedules and six-month trends | — | Yes |
+| AI strength plan tools | — | Yes, on supported devices |
+| Progress photos and body measurements | — | Yes |
+| Apple Watch, widgets and complications | — | Yes |
+
+AI features require iOS 26 or later, compatible hardware and Apple Intelligence enabled. Core iPhone features support iOS 17+, and the Watch companion supports watchOS 10+.
+
+## Development
+
+Open `Shift.xcodeproj` in a current Xcode with the required iOS and watchOS SDKs. Swift Package Manager resolves the checked-in package versions. Select the **Shift** scheme to build the iPhone app and its embedded Watch/widget targets. Physical-device runs require your development team, provisioning and matching app-group/capability configuration.
+
+```sh
+xcodebuild -project Shift.xcodeproj -scheme Shift \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO build
 ```
+
+### Architecture
+
+```text
+Shared/                    Shared activity, planning, entitlement and Watch transfer models
 Shift/
-├── App/                    # Entry point and root navigation
-├── Models/                 # Data models and database records
-├── Views/
-│   ├── Auth/               # Sign in, sign up
-│   ├── Onboarding/         # 9-step guided setup
-│   ├── Today/              # Home dashboard
-│   ├── Workout/            # Live workout logging
-│   ├── Plans/              # Plan building and AI generation
-│   ├── Exercises/          # Exercise library
-│   ├── Progress/           # Weight, measurements, photos
-│   ├── Profile/            # Goals and personal bests
-│   └── Settings/           # Preferences and account
-├── Services/               # Business logic
-├── Repositories/           # GRDB database access
-├── Database/               # Schema and migrations
-├── Components/             # Reusable UI components
-├── Helpers/                # Utilities and managers
-├── Connectivity/           # WatchConnectivity bridge
-└── Theme/                  # Color system and design tokens
-ShiftWatch/                 # Apple Watch companion
-ShiftTimerWidget/           # Widgets + Live Activity
-ShiftWatchComplications/    # Watch face complications
-Shared/                     # Shared models between targets
+  App/                     Entry point, app intents and navigation
+  Views/Endurance/         Recording, history, goals, weather, coach and planner
+  Views/                   Strength, profile, progress, settings and authentication
+  Services/                Recording, Health, weather, Calendar, planning, sync and notifications
+  Repositories/            GRDB persistence and account-scoped stores
+  Database/                Local schema and migrations
+  Development/             Simulator-only fictional capture fixtures
+  Components/              Shared controls and training-mode header
+  Connectivity/            Phone side of WatchConnectivity
+  Theme/                   Light/dark colours and design tokens
+ShiftWatch/                Watch companion and local recording outbox
+ShiftTimerWidget/          iPhone widgets and rest-timer Live Activity
+ShiftWatchComplications/   Watch face complications
+supabase/migrations/       PostgreSQL schema, validation, RLS and preview-save RPC
+ShiftTests/                Unit and integration test sources
 ```
 
-<br>
+| Area | Technology |
+| --- | --- |
+| Interface | SwiftUI and Observation |
+| Local data | GRDB / SQLite |
+| Authentication and private sync | Supabase with row-level security |
+| Recording and maps | Core Location, MapKit and HealthKit |
+| Weather | WeatherKit |
+| Calendar busy-time checks | EventKit |
+| Subscriptions | StoreKit 2 |
+| Watch transfer | WatchConnectivity |
+| Widgets and Live Activities | WidgetKit and ActivityKit |
+| On-device AI | Apple Foundation Models |
 
-### Tech Stack
+Local SQLite records are the source of truth for tracking. Pending changes use the existing mutation queue for later Supabase sync. Recording and saved history remain usable offline; maps may need downloaded tiles or a connection. Weather, account services, cloud sync and the server-claimed free generated week require connectivity.
 
-| | |
-|---|---|
-| **UI** | SwiftUI + `@Observable` |
-| **Database** | GRDB 7.10 (SQLite) |
-| **Backend** | Supabase (auth, sync, RLS) |
-| **Subscriptions** | StoreKit 2 |
-| **Health** | HealthKit |
-| **Watch** | WatchConnectivity |
-| **Widgets** | WidgetKit + ActivityKit |
-| **AI** | Apple Foundation Models (iOS 26+) |
+Endurance adds migrations **027–029** for activities/goals, training sessions/saved routes and the one-week preview receipt/RPC. See the [release notes](docs/endurance-v5.md) for access rules and deployment details. Health, location, Calendar and notifications are optional and requested for the features that need them. Account deletion and data export include Endurance records.
 
-<br>
+### Validation
 
-### Offline-First
+`ShiftTests` includes tracking geometry, pause/recovery, account isolation, imports, milestones, time parsing, scheduling, reminders and Pro/free-week tests. PostgreSQL integration scripts run against disposable in-memory PGlite databases and do not connect to production:
 
-The local GRDB database is the source of truth. A mutation queue stores changes and flushes them to Supabase when connectivity is available, with FIFO processing to maintain order. The app is fully functional without an internet connection.
+```sh
+# Install the test dependency outside the app repository.
+npm install --prefix /tmp/shift-schema-tools @electric-sql/pglite
+export PGLITE_MODULE_PATH=/tmp/shift-schema-tools/node_modules/@electric-sql/pglite/dist/index.js
+node scripts/test-endurance-schema.mjs
+node scripts/test-training-schema.mjs
+node scripts/test-endurance-preview-schema.mjs
+```
 
-<br>
+Release notes record the checks and device-testing limits for each build. Simulator builds and native model tests do not establish real GPS accuracy, Health/Calendar permissions, notification delivery or Watch behaviour on hardware.
 
----
+### Demo captures
 
-<br>
+Store and promo fixtures are compiled only with `SHIFT_STORE_CAPTURE` **and** a simulator target, then activated with `--store-capture`. They use fictional local data and an unreachable backend endpoint. Normal Debug/Release builds exclude this capture code. Generated artwork, review recordings, archives and video exports remain local and are ignored by Git.
 
-## Status
+## Release notes
 
-This app is a **work in progress**. Current focus areas:
+Version **2.1.0 (24)** contains the Endurance release. Apple has approved it; the last verified App Store Connect status on **29 October 2026** was **Pending Developer Release**. Publication is a separate manual action.
 
-- [ ] Final UI polish and refinements
-- [ ] App Store submission preparation
-- [ ] Additional explore/template plans
-- [ ] Expanded exercise library content
-- [ ] Performance optimization
-
-Feedback and ideas are welcome — feel free to [open an issue](../../issues).
-
-<br>
+- [Endurance recording and initial release](docs/endurance-release.md)
+- [Calendar, routes, records, Watch, widgets and notifications](docs/endurance-v2.md)
+- [Weather, coach, full-history imports and profile](docs/endurance-v3.md)
+- [Goal editors, interactive badges, planner and Calendar polish](docs/endurance-v4.md)
+- [Pro split and one complete free generated week](docs/endurance-v5.md)
 
 ## License
 
-This project is proprietary. All rights reserved.
+This project is proprietary. All rights reserved. Exercise catalogue licensing and attribution are documented in [the catalogue migration notes](docs/repdb-migration.md).

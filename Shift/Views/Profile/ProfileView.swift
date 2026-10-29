@@ -23,815 +23,106 @@ struct ProfileView: View {
     @State private var showWeightGoalEditor = false
     @State private var todaySteps: Int = 0
 
+    @State private var training = TrainingHub()
+    @State private var enduranceGoals: [EnduranceGoal] = []
+    @State private var showEnduranceGoals = false
+    @State private var showEnduranceRecords = false
+    @State private var showCalendar = false
+    @State private var goalExercise: Exercise?
     private var user: User? { authManager.user }
 
     var body: some View {
-        ZStack {
-            colors.bg.ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Profile header
-                    headerCard
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-
-                    // Progress (weight, measurements, photos)
-                    progressCard
-                        .padding(.horizontal, 16)
-
-                    // Weight goal
-                    weightGoalCard
-                        .padding(.horizontal, 16)
-
-                    // Step goal
-                    stepGoalCard
-                        .padding(.horizontal, 16)
-
-                    // Weekly goal
-                    frequencyGoalCard
-                        .padding(.horizontal, 16)
-
-                    // Exercise goals
-                    if !activeExerciseGoals.isEmpty {
-                        exerciseGoalsCard
-                            .padding(.horizontal, 16)
-                    }
-
-                    // Personal bests
-                    personalBestsCard
-                        .padding(.horizontal, 16)
-
-                    Spacer().frame(height: 32)
-                }
+        ScrollView {
+            ProfileOverviewLayout(data: overview, avatar: {
+                AvatarView(url: user?.profilePictureUrl, initials: user?.initials ?? "?", size: 66)
+                    .overlay(Circle().stroke(colors.accent.opacity(0.5), lineWidth: 2))
+            }, action: open)
+        }.background(colors.bg).foregroundStyle(colors.text)
+            .navigationTitle("Profile").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .primaryAction) {
+                Button { showSettings = true } label: { Image(systemName: "gearshape").foregroundStyle(colors.muted) }.accessibilityLabel("Settings")
+            } }
+            .navigationDestination(isPresented: $showProgress) { ProgressTrackingView() }
+            .navigationDestination(isPresented: $showSettings) { SettingsView(onSaved: { toastMessage = "Settings saved"; showToast = true; Task { await loadOverview() } }) }
+            .navigationDestination(isPresented: $showAllPBs) { PersonalBestsView() }
+            .navigationDestination(isPresented: $showEnduranceGoals) { EnduranceGoalsView() }
+            .navigationDestination(isPresented: $showEnduranceRecords) { EnduranceProgressView() }
+            .navigationDestination(item: $goalExercise) { ExerciseDetailView(exercise: $0, initialTab: .goals) }
+            .sheet(isPresented: $showWeightGoalEditor, onDismiss: { Task { await loadOverview() } }) { WeightGoalEditorSheet { Task { await loadProgressData() } } }
+            .sheet(isPresented: $showStepGoalEditor, onDismiss: { Task { await loadOverview() } }) { StepGoalEditorSheet { Task { await GoalNotificationService.refreshConfiguration(); await GoalNotificationService.handleStepCountChange() } } }
+            .sheet(isPresented: $showFrequencyEditor, onDismiss: { Task { await loadOverview() } }) { FrequencyGoalEditorSheet { Task { frequencyProgress = try? await GoalService.getFrequencyProgress() } } }
+            .sheet(isPresented: $showCalendar, onDismiss: { EnduranceRecorder.shared.openPendingCalendarSession() }) { TrainingCalendarView() }
+            .task(id: authManager.currentUserId) { await loadOverview() }
+            .refreshable { await loadOverview() }
+            .onReceive(NotificationCenter.default.publisher(for: .shiftUserDataDidSync)) { _ in Task { await loadOverview() } }
+            .onReceive(NotificationCenter.default.publisher(for: .shiftEnduranceDidChange)) { _ in Task { await training.load(); await loadEnduranceGoals() } }
+            .overlay(alignment: .bottom) {
+                if showToast { Text(toastMessage).font(.subheadline.weight(.semibold)).padding(14).foregroundStyle(colors.onSuccess).background(colors.success, in: Capsule()).padding(.bottom, 20).onAppear { Task { try? await Task.sleep(for: .seconds(2)); showToast = false } } }
             }
-        }
-        .navigationTitle("Profile")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .foregroundStyle(colors.muted)
-                }
-            }
-        }
-        .navigationDestination(isPresented: $showProgress) {
-            ProgressTrackingView()
-        }
-        .navigationDestination(isPresented: $showSettings) {
-            SettingsView(onSaved: {
-                toastMessage = "Settings saved"
-                showToast = true
-            })
-        }
-        .navigationDestination(isPresented: $showAllPBs) {
-            PersonalBestsView()
-        }
-        .navigationDestination(for: Exercise.self) { exercise in
-            ExerciseDetailView(exercise: exercise, initialTab: .goals)
-        }
-        .sheet(isPresented: $showWeightGoalEditor) {
-            WeightGoalEditorSheet {
-                Task { await loadProgressData() }
-            }
-        }
-        .sheet(isPresented: $showStepGoalEditor) {
-            StepGoalEditorSheet {
-                Task {
-                    await GoalNotificationService.refreshConfiguration()
-                    await GoalNotificationService.handleStepCountChange()
-                }
-            }
-        }
-        .sheet(isPresented: $showFrequencyEditor) {
-            FrequencyGoalEditorSheet {
-                Task { frequencyProgress = try? await GoalService.getFrequencyProgress() }
-            }
-        }
-        .task {
-            await loadPersonalBests()
-            await loadExerciseGoals()
-            await loadProgressData()
-            await loadTodaySteps()
-            frequencyProgress = try? await GoalService.getFrequencyProgress()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .shiftUserDataDidSync)) { _ in
-            Task {
-                await loadPersonalBests()
-                await loadExerciseGoals()
-                await loadProgressData()
-                frequencyProgress = try? await GoalService.getFrequencyProgress()
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if showToast {
-                Text(toastMessage)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(colors.onSuccess)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(colors.success)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
-                    .padding(.bottom, 20)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation { showToast = false }
-                        }
-                    }
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: showToast)
     }
-
-    // MARK: - Header card
-
-    private var headerCard: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [colors.accent, colors.accent2],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 2.5
-                    )
-                    .frame(width: 58, height: 58)
-
-                AvatarView(
-                    url: user?.profilePictureUrl,
-                    initials: user?.initials ?? "?",
-                    size: 50
-                )
-            }
-
-            Text("Hi, \(user?.displayName ?? "there")")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(colors.text)
-
-            Spacer()
-        }
-        .padding(16)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
-    }
-
-    // MARK: - Progress card
-
-    private var progressCard: some View {
-        let weightUnit = user?.settings.weightUnit ?? "kg"
-
-        return Button {
-            showProgress = true
-        } label: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 14))
-                        .foregroundStyle(colors.accent)
-                    Text("Progress")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(colors.muted)
-                        .textCase(.uppercase)
-                        .kerning(0.3)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(colors.muted)
-                }
-
-                HStack(spacing: 8) {
-                    progressCell(
-                        icon: "scalemass.fill",
-                        title: "Weight",
-                        value: latestWeight.map { formatWeightValue($0.weight) + " " + weightUnit },
-                        hasData: latestWeight != nil
-                    )
-                    progressCell(
-                        icon: "ruler",
-                        title: "Body",
-                        value: latestMeasurements.isEmpty ? nil : "\(latestMeasurements.count) logged",
-                        hasData: !latestMeasurements.isEmpty
-                    )
-                    if user?.settings.lockPhotos == true {
-                        progressCell(
-                            icon: "lock.fill",
-                            title: "Photos",
-                            value: "Locked",
-                            hasData: false
-                        )
-                    } else {
-                        progressCell(
-                            icon: "camera.fill",
-                            title: "Photos",
-                            value: latestProgressPhoto != nil ? "Logged" : nil,
-                            hasData: latestProgressPhoto != nil
-                        )
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(16)
-            .background(colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(colors.border, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func progressCell(icon: String, title: String, value: String?, hasData: Bool) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundStyle(hasData ? colors.accent : colors.muted)
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(colors.muted)
-            Text(value ?? "—")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(hasData ? colors.text : colors.muted.opacity(0.5))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, 10)
-        .background(colors.surface2)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func formatWeightValue(_ value: Double) -> String {
-        value == value.rounded() ? String(format: "%.0f", value) : String(format: "%.1f", value)
-    }
-
-    // MARK: - Weight goal card
-
-    private var weightGoalCard: some View {
+    private var overview: ProfileOverviewData {
         let settings = user?.settings ?? .default
-        let targetWeight = settings.targetWeight
-        let weightUnit = settings.weightUnit
-        let currentWeight = latestWeight?.weight
-        let deadline: Date? = settings.targetWeightDeadline.flatMap {
-            ISO8601DateFormatter.shared.date(from: $0)
-            ?? ISO8601DateFormatter.sharedWithFractional.date(from: $0)
+        let start = GoalService.startOfCurrentWeek(weekStartsOn: settings.weekStartsOn)
+        let strength = training.workouts.filter { $0.startedAt >= start && ($0.endedAt ?? .distantFuture) <= Date() }
+        let endurance = training.activities.filter { $0.startedAt >= start && $0.endedAt <= Date() }
+        var rows: [ProfileOverviewRow] = []
+        let frequency = frequencyProgress
+        rows.append(.init(id: "frequency", title: "Weekly consistency", subtitle: frequency.map { "\($0.completed) of \($0.target) sessions this week" } ?? "Choose your training days", symbol: "figure.mixed.cardio", progress: frequency.map { Double($0.completed) / Double(max(1, $0.target)) }, action: .frequency))
+        rows.append(.init(id: "steps", title: "Daily movement", subtitle: settings.dailyStepGoal.map { "\(todaySteps.formatted()) of \($0.formatted()) steps today" } ?? "Set a daily step goal", symbol: "figure.walk", progress: settings.dailyStepGoal.map { Double(todaySteps) / Double(max(1, $0)) }, endurance: true, action: .steps))
+        if let target = settings.targetWeight {
+            rows.append(.init(id: "weight", title: "Weight goal", subtitle: "Target \(formatWeight(target, unit: settings.weightUnit))", symbol: "scalemass", value: "Edit", action: .weight))
+        } else { rows.append(.init(id: "weight", title: "Weight goal", subtitle: "Choose a target when you're ready", symbol: "scalemass", action: .weight)) }
+        var goalCalendar = Calendar.current; goalCalendar.firstWeekday = settings.weekStartsOn == "sunday" ? 1 : 2
+        if enduranceGoals.isEmpty { rows.append(.init(id: "endurance", title: "Endurance goals", subtitle: "Distance, time or weekly activities", symbol: "figure.run", endurance: true, action: .enduranceGoals)) }
+        for goal in enduranceGoals {
+            let progress = goal.progress(in: training.activities, calendar: goalCalendar)
+            let target: String
+            switch goal.metric {
+            case .distance: target = EnduranceFormat.distance(goal.target, unit: settings.distanceUnit)
+            case .duration: target = "\(Int(goal.target / 60)) minutes"
+            case .activities: target = "\(Int(goal.target)) activities"
+            }
+            rows.append(.init(id: goal.id, title: "\(goal.sport?.title ?? "Endurance") · \(goal.period.title.lowercased())", subtitle: "\(goal.metric.title) goal · \(target)", symbol: goal.sport?.symbol ?? "figure.mixed.cardio", progress: progress / max(1, goal.target), endurance: true, action: .enduranceGoals))
         }
-        let daysRemaining: Int? = deadline.map { max(0, Calendar.current.dateComponents([.day], from: Date(), to: $0).day ?? 0) }
-
-        let progress: Double = {
-            guard let target = targetWeight, let current = currentWeight, target != current else { return 0 }
-            let startWeight = user?.weight ?? current
-            if target < startWeight {
-                // Losing weight
-                guard startWeight > target else { return 1.0 }
-                return min(1.0, max(0, (startWeight - current) / (startWeight - target)))
-            } else {
-                // Gaining weight
-                guard target > startWeight else { return 1.0 }
-                return min(1.0, max(0, (current - startWeight) / (target - startWeight)))
-            }
-        }()
-
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "scalemass.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(colors.accent2)
-                    Text("Weight Goal")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(colors.text)
-                }
-                Spacer()
-                Button {
-                    showWeightGoalEditor = true
-                } label: {
-                    Image(systemName: targetWeight != nil ? "pencil" : "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(colors.accent)
-                        .frame(width: 32, height: 32)
-                        .background(colors.accent.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let target = targetWeight {
-                HStack(spacing: 20) {
-                    // Progress ring
-                    ZStack {
-                        Circle()
-                            .stroke(colors.border, lineWidth: 8)
-                            .frame(width: 72, height: 72)
-                        Circle()
-                            .trim(from: 0, to: progress)
-                            .stroke(
-                                progress >= 1.0
-                                    ? AnyShapeStyle(colors.success)
-                                    : AnyShapeStyle(LinearGradient(
-                                        colors: [colors.accent2, colors.accent],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )),
-                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                            )
-                            .frame(width: 72, height: 72)
-                            .rotationEffect(.degrees(-90))
-
-                        Image(systemName: "scalemass.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(progress >= 1.0 ? colors.success : colors.accent2)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let current = currentWeight {
-                            Text("\(formatWeightValue(current)) \(weightUnit)")
-                                .font(.system(size: 24, weight: .bold, design: .rounded))
-                                .foregroundStyle(colors.text)
-                        }
-                        Text("Target: \(formatWeightValue(target)) \(weightUnit)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(colors.muted)
-
-                        if let days = daysRemaining {
-                            if days == 0 {
-                                Text("Deadline reached")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(colors.warning)
-                            } else {
-                                Text("\(days) day\(days == 1 ? "" : "s") remaining")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(colors.muted)
-                            }
-                        }
-
-                        if progress >= 1.0 {
-                            Text("Goal reached!")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(colors.success)
-                        }
-                    }
-
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: 12) {
-                    Image(systemName: "scalemass")
-                        .font(.system(size: 24))
-                        .foregroundStyle(colors.muted.opacity(0.5))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("No weight goal set")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(colors.text)
-                        Text("Set a target weight and deadline to track progress.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(colors.muted)
-                    }
-                }
-            }
+        for (goal, exercise) in activeExerciseGoals {
+            let current = exerciseCurrentMaxes[exercise.id] ?? goal.baselineWeight
+            let denominator = goal.targetWeight - goal.baselineWeight
+            rows.append(.init(id: goal.id, title: exercise.name, subtitle: "Target \(formatWeight(goal.targetWeight, unit: settings.weightUnit))", symbol: "target", progress: denominator > 0 ? (current - goal.baselineWeight) / denominator : nil, action: .exercise(exercise.id)))
         }
-        .padding(16)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
+        let records = EnduranceInsights.records(training.activities, userID: authManager.currentUserId ?? "")
+        return .init(name: user?.displayName ?? "Your profile", strengthCount: strength.count, enduranceCount: endurance.count,
+            distance: EnduranceFormat.distance(endurance.reduce(0) { $0 + $1.distanceMeters }, unit: settings.distanceUnit),
+            enduranceTime: EnduranceFormat.duration(endurance.reduce(0) { $0 + $1.activeSeconds }), goals: rows,
+            weight: latestWeight.map { formatWeight($0.weight, unit: settings.weightUnit) } ?? "Not logged",
+            body: latestMeasurements.isEmpty ? "Not logged" : "\(latestMeasurements.count) logged",
+            photos: settings.lockPhotos ? "Locked" : latestProgressPhoto == nil ? "Not logged" : "Logged",
+            strengthRecords: personalBests.map { "\($0.displayName) · \(formatWeight($0.maxWeight, unit: settings.weightUnit))" },
+            enduranceRecords: records.map { "\($0.title) · \($0.isTime ? EnduranceFormat.duration($0.value) : EnduranceFormat.distance($0.value, unit: settings.distanceUnit))" },
+            loading: training.loading || isLoadingPBs, error: training.error)
     }
-
-    // MARK: - Step goal card
-
-    private var stepGoalCard: some View {
-        let stepGoal = user?.settings.dailyStepGoal
-        let progress: Double = {
-            guard let goal = stepGoal, goal > 0 else { return 0 }
-            return min(1.0, Double(todaySteps) / Double(goal))
-        }()
-
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "figure.walk")
-                        .font(.system(size: 14))
-                        .foregroundStyle(colors.accent)
-                    Text("Daily Steps")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(colors.text)
-                }
-                Spacer()
-                Button {
-                    showStepGoalEditor = true
-                } label: {
-                    Image(systemName: stepGoal != nil ? "pencil" : "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(colors.accent)
-                        .frame(width: 32, height: 32)
-                        .background(colors.accent.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let goal = stepGoal {
-                HStack(spacing: 20) {
-                    // Progress ring
-                    ZStack {
-                        Circle()
-                            .stroke(colors.border, lineWidth: 8)
-                            .frame(width: 72, height: 72)
-                        Circle()
-                            .trim(from: 0, to: progress)
-                            .stroke(
-                                progress >= 1.0
-                                    ? AnyShapeStyle(colors.success)
-                                    : AnyShapeStyle(LinearGradient(
-                                        colors: [colors.accent, colors.accent2],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )),
-                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                            )
-                            .frame(width: 72, height: 72)
-                            .rotationEffect(.degrees(-90))
-
-                        Image(systemName: "figure.walk")
-                            .font(.system(size: 18))
-                            .foregroundStyle(progress >= 1.0 ? colors.success : colors.accent)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(formatSteps(todaySteps))
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundStyle(colors.text)
-                        Text("of \(formatSteps(goal)) steps")
-                            .font(.system(size: 13))
-                            .foregroundStyle(colors.muted)
-
-                        if progress >= 1.0 {
-                            Text("Goal reached!")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(colors.success)
-                        }
-                    }
-
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: 12) {
-                    Image(systemName: "shoeprints.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(colors.muted.opacity(0.5))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("No step goal set")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(colors.text)
-                        Text("Set a daily step target to stay active.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(colors.muted)
-                    }
-                }
-            }
+    private func open(_ action: ProfileOverviewAction) {
+        switch action {
+        case .frequency: showFrequencyEditor = true
+        case .steps: showStepGoalEditor = true
+        case .weight: showWeightGoalEditor = true
+        case .body: showProgress = true
+        case .strengthRecords: showAllPBs = true
+        case .enduranceRecords: showEnduranceRecords = true
+        case .enduranceGoals: showEnduranceGoals = true
+        case .calendar: showCalendar = true
+        case .exercise(let id): goalExercise = activeExerciseGoals.first { $0.exercise.id == id }?.exercise
         }
-        .padding(16)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
     }
-
-    private func formatSteps(_ steps: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return formatter.string(from: NSNumber(value: steps)) ?? "\(steps)"
+    private func loadOverview() async {
+        await training.load()
+        await loadPersonalBests(); await loadExerciseGoals(); await loadProgressData(); await loadTodaySteps(); await loadEnduranceGoals()
+        frequencyProgress = try? await GoalService.getFrequencyProgress()
     }
-
-    // MARK: - Weekly goal card
-
-    @ViewBuilder
-    private var frequencyGoalCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Section header
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(colors.warning)
-                    Text("Weekly Goal")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(colors.text)
-                }
-                Spacer()
-                Button {
-                    showFrequencyEditor = true
-                } label: {
-                    Image(systemName: frequencyProgress != nil ? "pencil" : "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(colors.accent)
-                        .frame(width: 32, height: 32)
-                        .background(colors.accent.opacity(0.1))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            if let progress = frequencyProgress {
-                HStack(spacing: 20) {
-                    // Progress ring
-                    ZStack {
-                        Circle()
-                            .stroke(colors.border, lineWidth: 10)
-                            .frame(width: 88, height: 88)
-
-                        Circle()
-                            .trim(from: 0, to: min(1.0, Double(progress.completed) / Double(max(1, progress.target))))
-                            .stroke(
-                                LinearGradient(
-                                    colors: progress.completed >= progress.target
-                                        ? [colors.success, colors.success.opacity(0.7)]
-                                        : [colors.accent, colors.accent2],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                style: StrokeStyle(lineWidth: 10, lineCap: .round)
-                            )
-                            .frame(width: 88, height: 88)
-                            .rotationEffect(.degrees(-90))
-
-                        VStack(spacing: 0) {
-                            Text("\(progress.completed)")
-                                .font(.system(size: 26, weight: .bold, design: .rounded))
-                                .foregroundStyle(colors.text)
-                            Text("of \(progress.target)")
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundStyle(colors.muted)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        if progress.completed >= progress.target {
-                            Text(progress.completed > progress.target
-                                 ? "Above and beyond!"
-                                 : "Goal complete!")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(colors.success)
-                        } else {
-                            let remaining = progress.target - progress.completed
-                            Text("\(remaining) session\(remaining == 1 ? "" : "s") to go")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(colors.text)
-                        }
-
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 11))
-                            Text("\(progress.daysRemainingInWeek) day\(progress.daysRemainingInWeek == 1 ? "" : "s") left this week")
-                                .font(.system(size: 13))
-                        }
-                        .foregroundStyle(colors.muted)
-
-                        if progress.trainingDays.isEmpty {
-                            Text("Choose your training days")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(colors.accent)
-                        } else {
-                            HStack(spacing: 5) {
-                                ForEach(1...7, id: \.self) { day in
-                                    Text(weekdayInitial(for: day))
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(
-                                            progress.trainingDays.contains(day)
-                                                ? colors.onAccent
-                                                : colors.muted
-                                        )
-                                        .frame(width: 23, height: 23)
-                                        .background(
-                                            progress.trainingDays.contains(day)
-                                                ? colors.accent
-                                                : colors.surface2,
-                                            in: Circle()
-                                        )
-                                }
-                            }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(
-                                "Training days: \(trainingDayNames(progress.trainingDays))"
-                            )
-                        }
-                    }
-
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: 12) {
-                    Image(systemName: "target")
-                        .font(.system(size: 24))
-                        .foregroundStyle(colors.muted.opacity(0.5))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("No goal set")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(colors.text)
-                        Text("Set a weekly training target to track consistency.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(colors.muted)
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
+    private func loadEnduranceGoals() async {
+        guard let owner = authManager.currentUserId else { enduranceGoals = []; return }
+        let result = (try? await EnduranceStore.shared.all(EnduranceGoal.self, userID: owner)) ?? []
+        guard authManager.currentUserId == owner else { return }; enduranceGoals = result
     }
-
-    private func weekdayInitial(for isoWeekday: Int) -> String {
-        ["M", "T", "W", "T", "F", "S", "S"][isoWeekday - 1]
-    }
-
-    private func trainingDayNames(_ days: [Int]) -> String {
-        let names = Calendar.current.weekdaySymbols
-        return days.map { isoDay in
-            let appleIndex = isoDay == 7 ? 0 : isoDay
-            return names[appleIndex]
-        }.joined(separator: ", ")
-    }
-
-    // MARK: - Exercise goals card
-
-    @ViewBuilder
-    private var exerciseGoalsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header
-            HStack(spacing: 8) {
-                Image(systemName: "target")
-                    .font(.system(size: 14))
-                    .foregroundStyle(colors.accent)
-                Text("Exercise Goals")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(colors.text)
-                Spacer()
-                Text("\(activeExerciseGoals.count) active")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(colors.muted)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(colors.surface2)
-                    .clipShape(Capsule())
-            }
-
-            VStack(spacing: 8) {
-                ForEach(activeExerciseGoals, id: \.goal.id) { item in
-                    NavigationLink(value: item.exercise) {
-                        exerciseGoalRow(item.goal, exercise: item.exercise)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
-    }
-
-    private func exerciseGoalRow(_ goal: ExerciseGoal, exercise: Exercise) -> some View {
-        let days = goal.daysRemaining
-        let weightUnit = user?.settings.weightUnit ?? "kg"
-
-        return HStack(spacing: 12) {
-            // Mini progress ring
-            let currentMax = exerciseCurrentMaxes[goal.exerciseId] ?? goal.baselineWeight
-            let progress = goal.targetWeight > goal.baselineWeight
-                ? min(1.0, max(0, (currentMax - goal.baselineWeight) / (goal.targetWeight - goal.baselineWeight)))
-                : 0.0
-
-            ZStack {
-                Circle()
-                    .stroke(colors.border, lineWidth: 3)
-                    .frame(width: 38, height: 38)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(colors.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .frame(width: 38, height: 38)
-                    .rotationEffect(.degrees(-90))
-                Image(systemName: "dumbbell.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(colors.accent)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(exercise.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(colors.text)
-                    .lineLimit(1)
-                Text(formatWeight(goal.targetWeight, unit: weightUnit))
-                    .font(.system(size: 12))
-                    .foregroundStyle(colors.muted)
-            }
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                Text(days == 0 ? "Today" : days == 1 ? "1d" : "\(days)d")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(days <= 3 ? colors.danger : colors.accent)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(colors.muted)
-            }
-        }
-        .padding(12)
-        .background(colors.surface2)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - Personal bests card
-
-    @ViewBuilder
-    private var personalBestsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Section header
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(red: 1.0, green: 0.84, blue: 0.0))
-                    Text("Personal Bests")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(colors.text)
-                }
-                Spacer()
-                Button {
-                    showAllPBs = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("See all")
-                            .font(.system(size: 13, weight: .medium))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .foregroundStyle(colors.accent)
-                }
-                .buttonStyle(.plain)
-            }
-
-            if isLoadingPBs {
-                ProgressView()
-                    .tint(colors.accent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-            } else if personalBests.isEmpty {
-                HStack(spacing: 12) {
-                    Image(systemName: "medal")
-                        .font(.system(size: 24))
-                        .foregroundStyle(colors.muted.opacity(0.5))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("No records yet")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(colors.text)
-                        Text("Complete workouts to see your records.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(colors.muted)
-                    }
-                }
-                .padding(.vertical, 4)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(personalBests.prefix(3).enumerated()), id: \.element.exerciseId) { index, pb in
-                        ProfilePBRow(pb: pb, rank: index, weightUnit: user?.settings.weightUnit ?? "kg")
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
-    }
-
-    // MARK: - Data loading
-
     private func loadPersonalBests() async {
         isLoadingPBs = true
         personalBests = (try? await ExerciseService.getPersonalBests(limit: 5)) ?? []

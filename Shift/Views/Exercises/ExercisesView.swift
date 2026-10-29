@@ -244,7 +244,7 @@ struct ExercisesView: View {
             }
         }
         .navigationTitle("Exercises")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

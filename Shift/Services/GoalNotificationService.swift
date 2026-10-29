@@ -6,7 +6,7 @@ private struct CachedStepNotificationConfiguration: Codable {
     let enabled: Bool
 }
 
-private actor NotificationEventLedger {
+actor NotificationEventLedger {
     static let shared = NotificationEventLedger()
 
     private let defaults = UserDefaults.standard
@@ -83,6 +83,7 @@ enum GoalNotificationService {
     // MARK: - Configuration lifecycle
 
     static func prepareForCurrentUser() async {
+        await TrainingNotificationService.reconcile()
         await NotificationManager.removeLegacyGoalNotifications()
         await refreshConfiguration()
         await reconcileMissedTrainingDays()
@@ -118,6 +119,7 @@ enum GoalNotificationService {
     }
 
     static func clearUserState(userId: String?) async {
+        await TrainingNotificationService.clear(userID: userId)
         if let userId {
             await NotificationEventLedger.shared.clear(userId: userId)
         }
@@ -270,6 +272,7 @@ enum GoalNotificationService {
 
         let sessions =
             (try? await SessionRepository.findCompletedSince(weekStart, userId: userId)) ?? []
+        let endurance = (try? await EnduranceStore.shared.all(EnduranceActivity.self, userID: userId)) ?? []
         var externalDates: [Date] = []
         if settings.healthKit.countExternalWorkouts {
             externalDates = await HealthKitService.externalWorkoutDates(
@@ -293,7 +296,10 @@ enum GoalNotificationService {
                 let hasExternalWorkout = externalDates.contains {
                     calendar.isDate($0, inSameDayAs: candidateDate)
                 }
-                if !hasShiftWorkout && !hasExternalWorkout {
+                let hasEnduranceWorkout = endurance.contains {
+                    $0.endedAt <= now && calendar.isDate($0.startedAt, inSameDayAs: candidateDate)
+                }
+                if !hasShiftWorkout && !hasExternalWorkout && !hasEnduranceWorkout {
                     missedDates.append(candidateDate)
                 }
             }

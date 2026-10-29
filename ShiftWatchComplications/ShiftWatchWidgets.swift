@@ -6,5 +6,6 @@ struct ShiftWatchWidgets: WidgetBundle {
     var body: some Widget {
         StepComplication()
         WorkoutComplication()
+        EnduranceComplication()
     }
 }

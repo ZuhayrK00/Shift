@@ -992,7 +992,7 @@ private struct WorkoutSettingsPage: View {
 
 // MARK: - Notification Settings Page
 
-private struct NotificationSettingsPage: View {
+struct NotificationSettingsPage: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.shiftColors) private var colors
     @Environment(\.dismiss) private var dismiss
@@ -1004,6 +1004,9 @@ private struct NotificationSettingsPage: View {
     @State private var frequencyGoalAchievements = true
     @State private var stepGoalAchievements = true
     @State private var workoutIdleAlerts = true
+    @State private var trainingReminders = false
+    @State private var enduranceAchievements = false
+    @State private var trainingReminderMinutes = 30
     @State private var permissionState: NotificationPermissionState = .notDetermined
     @State private var isSaving = false
     @State private var saveError: String?
@@ -1039,6 +1042,20 @@ private struct NotificationSettingsPage: View {
                         .foregroundStyle(colors.muted)
                 }
                 .listRowBackground(colors.surface)
+
+                Section("Training and endurance") {
+                    Toggle("Planned session reminders", isOn: $trainingReminders).tint(colors.controlTint)
+                    if trainingReminders {
+                        Picker("Remind me", selection: $trainingReminderMinutes) {
+                            Text("15 minutes before").tag(15)
+                            Text("30 minutes before").tag(30)
+                            Text("1 hour before").tag(60)
+                        }
+                    }
+                    Toggle("Endurance achievements", isOn: $enduranceAchievements).tint(colors.controlTint)
+                    Text("Reminders cover sessions in your training calendar and update when you move, skip or complete one. Achievements celebrate new Shift recordings, personal bests, milestones and endurance goals. Historical imports update progress quietly.")
+                        .font(.footnote).foregroundStyle(colors.muted)
+                }.listRowBackground(colors.surface)
 
                 Section("System Permission") {
                     HStack {
@@ -1094,6 +1111,9 @@ private struct NotificationSettingsPage: View {
             frequencyGoalAchievements = s.notifications.frequencyGoalAchievements
             stepGoalAchievements = s.notifications.stepGoalAchievements
             workoutIdleAlerts = s.notifications.workoutIdleAlerts
+            trainingReminders = s.notifications.trainingReminders
+            enduranceAchievements = s.notifications.enduranceAchievements
+            trainingReminderMinutes = s.notifications.trainingReminderMinutes
             Task { permissionState = await NotificationManager.permissionState() }
         }
     }
@@ -1110,17 +1130,20 @@ private struct NotificationSettingsPage: View {
         isSaving = true
         saveError = nil
         var settings = authManager.user?.settings ?? .default
-        var notifs = NotificationSettings()
+        var notifs = settings.notifications
         notifs.exerciseGoalAchievements = exerciseGoalAchievements
         notifs.frequencyGoalAchievements = frequencyGoalAchievements
         notifs.stepGoalAchievements = stepGoalAchievements
         notifs.workoutIdleAlerts = workoutIdleAlerts
+        notifs.trainingReminders = trainingReminders
+        notifs.enduranceAchievements = enduranceAchievements
+        notifs.trainingReminderMinutes = trainingReminderMinutes
         settings.notifications = notifs
 
         if exerciseGoalAchievements
             || frequencyGoalAchievements
             || stepGoalAchievements
-            || workoutIdleAlerts {
+            || workoutIdleAlerts || trainingReminders || enduranceAchievements {
             _ = await NotificationManager.requestAuthorizationIfNeeded()
             permissionState = await NotificationManager.permissionState()
         }

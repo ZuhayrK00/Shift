@@ -7,6 +7,12 @@ struct ShiftDataExport: Codable {
     var weightEntries: [WeightEntry]
     var bodyMeasurements: [BodyMeasurement]
     var progressPhotos: [ProgressPhoto]
+    var enduranceActivities: [EnduranceActivity] = []
+    var enduranceGoals: [EnduranceGoal] = []
+    var enduranceRecording: EnduranceDraft?
+    var trainingSessions: [TrainingSession] = []
+    var savedRoutes: [SavedEnduranceRoute] = []
+    var enduranceWeekPreview: EnduranceWeekPreview?
 }
 
 struct ExportWorkout: Codable {
@@ -76,13 +82,24 @@ enum DataExportService {
         async let weights = WeightEntryRepository.findAll(userId: userID)
         async let measurements = BodyMeasurementRepository.findAll(userId: userID)
         async let photos = ProgressPhotoRepository.findAll(userId: userID)
+        async let enduranceActivities = EnduranceStore.shared.all(EnduranceActivity.self, userID: userID)
+        async let enduranceGoals = EnduranceStore.shared.all(EnduranceGoal.self, userID: userID)
+        async let enduranceRecording = EnduranceStore.shared.draft(userID: userID)
+        async let trainingSessions = EnduranceStore.shared.all(TrainingSession.self, userID: userID)
+        async let savedRoutes = EnduranceStore.shared.all(SavedEnduranceRoute.self, userID: userID)
+        async let enduranceWeekPreview = EndurancePreviewStore.shared.receipt(owner: userID)
         let bundle = try await ShiftDataExport(
             exportedAt: Date(),
             workouts: workouts,
             plans: plans,
             weightEntries: weights,
             bodyMeasurements: measurements,
-            progressPhotos: photos
+            progressPhotos: photos,
+            enduranceActivities: enduranceActivities,
+            enduranceGoals: enduranceGoals,
+            enduranceRecording: enduranceRecording,
+            trainingSessions: trainingSessions, savedRoutes: savedRoutes,
+            enduranceWeekPreview: enduranceWeekPreview
         )
 
         let folder = FileManager.default.temporaryDirectory

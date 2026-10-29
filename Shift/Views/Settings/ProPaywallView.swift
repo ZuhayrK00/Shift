@@ -11,14 +11,7 @@ struct ProPaywallView: View {
     @State private var errorMessage: String?
     @State private var purchaseSuccess = false
 
-    private let features: [(icon: String, title: String, subtitle: String)] = [
-        ("sparkles", "AI Workout Plans", "Generate personalised plans with on-device AI"),
-        ("list.bullet.rectangle.fill", "Unlimited Plans", "Create as many workout plans as you need"),
-        ("photo.on.rectangle.angled", "Progress Photos", "Track your physique with photo comparisons"),
-        ("ruler", "Body Measurements", "Log chest, waist, arms and more over time"),
-        ("applewatch", "Apple Watch", "Full watch app with complications"),
-        ("square.grid.2x2", "Widgets", "Home screen widgets for steps, streaks and more"),
-    ]
+    var endurance = false
 
     var body: some View {
         NavigationStack {
@@ -33,7 +26,7 @@ struct ProPaywallView: View {
                             .padding(.bottom, 24)
 
                         // Features
-                        featuresList
+                        ShiftProBenefitsView()
                             .padding(.bottom, 28)
 
                         // Plans
@@ -68,12 +61,10 @@ struct ProPaywallView: View {
                                     .padding(.bottom, 8)
                             }
 
-                            restoreButton
-                                .padding(.bottom, 8)
-
-                            legalText
-                                .padding(.bottom, 32)
                         }
+                        restoreButton.padding(.bottom, 12).disabled(isPurchasing)
+                        if store.products.isEmpty, let errorMessage { Text(errorMessage).font(.footnote).foregroundStyle(colors.danger) }
+                        legalText.padding(.bottom, 32)
                     }
                     .padding(.horizontal, 24)
                 }
@@ -97,6 +88,7 @@ struct ProPaywallView: View {
                 // Default to yearly
                 selectedProduct = store.yearlyProduct() ?? store.products.first
             }
+            .onChange(of: store.isPro) { _, pro in if pro { purchaseSuccess = true } }
             .onChange(of: purchaseSuccess) { _, success in
                 if success {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -131,50 +123,11 @@ struct ProPaywallView: View {
                 .font(.system(size: 32, weight: .bold))
                 .foregroundStyle(colors.text)
 
-            Text("Unlock the full experience")
+            Text(endurance ? "A plan around your life" : "Strength and Endurance. One subscription.")
                 .font(.system(size: 16))
                 .foregroundStyle(colors.muted)
+                .multilineTextAlignment(.center)
         }
-    }
-
-    // MARK: - Features list
-
-    private var featuresList: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(features.enumerated()), id: \.offset) { _, feature in
-                HStack(spacing: 14) {
-                    Image(systemName: feature.icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(colors.accent)
-                        .frame(width: 36, height: 36)
-                        .background(colors.accent.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(feature.title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(colors.text)
-                        Text(feature.subtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(colors.muted)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(colors.success)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-            }
-        }
-        .background(colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(colors.border, lineWidth: 1)
-        )
     }
 
     // MARK: - Plan cards

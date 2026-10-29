@@ -25,6 +25,7 @@ struct WidgetSnapshot: Codable {
     var ownerUserId: String?
     var weekStart: Date?
     var schemaVersion: Int?
+    var endurance: EnduranceWidgetData?
 
     struct WeightPoint: Codable {
         var weight: Double
@@ -80,6 +81,7 @@ struct WidgetSnapshot: Codable {
            date >= nextWeek {
             copy.workoutsThisWeek = 0
         }
+        copy.endurance = endurance?.normalized(at: date, calendar: calendar)
         return copy
     }
 }

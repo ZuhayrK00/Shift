@@ -88,7 +88,9 @@ struct ProfileService {
     /// Convenience: update just the settings block.
     @discardableResult
     static func updateSettings(_ settings: UserSettings) async throws -> Profile {
-        try await updateProfile(ProfilePatch(settings: settings))
+        let result = try await updateProfile(ProfilePatch(settings: settings))
+        await TrainingNotificationService.reconcile()
+        return result
     }
 
     // MARK: - Remote fetch

@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Shift checks when you are busy so your weekly training plan can fit around your calendar. Your events stay on this device. Shift does not edit them.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Shift uses your location to show Apple Weather when you enable it. When you start a run, walk or ride, Shift uses precise location to record distance and your private route, including while your screen is locked.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Shift uses your camera to take progress photos.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
@@ -9,7 +17,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Shift uses the microphone only while you choose to dictate training preferences.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Shift reads only the Apple Health data needed for features you enable, such as activity, step goals, recovery guidance, body weight, workout history, calories, and heart rate.</string>
+	<string>Shift reads only the Apple Health data needed for features you enable, such as activity, step goals, recovery guidance, body weight, workout history, calories, heart rate, and workout routes you choose to import.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Shift saves completed workouts and body-weight entries to Apple Health when you enable those sync options.</string>
 	<key>NSFaceIDUsageDescription</key>
@@ -22,6 +30,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.zuhayrk.shift</string>
+				<string>shift</string>
 			</array>
 		</dict>
 	</array>

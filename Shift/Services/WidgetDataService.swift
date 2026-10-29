@@ -19,6 +19,7 @@ struct WidgetDataService {
         } else {
             isPro = await StoreService.verifyProEntitlement()
         }
+        guard authManager.currentUserId == userId else { return }
         UserDefaults(suiteName: WidgetSnapshot.suiteName)?.set(isPro, forKey: "isPro")
         guard isPro else {
             WidgetSnapshot.clearSnapshot()
@@ -42,6 +43,9 @@ struct WidgetDataService {
         let sessionsThisWeek = (try? await SessionRepository.findCompletedSince(weekStart, userId: userId)) ?? []
 
         var workoutsThisWeek = sessionsThisWeek.count
+        let endurance = (try? await EnduranceStore.shared.all(EnduranceActivity.self, userID: userId)) ?? []
+        let enduranceThisWeek = endurance.filter { $0.startedAt >= weekStart && $0.endedAt <= Date() }
+        workoutsThisWeek += enduranceThisWeek.count
         if settings.healthKit.countExternalWorkouts {
             workoutsThisWeek += await HealthKitService.countExternalWorkouts(since: weekStart)
         }
@@ -49,6 +53,7 @@ struct WidgetDataService {
         // Worked out today
         let todayStart = Calendar.current.startOfDay(for: Date())
         let workedOutToday = sessionsThisWeek.contains(where: { $0.startedAt >= todayStart })
+            || enduranceThisWeek.contains(where: { $0.startedAt >= todayStart })
 
         // Read steps only for a feature the user explicitly enabled.
         let stepTrackingEnabled = settings.dailyStepGoal != nil
@@ -71,10 +76,11 @@ struct WidgetDataService {
         let streak = calculateStreak(
             sessions: allCompleted,
             weekStartsOn: settings.weekStartsOn,
-            weeklyGoal: weeklyGoal
+            weeklyGoal: weeklyGoal,
+            additionalDates: endurance.map(\.startedAt)
         )
 
-        let snapshot = WidgetSnapshot(
+        var snapshot = WidgetSnapshot(
             workoutsThisWeek: workoutsThisWeek,
             weeklyGoal: weeklyGoal,
             stepsToday: stepsToday,
@@ -91,6 +97,13 @@ struct WidgetDataService {
             schemaVersion: 2
         )
 
+        let planned = (try? await EnduranceStore.shared.all(TrainingSession.self, userID: userId)) ?? []
+        let goals = (try? await EnduranceStore.shared.all(EnduranceGoal.self, userID: userId)) ?? []
+        let strengthPlans = (try? await PlanRepository.findPlansWithCount(userId: userId)) ?? []
+        snapshot.endurance = await TrainingSummaryService.summary(userID: userId, settings: settings, activities: endurance,
+            sessions: planned, goals: goals, completedStrengthIDs: Set(allCompleted.map(\.id)), workouts: allCompleted,
+            planNames: Dictionary(uniqueKeysWithValues: strengthPlans.map { ($0.plan.id, $0.plan.name) }))
+        guard authManager.currentUserId == userId else { return }
         snapshot.write()
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -100,12 +113,13 @@ struct WidgetDataService {
     static func calculateStreak(
         sessions: [WorkoutSession],
         weekStartsOn: String = "monday",
-        weeklyGoal: Int? = nil
+        weeklyGoal: Int? = nil,
+        additionalDates: [Date] = []
     ) -> (count: Int, unit: String) {
         let cal = Calendar.current
 
         // Get unique workout dates
-        let workoutDates: Set<Date> = Set(sessions.map { cal.startOfDay(for: $0.startedAt) })
+        let workoutDates: Set<Date> = Set((sessions.map(\.startedAt) + additionalDates).map { cal.startOfDay(for: $0) })
 
         guard !workoutDates.isEmpty else { return (0, "days") }
 

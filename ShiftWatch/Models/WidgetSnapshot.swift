@@ -17,6 +17,7 @@ struct WidgetSnapshot: Codable {
     var ownerUserId: String?
     var weekStart: Date?
     var schemaVersion: Int?
+    var endurance: EnduranceWidgetData?
 
     struct WeightPoint: Codable {
         var weight: Double
@@ -25,16 +26,20 @@ struct WidgetSnapshot: Codable {
 
     static let suiteName = "group.com.zuhayrk.shift"
     static let key = "widgetSnapshot"
+    static let activeUserIdKey = "widgetActiveUserId.v2"
 
     static func read() -> WidgetSnapshot? {
-        guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: key) else { return nil }
-        return (try? JSONDecoder().decode(WidgetSnapshot.self, from: data))?
-            .normalized(for: Date())
+        guard let defaults = UserDefaults(suiteName: suiteName), let owner = defaults.string(forKey: activeUserIdKey),
+              let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(WidgetSnapshot.self, from: data),
+              value.ownerUserId == owner else { return nil }
+        return value.normalized(for: Date())
     }
 
     func write() {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        UserDefaults(suiteName: WidgetSnapshot.suiteName)?.set(data, forKey: WidgetSnapshot.key)
+        let defaults = UserDefaults(suiteName: WidgetSnapshot.suiteName)
+        defaults?.set(data, forKey: WidgetSnapshot.key)
+        defaults?.set(ownerUserId, forKey: WidgetSnapshot.activeUserIdKey)
     }
 
     func normalized(for date: Date, calendar: Calendar = .current) -> WidgetSnapshot {
@@ -48,6 +53,7 @@ struct WidgetSnapshot: Codable {
            date >= nextWeek {
             copy.workoutsThisWeek = 0
         }
+        copy.endurance = endurance?.normalized(at: date, calendar: calendar)
         return copy
     }
 

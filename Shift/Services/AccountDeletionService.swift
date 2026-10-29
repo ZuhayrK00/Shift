@@ -12,6 +12,7 @@ struct AccountDeletionService {
     /// After this completes, the user is signed out.
     static func deleteAccount() async throws {
         let userId = try authManager.requireUserId()
+        await EnduranceRecorder.shared.prepareToLeaveAccount()
 
         // Account deletion intentionally discards this user's pending writes.
         // Scope the cleanup so another account's queue is never affected.
@@ -23,6 +24,9 @@ struct AccountDeletionService {
         // exist, then let the RPC remove database rows and the Auth user.
         try await deleteRemoteStorage(userId: userId)
         try await supabase.rpc("delete_own_account").execute()
+        PhoneSessionManager.shared.removeDeletedAccountOnWatch(userID: userId)
+        EnduranceHealthPreferences.clear(userID: userId)
+        await EnduranceWeatherService.shared.clearDeletedAccount(userId)
 
         do {
             try await deleteLocalData(userId: userId)
@@ -92,6 +96,9 @@ struct AccountDeletionService {
 
     private static func deleteLocalData(userId: String) async throws {
         try await AppDatabase.shared.dbPool.write { db in
+            for table in ["endurance_week_previews", "watch_endurance_receipts", "endurance_recordings", "endurance_activities", "endurance_goals", "training_sessions", "endurance_routes"] {
+                try db.execute(sql: "DELETE FROM \(table) WHERE user_id = ?", arguments: [userId])
+            }
             // Session sets for this user's sessions
             try db.execute(sql: """
                 DELETE FROM session_sets WHERE session_id IN (

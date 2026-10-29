@@ -404,6 +404,38 @@ final class AppDatabase {
                 try db.execute(sql: "CREATE INDEX IF NOT EXISTS idx_\(table)_exercise_catalogue ON \(table)(exercise_id COLLATE NOCASE)")
             }
         }
+        migrator.registerMigration("enduranceV1") { db in
+            for table in ["endurance_activities", "endurance_goals"] {
+                try db.execute(sql: """
+                    CREATE TABLE \(table) (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        user_id TEXT NOT NULL,
+                        details TEXT NOT NULL,
+                        sort_date REAL NOT NULL
+                    )
+                    """)
+                try db.execute(sql: "CREATE INDEX idx_\(table)_owner_date ON \(table)(user_id, sort_date)")
+            }
+            try db.execute(sql: """
+                CREATE TABLE endurance_recordings (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    user_id TEXT UNIQUE NOT NULL,
+                    details TEXT NOT NULL
+                )
+                """)
+        }
+        migrator.registerMigration("enduranceTrainingV2") { db in
+            for table in ["training_sessions", "endurance_routes"] {
+                try db.execute(sql: "CREATE TABLE \(table) (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, details TEXT NOT NULL, sort_date REAL NOT NULL)")
+                try db.execute(sql: "CREATE INDEX idx_\(table)_owner_date ON \(table)(user_id, sort_date)")
+            }
+        }
+        migrator.registerMigration("enduranceWatchReceiptsV1") { db in
+            try db.execute(sql: "CREATE TABLE watch_endurance_receipts (id TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY(user_id, id))")
+        }
+        migrator.registerMigration("enduranceWeekPreviewV1") { db in
+            try db.execute(sql: "CREATE TABLE endurance_week_previews (user_id TEXT PRIMARY KEY NOT NULL, details TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0)")
+        }
         return migrator
     }
 }

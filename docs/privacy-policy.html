@@ -32,7 +32,7 @@
         <main class="legal">
         <span class="badge">Shift Workout Tracker</span>
         <h1>Privacy Policy</h1>
-        <p class="subtitle">Effective date: July 30, 2026</p>
+        <p class="subtitle">Updated: October 26, 2026</p>
 
         <p>Shift ("we", "our", or "the app") is a workout tracking app built by Zuhayr Khan. This policy explains what information Shift processes, why it is used, where it is stored, and the choices available to you.</p>
 
@@ -61,7 +61,13 @@
             <li>Custom exercises and plan-generation preferences</li>
             <li>Body-weight entries and body measurements</li>
             <li>Progress photos you choose to upload</li>
+            <li>Endurance activities, distances, active time, splits, elevation estimates, and distance, time, or activity-count goals</li>
         </ul>
+
+        <h3>Training reminders</h3>
+        <p>Planned-session reminders and endurance achievements are optional. If you enable them and allow system notifications, Shift schedules alerts locally on your device. Reminder content can include your session title and time. iOS and watchOS control how alerts appear on your lock screen and Watch. You can change these preferences in Shift and system settings.</p>
+        <h3>Activity routes and location</h3>
+        <p>When you choose to record a run, walk, or ride, Shift requests precise location access to record your route and distance. Location recording continues during that active recording when the screen is locked, and stops when you pause or finish. Unfinished recordings are kept locally for recovery. Apple Watch recordings use HealthKit workout sessions and GPS, including while your wrist is down. Completed Watch recordings remain on the Watch until your iPhone confirms they have been saved. Saved activities and their routes sync to your private Shift account. Routes remain private unless you explicitly share a card that includes the route shape; route shapes are off by default on share cards. Planned sessions and saved routes also sync to your private account. Apple Maps supplies the map display.</p>
 
         <h3>Apple Health information</h3>
         <p>Health access is optional and requested by feature. Depending on the features you enable, Shift may ask to read:</p>
@@ -69,7 +75,9 @@
             <li>Step count, walking and running distance, active energy, exercise time, stand time, and activity summaries</li>
             <li>Workout records, heart rate, resting heart rate, heart-rate variability, and sleep analysis</li>
             <li>Body weight</li>
+            <li>Running, walking, and cycling workouts when you choose to import them; workout routes only when you separately enable route import</li>
         </ul>
+        <p>Endurance imports include all available running, walking and cycling workouts you allow Shift to read and are started by you. Imported activities sync to your private Shift account. Deleting an imported activity in Shift does not delete the original Apple Health workout.</p>
         <p>If you enable the related sync options, Shift may write completed workouts and body-weight entries to Apple Health. Shift requests only the Health categories needed for enabled features. You can deny or revoke any Health permission in iOS Settings.</p>
 
         <div class="highlight">
@@ -79,8 +87,13 @@
         <h3>Voice input</h3>
         <p>The plan generator can use Apple's on-device speech recognition when the selected language and device support it. Shift requires on-device recognition and does not upload voice audio to our servers. If on-device recognition is unavailable, voice input is disabled and you can type instead.</p>
 
+        <h3>Local weather and training plans</h3>
+        <p>When you enable weather, Shift uses a one-time location request or a city you enter to request forecasts from Apple Weather. This does not start route recording. Weather is optional, and you can turn it off. Weather locations are kept in memory rather than added to your GPS route history. A recent city-level weather summary can be shown in your widgets and paired Watch; stale summaries expire. Plans you review and save include their scheduled times, targets, optional weather cautions and forecast location name, and sync to your private Shift account. Forecasts can change after a plan is saved.</p>
+        <p>If you choose Calendar conflict checking while building a week, Shift asks for Apple Calendar access and checks busy times for those seven days. Event titles, locations, notes and attendees are not sent to an AI service or your Shift account. Calendar events are not edited. This optional check is local to the planner and can be turned off. Accepted training sessions are saved to your Shift calendar and continue to appear in your private Watch, widget and reminder summaries.</p>
+
         <h3>On-device AI</h3>
-        <p>When available, AI plan generation and editing use Apple's on-device Foundation Models framework. Prompts and generated plans are processed on your device and are not sent to an external AI provider by Shift.</p>
+        <p>When available, AI plan generation, editing, endurance goal interpretation and the endurance coach use Apple's on-device Foundation Models framework. Endurance coach conversations remain in memory for the current screen; Shift does not upload them to its servers. Prompts and generated plans are processed on your device and are not sent to an external AI provider by Shift.</p>
+        <p>Free accounts can save one generated endurance week. To keep this allowance consistent across devices and reinstalls, Shift stores a private account record containing the plan identifier, session identifiers and save date. Deleting a plan does not reset the allowance. Deleting your Shift account removes this record along with your account data.</p>
 
         <h3>Technical information</h3>
         <p>Shift and its service providers may process limited technical information needed to authenticate requests, secure the service, deliver data, diagnose failures, and prevent abuse, such as timestamps, request metadata, and service logs. Shift does not use third-party advertising analytics.</p>

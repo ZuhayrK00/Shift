@@ -779,7 +779,15 @@ struct PlanService {
             throw PlanServiceError.planNotFound(planId)
         }
 
-        let sessionId = requestedSessionId ?? UUID().uuidString.lowercased()
+        let scheduled = (try? await EnduranceStore.shared.all(TrainingSession.self, userID: userId)) ?? []
+        let completed = (try? await SessionRepository.findCompleted(userId: userId)) ?? []
+        let linkedID = TrainingLinkPolicy.candidate(sessions: scheduled, userID: userId, kind: .strength,
+            planID: planId, date: startedAt, excluding: Set(completed.map(\.id)))
+        let sessionId = requestedSessionId ?? linkedID ?? UUID().uuidString.lowercased()
+        if let existing = try await SessionRepository.findById(sessionId) {
+            guard existing.userId == userId else { throw PlanServiceError.planNotFound(planId) }
+            return existing
+        }
         let session = WorkoutSession(
             id: sessionId,
             userId: userId,
@@ -847,6 +855,9 @@ struct PlanService {
             }
         }
 
+        NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil)
+        await TrainingNotificationService.reconcile()
+        PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         return session
     }
 

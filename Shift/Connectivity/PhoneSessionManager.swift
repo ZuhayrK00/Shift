@@ -81,6 +81,11 @@ final class PhoneSessionManager: NSObject {
         WCSession.default.activate()
     }
 
+    func removeDeletedAccountOnWatch(userID: String) {
+        guard WCSession.default.activationState == .activated, WCSession.default.isPaired else { return }
+        WCSession.default.transferUserInfo(["stateType": "accountDeleted", "userID": userID])
+    }
+
     // MARK: - Send context to Watch
 
     func sendContextToWatch(refreshEntitlement: Bool = false) {
@@ -136,6 +141,7 @@ final class PhoneSessionManager: NSObject {
             )
         }
             let context = await buildContext()
+            guard context.userId == (authManager.currentUserId ?? "") else { return }
             guard let data = try? JSONEncoder().encode(context),
                   var dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 print("[PhoneSession] Failed to encode context")
@@ -351,6 +357,24 @@ final class PhoneSessionManager: NSObject {
             weekStart: snapshot?.weekStart
         )
 
+        let activities = (try? await EnduranceStore.shared.all(EnduranceActivity.self, userID: userId)) ?? []
+        let planned = (try? await EnduranceStore.shared.all(TrainingSession.self, userID: userId)) ?? []
+        let goals = (try? await EnduranceStore.shared.all(EnduranceGoal.self, userID: userId)) ?? []
+        let routes = (try? await EnduranceStore.shared.all(SavedEnduranceRoute.self, userID: userId)) ?? []
+        let completedStrength = (try? await SessionRepository.findCompleted(userId: userId)) ?? []
+        let enduranceSummary = await TrainingSummaryService.summary(userID: userId, settings: settings, activities: activities,
+            sessions: planned, goals: goals, completedStrengthIDs: Set(completedStrength.map(\.id)), workouts: completedStrength,
+            planNames: Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0.name) }))
+        var goalCalendar = Calendar.current
+        goalCalendar.firstWeekday = settings.weekStartsOn == "sunday" ? 1 : 2
+        let watchGoals = goals.prefix(8).map { goal in
+            WatchEnduranceGoal(id: goal.id, title: "\(goal.sport?.title ?? "All endurance") · \(goal.metric.title)",
+                progress: goal.progress(in: activities, calendar: goalCalendar), target: goal.target,
+                unit: goal.metric == .distance ? "m" : goal.metric == .duration ? "s" : "activities")
+        }
+        let enduranceContext = WatchEnduranceContext(summary: enduranceSummary, goals: watchGoals,
+            routes: Array(routes.prefix(10)).map { .init(id: $0.id, title: $0.title, sport: $0.sport, distanceMeters: $0.distanceMeters) },
+            phoneRecording: await EnduranceRecorder.shared.draft != nil)
         return WatchContext(
             plans: plans,
             recentExercises: recentExercises,
@@ -364,9 +388,9 @@ final class PhoneSessionManager: NSObject {
             ),
             userId: userId,
             snapshot: snapshotData,
-            schemaVersion: 2,
+            schemaVersion: 3,
             generatedAt: Date(),
-            isSignedIn: !userId.isEmpty
+            isSignedIn: !userId.isEmpty, endurance: enduranceContext
         )
     }
 
@@ -608,6 +632,29 @@ extension PhoneSessionManager: WCSessionDelegate {
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         handleMessage(message, replyHandler: nil)
+    }
+
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard file.metadata?["stateType"] as? String == "enduranceActivity" else { return }
+        do {
+            let size = try file.fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size > 0, size <= 32 * 1_024 * 1_024 else { return }
+            let transfer = try JSONDecoder().decode(EnduranceWatchTransfer.self, from: Data(contentsOf: file.fileURL))
+            guard transfer.isValid else { return }
+            Task { @MainActor in
+                guard transfer.canReceive(as: authManager.currentUserId) else { return }
+                func acknowledge() {
+                    WCSession.default.transferUserInfo(["stateType": "enduranceAck", "activityID": transfer.activity.id,
+                        "userID": transfer.userID, "revision": transfer.revision])
+                }
+                do {
+                    try await EnduranceService.save(transfer.activity, fromWatch: true)
+                    acknowledge()
+                    await EnduranceService.refreshSummaries()
+                } catch EnduranceError.deletedActivity { acknowledge() }
+                catch { self.lastSyncError = "Watch activity is kept on Watch until it can be saved: \(error.localizedDescription)" }
+            }
+        } catch { Task { @MainActor in self.lastSyncError = "Watch activity could not be read. The copy on Watch is kept." } }
     }
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {

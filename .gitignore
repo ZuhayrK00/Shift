@@ -38,5 +38,8 @@ Pods/
 .env
 migration-preparation/
 
+# Local App Store/review captures, generated artwork and promo exports
+output/
+
 # Supabase CLI machine-local link and connection state
 supabase/.temp/

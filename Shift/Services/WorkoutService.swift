@@ -44,6 +44,9 @@ struct WorkoutService {
             try SessionRepository.insert(session, in: db)
         }
         await refreshIdleAlertIfNeeded(sessionId: id)
+        NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil)
+        await TrainingNotificationService.reconcile()
+        PhoneSessionManager.shared.sendWorkoutUpdateToWatch()
         return session
     }
 
@@ -93,6 +96,8 @@ struct WorkoutService {
             try SessionRepository.setEndedAt(sessionId, endedAt, in: db)
         }
         NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
+        NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil)
+        await TrainingNotificationService.reconcile()
 
         // Check exercise goals and notify only for goals completed by this event.
         do {
@@ -160,6 +165,8 @@ struct WorkoutService {
             try SessionRepository.delete(sessionId, in: db)
         }
         NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
+        NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil)
+        await TrainingNotificationService.reconcile()
 
         // Immediately flush so the delete reaches Supabase before the app
         // is killed — prevents pullUserData from re-inserting the session.
@@ -820,6 +827,8 @@ struct WorkoutService {
     private static func refreshIdleAlertIfNeeded(sessionId: String) async {
         guard let userId = authManager.currentUserId else {
             NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
+        NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil)
+        await TrainingNotificationService.reconcile()
             return
         }
 
@@ -838,6 +847,8 @@ struct WorkoutService {
               session.userId == userId,
               session.endedAt == nil else {
             NotificationManager.cancelIdleWorkoutNotification(sessionId: sessionId)
+        NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil)
+        await TrainingNotificationService.reconcile()
             return
         }
         NotificationManager.scheduleIdleWorkoutNotification(sessionId: sessionId)

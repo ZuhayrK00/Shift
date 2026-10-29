@@ -144,6 +144,7 @@ enum NotificationManager {
             return false
         }
 
+        if let owner = userInfo["ownerId"] as? String, owner != authManager.currentUserId { return false }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -161,6 +162,11 @@ enum NotificationManager {
 
         do {
             try await center.add(request)
+            if let owner = userInfo["ownerId"] as? String, owner != authManager.currentUserId {
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                center.removeDeliveredNotifications(withIdentifiers: [identifier])
+                return false
+            }
             return true
         } catch {
             logger.error("Failed to deliver \(identifier, privacy: .public): \(error.localizedDescription)")

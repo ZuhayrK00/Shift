@@ -11,6 +11,7 @@ struct WatchHomeView: View {
 
     @State private var showCompletedDetail = false
     @State private var liveSteps: Int?
+    @State private var showEndurance = false
 
     private var ctx: WatchContext? { session.context }
 
@@ -30,7 +31,13 @@ struct WatchHomeView: View {
                 mainContent
             }
         }
+        .onOpenURL { url in if url.host == "endurance" || url.host == "training-calendar" { showEndurance = true } }
+        .onChange(of: session.context?.userId) { _, _ in
+            WatchEnduranceRecorder.shared.accountChanged()
+            Task { await WatchEnduranceRecorder.shared.recover() }
+        }
         .task {
+            await WatchEnduranceRecorder.shared.recover()
             await session.refreshEntitlement()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -38,6 +45,7 @@ struct WatchHomeView: View {
             Task {
                 await session.refreshEntitlement()
                 session.requestSync()
+                WatchEnduranceOutbox.flush()
                 if session.canUseProFeatures {
                     await refreshSteps()
                 }
@@ -148,8 +156,13 @@ struct WatchHomeView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(WatchColors.accent)
+                        .disabled(WatchEnduranceRecorder.shared.draft != nil)
                     }
 
+                    Button { showEndurance = true } label: {
+                        Label(WatchEnduranceRecorder.shared.draft == nil ? "Endurance" : "Continue activity", systemImage: "figure.run")
+                            .font(.system(size: 14, weight: .semibold))
+                    }.tint(WatchColors.endurance)
                     // Step counter
                     stepCard
 
@@ -170,6 +183,7 @@ struct WatchHomeView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                 }
             }
+            .navigationDestination(isPresented: $showEndurance) { WatchEnduranceView() }
             .navigationDestination(isPresented: $navigateToWorkout) {
                 WatchWorkoutView()
             }
@@ -381,6 +395,9 @@ struct WatchHomeView: View {
     }
 
     private func refreshSteps() async {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { liveSteps = 8_642; return }
+        #endif
         let steps = await WatchHealthKitService.fetchStepsToday()
         liveSteps = steps
         WatchHealthKitService.updateSnapshotSteps(steps)

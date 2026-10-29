@@ -37,6 +37,9 @@ final class WatchSessionManager: NSObject {
             context = try? JSONDecoder().decode(WatchContext.self, from: data)
         }
         super.init()
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { context = StoreCaptureWatchData.context; isPro = true; isCheckingEntitlement = false; return }
+        #endif
         transactionListener = listenForTransactions()
     }
 
@@ -45,6 +48,9 @@ final class WatchSessionManager: NSObject {
     }
 
     func activate() {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { return }
+        #endif
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -54,6 +60,9 @@ final class WatchSessionManager: NSObject {
     // MARK: - Independent StoreKit entitlement
 
     func refreshEntitlement() async {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { return }
+        #endif
         let fresh = await StoreEntitlementVerifier.currentSnapshot()
         let snapshot = StoreEntitlementCache.resolveForExtension(
             fresh,
@@ -106,10 +115,11 @@ final class WatchSessionManager: NSObject {
 
     func startSession(
         name: String = "Workout",
+        scheduledSessionID: String? = nil,
         completion: @escaping (String?, String?, Date?) -> Void
     ) {
         let actionId = UUID().uuidString.lowercased()
-        let requestedSessionId = UUID().uuidString.lowercased()
+        let requestedSessionId = scheduledSessionID ?? UUID().uuidString.lowercased()
         let startedAt = Date()
         send([
             "action": WatchAction.startSession.rawValue,
@@ -133,10 +143,11 @@ final class WatchSessionManager: NSObject {
 
     func startSessionFromPlan(
         planId: String,
+        scheduledSessionID: String? = nil,
         completion: @escaping (String?, String?, Date?) -> Void
     ) {
         let actionId = UUID().uuidString.lowercased()
-        let requestedSessionId = UUID().uuidString.lowercased()
+        let requestedSessionId = scheduledSessionID ?? UUID().uuidString.lowercased()
         let startedAt = Date()
         let fallbackName = context?.plans.first(where: { $0.id == planId })?.name ?? "Workout"
         send([
@@ -266,10 +277,12 @@ final class WatchSessionManager: NSObject {
     @MainActor
     private func applySignedOutState() {
         context = nil
+        WatchEnduranceRecorder.shared.accountChanged()
         StoreEntitlementCache.clear()
         isPro = false
         UserDefaults(suiteName: Self.contextSuite)?.removeObject(forKey: Self.contextKey)
         UserDefaults(suiteName: Self.contextSuite)?.removeObject(forKey: WidgetSnapshot.key)
+        UserDefaults(suiteName: Self.contextSuite)?.removeObject(forKey: WidgetSnapshot.activeUserIdKey)
         updateSharedProState()
     }
 
@@ -312,6 +325,8 @@ final class WatchSessionManager: NSObject {
             context = incoming
             lastSyncError = nil
             persistContext(incoming)
+            WatchEnduranceRecorder.shared.accountChanged()
+            WatchEnduranceOutbox.flush()
             updateSharedProState()
             writeSnapshotForComplications()
         }
@@ -325,7 +340,8 @@ final class WatchSessionManager: NSObject {
         }
         Task { @MainActor in
             applyEntitlement(from: dictionary)
-            if let existing = WidgetSnapshot.read(), existing.updatedAt > incoming.updatedAt {
+            guard incoming.ownerUserId == context?.userId else { return }
+            if let existing = WidgetSnapshot.read(), existing.ownerUserId == incoming.ownerUserId, existing.updatedAt > incoming.updatedAt {
                 return
             }
             incoming.write()
@@ -353,7 +369,7 @@ final class WatchSessionManager: NSObject {
     @MainActor
     private func writeSnapshotForComplications() {
         guard let context else { return }
-        let incoming = WidgetSnapshot(
+        var incoming = WidgetSnapshot(
             workoutsThisWeek: context.snapshot.workoutsThisWeek,
             weeklyGoal: context.snapshot.weeklyGoal,
             stepsToday: context.snapshot.stepsToday,
@@ -369,7 +385,8 @@ final class WatchSessionManager: NSObject {
             weekStart: context.snapshot.weekStart,
             schemaVersion: context.schemaVersion ?? 2
         )
-        if let existing = WidgetSnapshot.read(), existing.updatedAt > incoming.updatedAt {
+        incoming.endurance = context.endurance?.summary
+        if let existing = WidgetSnapshot.read(), existing.ownerUserId == incoming.ownerUserId, existing.updatedAt > incoming.updatedAt {
             return
         }
         incoming.write()
@@ -423,7 +440,16 @@ extension WatchSessionManager: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
-        if userInfo["stateType"] as? String == "snapshot" {
+        if userInfo["stateType"] as? String == "accountDeleted", let owner = userInfo["userID"] as? String {
+            Task { @MainActor in
+                WatchEnduranceRecorder.shared.removeDeletedAccount(owner)
+                if self.context?.userId == owner { self.applySignedOutState() }
+            }
+        } else if userInfo["stateType"] as? String == "enduranceAck",
+           let id = userInfo["activityID"] as? String, let owner = userInfo["userID"] as? String,
+           let revision = userInfo["revision"] as? String {
+            Task { @MainActor in WatchEnduranceOutbox.acknowledge(id: id, owner: owner, revision: revision) }
+        } else if userInfo["stateType"] as? String == "snapshot" {
             applySnapshot(userInfo)
         } else if userInfo["stateType"] as? String == "workout" {
             applyWorkoutUpdate(userInfo)

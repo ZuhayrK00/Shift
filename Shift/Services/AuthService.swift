@@ -32,6 +32,14 @@ class AuthManager {
     var showPasswordReset = false
 
     init() {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled {
+            user = User(id: StoreCaptureConfiguration.owner, email: "alex@example.com", name: "Alex Morgan", age: 29, weight: 76.4, createdAt: Date().addingTimeInterval(-180 * 86_400), settings: StoreCapture.settings)
+            UserDefaults.standard.set(StoreCaptureConfiguration.owner, forKey: "shift.cachedUserId")
+            isLoading = false
+            return
+        }
+        #endif
         Task { await listenForAuthChanges() }
     }
 
@@ -56,6 +64,8 @@ class AuthManager {
                 }
             case .signedOut:
                 let signedOutUserId = self.currentUserId
+                await EnduranceRecorder.shared.activate(userID: nil)
+                await EnduranceWeatherService.shared.activate(owner: nil)
                 UserDefaults.standard.removeObject(forKey: "shift.cachedUserId")
                 await MainActor.run {
                     self.session = nil
@@ -186,6 +196,7 @@ class AuthManager {
 
     func signOut() async throws {
         let signedOutUserId = currentUserId
+        await EnduranceRecorder.shared.prepareToLeaveAccount()
         _ = try? await SyncService.flushQueue()
         try await supabase.auth.signOut()
         await GoalNotificationService.clearUserState(userId: signedOutUserId)

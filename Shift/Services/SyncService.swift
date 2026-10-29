@@ -132,7 +132,10 @@ struct SyncService {
     /// - Returns: A tuple of how many mutations were flushed vs. failed.
     @discardableResult
     static func flushQueue() async throws -> (flushed: Int, failed: Int) {
-        try await flushCoordinator.flush {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { return (0, 0) }
+        #endif
+        return try await flushCoordinator.flush {
             try await flushPass()
         }
     }
@@ -155,7 +158,7 @@ struct SyncService {
                       let payloadDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else {
                     // Malformed row — log it before removing so data loss is diagnosable
-                    logger.error("Malformed mutation payload (id=\(row.id), table=\(row.tableName), op=\(row.op)): \(row.payload)")
+                    logger.error("Malformed mutation payload (id=\(row.id), table=\(row.tableName), op=\(row.op))")
                     try await MutationQueueRepository.delete(rowId: row.id)
                     flushed += 1
                     continue
@@ -233,6 +236,9 @@ struct SyncService {
     /// - Returns: Counts of upserted muscle groups and exercises.
     @discardableResult
     static func pullReferenceData() async throws -> (muscleGroups: Int, exercises: Int) {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { return (0, 0) }
+        #endif
         // During first sign-in the auth event may reach the UI before the SDK's
         // PostgREST token adapter observes the new session. Use the session that
         // unlocked the signed-in UI so RLS never returns a misleading empty
@@ -329,6 +335,9 @@ struct SyncService {
     /// Called on sign-in so the user always has their full history locally.
     /// Uses upsert (replace) so it's safe to call multiple times.
     static func pullUserData() async throws {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled { return }
+        #endif
         guard let userId = authManager.currentUserId else { return }
         guard let accessToken = authManager.session?.accessToken else {
             throw SyncError.missingSession
@@ -631,15 +640,42 @@ struct SyncService {
             )
         }
 
+        try await pullEnduranceRecords(EnduranceActivity.self, userID: userId, token: accessToken, pendingIDs: pendingIds)
+        try await pullEnduranceRecords(EnduranceGoal.self, userID: userId, token: accessToken, pendingIDs: pendingIds)
+        try await pullEnduranceRecords(TrainingSession.self, userID: userId, token: accessToken, pendingIDs: pendingIds)
+        try await pullEnduranceRecords(SavedEnduranceRoute.self, userID: userId, token: accessToken, pendingIDs: pendingIds)
+
         UserDefaults.standard.set(
             ISO8601DateFormatter.shared.string(from: Date()),
             forKey: userLastSyncedKey(userId)
         )
+        await TrainingNotificationService.reconcile()
         NotificationCenter.default.post(name: .shiftUserDataDidSync, object: nil)
         PhoneSessionManager.shared.sendContextToWatch()
     }
 
     // MARK: - Last synced
+
+    private static func pullEnduranceRecords<T: EnduranceEntity>(
+        _ type: T.Type, userID: String, token: String, pendingIDs: Set<String>
+    ) async throws {
+        let rows: [EnduranceEnvelope<T>] = try await fetchAllRows(decoder: EnduranceCoding.decoder()) { from, to in
+            try await supabase.from(T.table).select().eq("user_id", value: userID)
+                .order("id").range(from: from, to: to)
+                .setHeader(name: "Authorization", value: "Bearer \(token)").execute().data
+        }
+        // Validate the envelope before touching any locally cached records.
+        guard rows.allSatisfy({ $0.user_id == userID && $0.details.userId == userID && $0.id == $0.details.id && $0.details.isValid }) else {
+            throw EnduranceError.wrongAccount
+        }
+        try await AppDatabase.shared.dbPool.write { db in
+            for row in rows where !pendingIDs.contains(row.id) {
+                try EnduranceStore.upsert(row.details, in: db)
+            }
+            try deleteMissingRows(table: T.table, scope: "user_id = ?", scopeArguments: [userID],
+                remoteIds: Set(rows.map(\.id)), pendingIds: pendingIDs, in: db)
+        }
+    }
 
     static func getLastSyncedAt() -> Date? {
         guard let raw = UserDefaults.standard.string(forKey: lastSyncedKey) else { return nil }

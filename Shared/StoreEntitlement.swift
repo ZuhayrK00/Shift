@@ -21,6 +21,11 @@ struct StoreEntitlementSnapshot: Codable, Equatable, Sendable {
 
 enum StoreEntitlementVerifier {
     static func currentSnapshot() async -> StoreEntitlementSnapshot {
+        #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+        if StoreCaptureConfiguration.enabled {
+            return .init(isPro: true, activeProductIDs: [StoreProduct.yearlyPro.rawValue], verifiedAt: Date(), expiresAt: Date().addingTimeInterval(86_400))
+        }
+        #endif
         let proProductIDs = Set(StoreProduct.allCases.map(\.rawValue))
         var activeProductIDs: Set<String> = []
         var expiresAt: Date?

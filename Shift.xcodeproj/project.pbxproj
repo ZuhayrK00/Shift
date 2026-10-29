@@ -118,6 +118,11 @@
 			);
 			target = CC000010CCCC000000000010 /* ShiftWatchComplications */;
 		};
+        ED000001ED00000000000001 /* Watch info exception */ = {
+            isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+            membershipExceptions = (Info.plist,);
+            target = BB000010BBBB000000000010 /* ShiftWatch */;
+        };
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -144,6 +149,7 @@
 		};
 		BB000006BBBB000000000006 /* ShiftWatch */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+            exceptions = (ED000001ED00000000000001,);
 			path = ShiftWatch;
 			sourceTree = "<group>";
 		};
@@ -651,7 +657,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Shift/Shift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -659,7 +665,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads your body weight and workout history to keep your profile current and count all your gym sessions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads the Apple Health data needed for features you enable, including body weight, workout history and workout routes you choose to import.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift saves your completed workouts and body weight to Apple Health.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -673,7 +679,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -693,7 +699,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Shift/Shift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -701,7 +707,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads your body weight and workout history to keep your profile current and count all your gym sessions.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads the Apple Health data needed for features you enable, including body weight, workout history and workout routes you choose to import.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift saves your completed workouts and body weight to Apple Health.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -715,7 +721,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -735,7 +741,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShiftTimerWidget/ShiftTimerWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShiftTimerWidget/Info.plist;
@@ -747,7 +753,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.ShiftTimerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -768,7 +774,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShiftTimerWidget/ShiftTimerWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShiftTimerWidget/Info.plist;
@@ -780,7 +786,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.ShiftTimerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -839,21 +845,22 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ShiftWatch/ShiftWatch.entitlements;
+                INFOPLIST_FILE = ShiftWatch/Info.plist;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads your workout data to show your activity on your watch.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift logs your workouts to Apple Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads workout data, live heart rate and active energy to show your endurance activity on Apple Watch.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift saves your completed workouts and GPS workout routes to Apple Health.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.zuhayrk.shift;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -873,21 +880,22 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = ShiftWatch/ShiftWatch.entitlements;
+                INFOPLIST_FILE = ShiftWatch/Info.plist;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Shift;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads your workout data to show your activity on your watch.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift logs your workouts to Apple Health.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Shift reads workout data, live heart rate and active energy to show your endurance activity on Apple Watch.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Shift saves your completed workouts and GPS workout routes to Apple Health.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.zuhayrk.shift;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -909,7 +917,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShiftWatchComplications/ShiftWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShiftWatchComplications/Info.plist;
@@ -920,7 +928,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.watchkitapp.complications;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -942,7 +950,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = ShiftWatchComplications/ShiftWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = 7NW33277C8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShiftWatchComplications/Info.plist;
@@ -953,7 +961,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.10;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zuhayrk.shift.watchkitapp.complications;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;

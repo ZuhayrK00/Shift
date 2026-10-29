@@ -23,6 +23,7 @@ struct TodayView: View {
     @State private var weeklySummary: WeeklyTrainingSummary?
     @State private var recoverySnapshot: RecoverySnapshot?
     @State private var showRecoveryCheckIn = false
+    @State private var enduranceActivities: [EnduranceActivity] = []
 
     private var todayKey: String { toLocalDateKey(Date()) }
     private var selectedKey: String { toLocalDateKey(selectedDate) }
@@ -39,12 +40,7 @@ struct TodayView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         // Title
-                        Text("Shift")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundStyle(colors.text)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
-                            .padding(.bottom, 16)
+                        TrainingModeHeader()
 
                         // Week calendar
                         WeekCalendar(
@@ -101,6 +97,11 @@ struct TodayView: View {
                             sessionList
                         }
 
+                        ForEach(enduranceActivities.filter { Calendar.current.isDate($0.startedAt, inSameDayAs: selectedDate) }) { activity in
+                            NavigationLink { EnduranceDetailView(activity: activity) } label: { EnduranceActivityRow(activity: activity) }
+                                .buttonStyle(.plain).padding(.horizontal, 20).padding(.top, 16)
+                        }
+
                         if isToday, let weeklySummary, weeklySummary.workoutCount > 0 {
                             weeklyTrainingCard(weeklySummary)
                                 .padding(.horizontal, 20)
@@ -121,12 +122,14 @@ struct TodayView: View {
                     }
                 }
             }
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { sessionId in
                 WorkoutView(sessionId: sessionId)
+                    .toolbar(.visible, for: .navigationBar)
             }
             .navigationDestination(isPresented: $showActivityDetail) {
                 ActivityDetailView(activityData: activityData ?? ActivityData())
+                    .toolbar(.visible, for: .navigationBar)
             }
         }
         .task {
@@ -134,6 +137,22 @@ struct TodayView: View {
             if let sessionId = ShiftDeepLinkStore.consumeWorkoutSessionId() {
                 openWorkout(sessionId)
             }
+            if let pending = ShiftShortcutStore.consume() {
+                switch pending.action {
+                case .startNextWorkout:
+                    if let preferredPlan { await startWorkout(plan: preferredPlan) }
+                    else { showPlanPicker = !plans.isEmpty }
+                case .startQuickWorkout: await startWorkout(plan: nil)
+                case .resumeWorkout:
+                    if let active = inProgressSessions.first { openWorkout(active.id) }
+                case .startRestTimer:
+                    RestTimerManager.shared.start(seconds: min(3600, max(10, Int(pending.value ?? 90))))
+                default: break
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftEnduranceDidChange)) { _ in
+            Task { await loadData() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .watchDidUpdateWorkout)) { _ in
             Task { await loadData() }
@@ -617,6 +636,8 @@ struct TodayView: View {
         isLoading = false
 
         if let userID = authManager.currentUserId {
+            enduranceActivities = (try? await EnduranceStore.shared.all(EnduranceActivity.self, userID: userID)) ?? []
+            completedDates.formUnion(enduranceActivities.map { toLocalDateKey($0.startedAt) })
             let completedSessions = (try? await SessionRepository.findCompleted(userId: userID)) ?? []
             let grouped = WorkoutProgramService.summaries(
                 plans: fetchedPlans,

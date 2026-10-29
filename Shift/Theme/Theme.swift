@@ -15,6 +15,8 @@ struct ShiftColorPalette {
     let controlTint: Color
     let accentSoft: Color
     let accent2: Color
+    let enduranceAccent: Color
+    let enduranceSoft: Color
     let success: Color
     let onSuccess: Color
     let warning: Color
@@ -35,11 +37,13 @@ struct ShiftColors {
         border:     Color(hex: "#d8d8d4"),
         text:       Color(hex: "#0a0a0a"),
         muted:      Color(hex: "#626262"),
-        accent:     Color(hex: "#111111"),
+        accent:     Color(hex: "#6547c8"),
         onAccent:   Color(hex: "#ffffff"),
-        controlTint: Color(hex: "#111111"),
-        accentSoft: Color(hex: "#e6e6e2"),
-        accent2:    Color(hex: "#6f6f6a"),
+        controlTint: Color(hex: "#6547c8"),
+        accentSoft: Color(hex: "#eee8fb"),
+        accent2:    Color(hex: "#3674ba"),
+        enduranceAccent: Color(hex: "#08756f"),
+        enduranceSoft: Color(hex: "#dcefeb"),
         success:    Color(hex: "#16803c"),
         onSuccess:  Color(hex: "#ffffff"),
         warning:    Color(hex: "#b35a00"),
@@ -55,11 +59,13 @@ struct ShiftColors {
         border:     Color(hex: "#2a2a2a"),
         text:       Color(hex: "#f4f4f2"),
         muted:      Color(hex: "#a0a09b"),
-        accent:     Color(hex: "#f2f2ee"),
+        accent:     Color(hex: "#ab9afa"),
         onAccent:   Color(hex: "#0a0a0a"),
-        controlTint: Color(hex: "#3978f6"),
-        accentSoft: Color(hex: "#242424"),
-        accent2:    Color(hex: "#a8a8a2"),
+        controlTint: Color(hex: "#795be5"),
+        accentSoft: Color(hex: "#211b34"),
+        accent2:    Color(hex: "#7fa9f5"),
+        enduranceAccent: Color(hex: "#38c9bc"),
+        enduranceSoft: Color(hex: "#102c29"),
         success:    Color(hex: "#39c66d"),
         onSuccess:  Color(hex: "#050505"),
         warning:    Color(hex: "#f0a23b"),
@@ -93,6 +99,8 @@ struct ShiftColors {
     var controlTint: Color { palette.controlTint }
     var accentSoft: Color { palette.accentSoft }
     var accent2:  Color { palette.accent2 }
+    var enduranceAccent: Color { palette.enduranceAccent }
+    var enduranceSoft: Color { palette.enduranceSoft }
     var success:  Color { palette.success }
     var onSuccess: Color { palette.onSuccess }
     var warning:  Color { palette.warning }

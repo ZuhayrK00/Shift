@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>shift</string></array></dict></array>
+<key>WKBackgroundModes</key><array><string>workout-processing</string></array>
+<key>NSLocationWhenInUseUsageDescription</key><string>Shift uses precise location to record your runs, walks and rides on Apple Watch, including while your wrist is down.</string>
+</dict></plist>

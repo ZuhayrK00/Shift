@@ -125,6 +125,7 @@ struct WatchContext: Codable {
     var schemaVersion: Int?
     var generatedAt: Date?
     var isSignedIn: Bool?
+    var endurance: WatchEnduranceContext?
 
     struct WatchSnapshotData: Codable {
         var workoutsThisWeek: Int

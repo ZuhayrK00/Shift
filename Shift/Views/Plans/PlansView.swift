@@ -40,7 +40,7 @@ struct PlansView: View {
             }
         }
         .navigationTitle("Plans")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {

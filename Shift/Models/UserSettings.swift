@@ -105,12 +105,18 @@ struct NotificationSettings: Codable, Hashable {
     var frequencyGoalAchievements: Bool = true
     var stepGoalAchievements: Bool = true
     var workoutIdleAlerts: Bool = true
+    var trainingReminders: Bool = false
+    var enduranceAchievements: Bool = false
+    var trainingReminderMinutes: Int = 30
 
     enum CodingKeys: String, CodingKey {
         case exerciseGoalAchievements = "exercise_goal_achievements"
         case frequencyGoalAchievements = "frequency_goal_achievements"
         case stepGoalAchievements = "step_goal_achievements"
         case workoutIdleAlerts = "workout_idle_alerts"
+        case trainingReminders = "training_reminders"
+        case enduranceAchievements = "endurance_achievements"
+        case trainingReminderMinutes = "training_reminder_minutes"
 
         // Legacy keys retained for a one-way migration from the old scheduled
         // reminder system.
@@ -121,6 +127,10 @@ struct NotificationSettings: Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        trainingReminders = (try? container.decode(Bool.self, forKey: .trainingReminders)) ?? false
+        enduranceAchievements = (try? container.decode(Bool.self, forKey: .enduranceAchievements)) ?? false
+        let lead = (try? container.decode(Int.self, forKey: .trainingReminderMinutes)) ?? 30
+        trainingReminderMinutes = [15, 30, 60].contains(lead) ? lead : 30
         exerciseGoalAchievements =
             (try? container.decode(Bool.self, forKey: .exerciseGoalAchievements))
             ?? (try? container.decode(Bool.self, forKey: .legacyExerciseGoalReminders))
@@ -146,6 +156,9 @@ struct NotificationSettings: Codable, Hashable {
         try container.encode(frequencyGoalAchievements, forKey: .frequencyGoalAchievements)
         try container.encode(stepGoalAchievements, forKey: .stepGoalAchievements)
         try container.encode(workoutIdleAlerts, forKey: .workoutIdleAlerts)
+        try container.encode(trainingReminders, forKey: .trainingReminders)
+        try container.encode(enduranceAchievements, forKey: .enduranceAchievements)
+        try container.encode(trainingReminderMinutes, forKey: .trainingReminderMinutes)
     }
 }
 

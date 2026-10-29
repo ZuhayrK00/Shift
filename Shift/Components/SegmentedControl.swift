@@ -12,6 +12,7 @@ struct SegmentedControl<Value: Hashable & Equatable>: View {
 
     let segments: [Segment]
     @Binding var selection: Value
+    var tint: Color? = nil
 
     @Environment(\.shiftColors) private var colors
 
@@ -30,12 +31,13 @@ struct SegmentedControl<Value: Hashable & Equatable>: View {
                         .padding(.vertical, 8)
                         .background(
                             selection == segment.value
-                                ? colors.accent
+                                ? (tint ?? colors.accent)
                                 : Color.clear
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == segment.value ? .isSelected : [])
             }
         }
         .padding(4)
@@ -48,9 +50,10 @@ struct SegmentedControl<Value: Hashable & Equatable>: View {
 
 extension SegmentedControl where Value == String {
     /// Convenience init for simple string-valued segments.
-    init(options: [String], selection: Binding<String>) {
+    init(options: [String], selection: Binding<String>, tint: Color? = nil) {
         self.segments = options.map { Segment(label: $0, value: $0) }
         self._selection = selection
+        self.tint = tint
     }
 }
 

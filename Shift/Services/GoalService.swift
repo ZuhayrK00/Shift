@@ -131,6 +131,8 @@ struct GoalService {
         let sessions = try await SessionRepository.findCompletedSince(weekStart, userId: userId)
 
         var totalCount = sessions.count
+        let endurance = try await EnduranceStore.shared.all(EnduranceActivity.self, userID: userId)
+        totalCount += endurance.filter { $0.startedAt >= weekStart && $0.endedAt <= Date() }.count
         if settings.healthKit.countExternalWorkouts {
             totalCount += await HealthKitService.countExternalWorkouts(since: weekStart)
         }

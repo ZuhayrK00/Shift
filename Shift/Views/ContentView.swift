@@ -184,29 +184,50 @@ struct MainTabView: View {
 
     @State private var selectedTab = 0
     @State private var plansPath = NavigationPath()
+    @AppStorage("shift.trainingMode") private var trainingMode: TrainingMode = .strength
+    @State private var enduranceRecorder = EnduranceRecorder.shared
+    @State private var completedEndurance: EnduranceActivity?
+    @State private var showTrainingCalendar = false
+    @State private var trainingCalendarDate = Date()
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            TodayView()
+        VStack(spacing: 0) {
+            if let draft = enduranceRecorder.draft, !enduranceRecorder.showRecorder {
+                Button { enduranceRecorder.prepare() } label: {
+                    HStack {
+                        Image(systemName: draft.sport.symbol)
+                        Text("\(draft.sport.title) · \(draft.isPaused ? "Paused" : "Recording")")
+                        Spacer()
+                        Text("Open").fontWeight(.semibold)
+                    }.font(.subheadline).padding(12).background(colors.surface2, in: RoundedRectangle(cornerRadius: 12))
+                }.buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 6)
+            }
+            TabView(selection: $selectedTab) {
+            Group {
+                if trainingMode == .strength { TodayView() }
+                else { EnduranceHomeView() }
+            }
                 .tag(0)
                 .tabItem {
                     Label("Today", systemImage: "house.fill")
                 }
 
             NavigationStack(path: $plansPath) {
-                PlansView()
+                if trainingMode == .strength { PlansView() }
+                else { EnduranceHistoryView() }
             }
             .tag(1)
             .tabItem {
-                Label("Plans", systemImage: "list.bullet.rectangle.fill")
+                Label(trainingMode == .strength ? "Plans" : "Activities", systemImage: trainingMode == .strength ? "list.bullet.rectangle.fill" : "map.fill")
             }
 
             NavigationStack {
-                ExercisesView()
+                if trainingMode == .strength { ExercisesView() }
+                else { EnduranceGoalsView() }
             }
             .tag(2)
             .tabItem {
-                Label("Exercises", systemImage: "dumbbell.fill")
+                Label(trainingMode == .strength ? "Exercises" : "Goals", systemImage: trainingMode == .strength ? "dumbbell.fill" : "target")
             }
 
             NavigationStack {
@@ -217,7 +238,37 @@ struct MainTabView: View {
                 Label("Profile", systemImage: "person.fill")
             }
         }
-        .tint(colors.accent)
+        .id(authManager.currentUserId)
+        }
+        .background(colors.bg)
+        .tint(trainingMode == .strength ? colors.accent : colors.enduranceAccent)
+        .task(id: authManager.currentUserId) {
+            selectedTab = 0
+            #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+            if StoreCaptureConfiguration.enabled {
+                selectedTab = ["plans": 1, "history": 1, "goals": 2, "profile": 3][StoreCaptureConfiguration.screen] ?? 0
+            }
+            #endif
+            plansPath = NavigationPath()
+            await enduranceRecorder.activate(userID: authManager.currentUserId)
+            await EnduranceWeatherService.shared.activate(owner: authManager.currentUserId)
+            openPendingTrainingLink()
+        }
+        .onChange(of: trainingMode) { _, _ in selectedTab = 0; plansPath = NavigationPath() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { NotificationCenter.default.post(name: .shiftEnduranceDidChange, object: nil); EnduranceWeatherService.shared.refresh() }
+        }
+        .fullScreenCover(isPresented: Binding(get: { enduranceRecorder.showRecorder }, set: { enduranceRecorder.showRecorder = $0 }), onDismiss: { completedEndurance = enduranceRecorder.completedActivity; enduranceRecorder.completedActivity = nil }) {
+            EnduranceRecordingView(sport: enduranceRecorder.requestedSport)
+        }
+        .sheet(item: $completedEndurance) { activity in
+            NavigationStack { EnduranceDetailView(activity: activity).toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { completedEndurance = nil } } } }
+        }
+        .sheet(isPresented: $showTrainingCalendar, onDismiss: { enduranceRecorder.openPendingCalendarSession() }) { TrainingCalendarView(initialDate: trainingCalendarDate) }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftOpenTrainingCalendar)) { _ in openPendingTrainingLink() }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftOpenEndurance)) { note in
+            openPendingTrainingLink()
+        }
         .onChange(of: selectedTab) { oldTab, _ in
             // Reset Plans nav stack when switching away from it
             if oldTab == 1 && !plansPath.isEmpty {
@@ -225,7 +276,15 @@ struct MainTabView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkOpenWorkout)) { _ in
+            trainingMode = .strength
             selectedTab = 0
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shiftDeepLinkStartWorkout)) { _ in
+            if trainingMode == .endurance {
+                ShiftShortcutStore.save(.startQuickWorkout)
+                trainingMode = .strength
+                selectedTab = 0
+            }
         }
         .task {
             await Task.yield()
@@ -239,8 +298,36 @@ struct MainTabView: View {
         }
     }
 
+    @MainActor private func openPendingTrainingLink() {
+        guard let url = TrainingDeepLinkStore.consume(owner: authManager.currentUserId) else { return }
+        if url.host == "training-calendar" {
+            trainingCalendarDate = TrainingDeepLinkStore.calendarDate(url) ?? Date(); showTrainingCalendar = true
+        } else {
+            trainingMode = .endurance; selectedTab = 0
+            let sport = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "sport" }?.value
+            if let sport, let choice = EnduranceSport(rawValue: sport) { enduranceRecorder.prepare(sport: choice) }
+            else if let activityID = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "activity" })?.value,
+                    let owner = authManager.currentUserId {
+                Task {
+                    if let records = try? await EnduranceStore.shared.all(EnduranceActivity.self, userID: owner), authManager.currentUserId == owner {
+                        completedEndurance = records.first { $0.id == activityID }
+                    }
+                }
+            }
+        }
+    }
+
     @MainActor
     private func handleShortcut(_ action: ShiftShortcutAction, value: Double?) async {
+        if trainingMode == .endurance,
+           [.startNextWorkout, .startQuickWorkout, .resumeWorkout, .startRestTimer].contains(action) {
+            // Today consumes the pending action after its new view has loaded;
+            // a notification emitted before that point would be lost.
+            ShiftShortcutStore.save(action, value: value)
+            trainingMode = .strength
+            selectedTab = 0
+            return
+        }
         switch action {
         case .startNextWorkout:
             selectedTab = 0

@@ -5,6 +5,8 @@ import Supabase
 import WatchConnectivity
 
 extension Notification.Name {
+    static let shiftOpenTrainingCalendar = Notification.Name("shiftOpenTrainingCalendar")
+    static let shiftOpenEndurance = Notification.Name("shiftOpenEndurance")
     static let shiftDeepLinkStartWorkout = Notification.Name("shiftDeepLinkStartWorkout")
     static let shiftDeepLinkOpenWorkout = Notification.Name("shiftDeepLinkOpenWorkout")
     static let shiftShortcutStartNextWorkout = Notification.Name("shiftShortcutStartNextWorkout")
@@ -32,6 +34,21 @@ class ShiftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        guard response.actionIdentifier != UNNotificationDismissActionIdentifier else { return }
+        let info = response.notification.request.content.userInfo
+        let trainingID = info["trainingSessionId"] as? String
+        let activityID = info["enduranceActivityId"] as? String
+        let trainingDate = info["trainingDate"] as? String
+        if let owner = info["ownerId"] as? String,
+           trainingID != nil || activityID != nil {
+            await MainActor.run {
+                var components = URLComponents(); components.scheme = "shift"; components.host = trainingID != nil ? "training-calendar" : "endurance"
+                components.queryItems = [URLQueryItem(name: "owner", value: owner), URLQueryItem(name: "date", value: trainingDate), URLQueryItem(name: "activity", value: activityID)]
+                if let url = components.url { TrainingDeepLinkStore.store(url) }
+                NotificationCenter.default.post(name: components.host == "training-calendar" ? .shiftOpenTrainingCalendar : .shiftOpenEndurance, object: nil)
+            }
+            return
+        }
         let isOpenAction = response.actionIdentifier == NotificationManager.openWorkoutAction
             || response.actionIdentifier == UNNotificationDefaultActionIdentifier
         guard isOpenAction,
@@ -89,13 +106,26 @@ struct ShiftApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                #if SHIFT_STORE_CAPTURE && targetEnvironment(simulator)
+                if StoreCaptureConfiguration.enabled { StoreCaptureRoot() } else { ContentView() }
+                #else
+                ContentView()
+                #endif
+            }
                 .environment(authManager)
                 .environment(StoreService.shared)
                 .preferredColorScheme(preferredScheme)
                 .shiftTheme()
                 .onOpenURL { url in
-                    if url.host == "start-workout" {
+                    if url.host == "endurance" {
+                        TrainingDeepLinkStore.store(url)
+                        let sport = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "sport" }?.value
+                        NotificationCenter.default.post(name: .shiftOpenEndurance, object: nil, userInfo: ["sport": sport ?? ""])
+                    } else if url.host == "training-calendar" {
+                        TrainingDeepLinkStore.store(url)
+                        NotificationCenter.default.post(name: .shiftOpenTrainingCalendar, object: nil)
+                    } else if url.host == "start-workout" {
                         NotificationCenter.default.post(name: .shiftDeepLinkStartWorkout, object: nil)
                     } else {
                         supabase.auth.handle(url)
@@ -111,6 +141,7 @@ struct ShiftApp: App {
                     )
                     PhoneSessionManager.shared.sendContextToWatch()
                     await GoalNotificationService.checkAndNotifyGoalCompletion()
+                    await TrainingNotificationService.reconcile()
                     await GoalNotificationService.reconcileMissedTrainingDays()
                     await GoalNotificationService.notifyFrequencyGoalIfReached()
                 }
