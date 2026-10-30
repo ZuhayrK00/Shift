@@ -25,3 +25,9 @@ The new version's description, release notes and reviewer navigation instruction
 The final submission was accepted on 29 October 2026 at 22:23 GMT. App Review shows **Waiting for Review** for **2.1.1 (25)**, submission ID `63e80724-d4d0-4a49-8594-5b2d88937249`. Automatic release after approval is selected, rather than manual or scheduled release. No additional developer release click is required if Apple approves the submission and distribution completes.
 
 Local archive logs, upload receipt, metadata and verification evidence are in the ignored build/app-store-2.1.1-25 directory. Public availability is not implied by upload or review submission.
+
+## Device screenshot update and resubmission
+
+On 30 October 2026 the user approved the new real-app iPad and Watch screenshot set. The previous submission was cancelled to unlock screenshot editing. Nine iPad images and four Watch screenshots replaced the inherited device sets; the existing iPhone images and build 25 were retained. The new set and its fictional-data provenance are documented in [the device artwork workflow](store-device-artwork.md).
+
+After Apple's image processing finished, the replacement submission was accepted at **09:40 GMT on 30 October 2026**. App Review shows **Waiting for Review**, submission ID `0a629e94-7d61-4330-8a02-c73915107b11`, version **2.1.1 (25)**. Automatic release after approval, immediate all-user distribution and the existing rating remain selected. Screenshot proof and uploaded-file fingerprints are saved locally under the ignored `build/device-store-captures/submission/` directory.

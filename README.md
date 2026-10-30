@@ -236,7 +236,7 @@ The [iPad and Watch artwork workflow](docs/store-device-artwork.md) documents na
 
 ## Release notes
 
-Version **2.1.0 (24)** contains the Endurance release and was verified **Ready for Distribution** on 29 October 2026. Version **2.1.1 (25)** adds forecast-change suggestions and was uploaded on the same date. It is **Waiting for Review**, with automatic release after approval selected; see the [2.1.1 release record](docs/release-2.1.1.md).
+Version **2.1.0 (24)** contains the Endurance release and was verified **Ready for Distribution** on 29 October 2026. Version **2.1.1 (25)** adds forecast-change suggestions and was uploaded on the same date. It was resubmitted on **30 October 2026** with refreshed iPad and Watch screenshots and is **Waiting for Review**, with automatic release after approval selected; see the [2.1.1 release record](docs/release-2.1.1.md).
 
 - [Endurance recording and initial release](docs/endurance-release.md)
 - [Calendar, routes, records, Watch, widgets and notifications](docs/endurance-v2.md)
